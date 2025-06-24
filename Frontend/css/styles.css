@@ -1,25 +1,53 @@
+body {
+  font-family: 'Montserrat', sans-serif;
+  background-color: #f4f4f4;
+  margin: 0;
+  padding: 0;
+  font-weight: bold;
+}
+
+/* Para los textos normales */
+.normal {
+  font-weight: 300;
+}
+
+/* Para textos como “Pilar” */
+.bold {
+  font-weight: 400;
+}
+
+.login-card label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: bold; /* <-- esto le da negrita */
+  color: #444;
+}
+
 .login-container {
   display: flex;
   justify-content: center;
   align-items: center;
   height: 100vh;
   background-color: #f4f4f4;
+  font-weight: bold;
 }
 
 .login-card {
   background-color: white;
   padding: 40px 30px;
   border-radius: 10px;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
   width: 100%;
   max-width: 400px;
   box-sizing: border-box;
+  font-weight: bold;
 }
 
 .login-card h2 {
   text-align: center;
   margin-bottom: 25px;
   color: #333;
+  font-weight: bold;
 }
 
 .login-card label {
@@ -40,23 +68,27 @@
 }
 
 .login-card input:focus {
-  border-color: #2979ff;
+  border-color: #5f9f9c;
   outline: none;
 }
 
 .login-card .btn {
   width: 100%;
-  background-color: #2979ff;
+  background-color: #5f9f9c;
   color: white;
   border: none;
   padding: 10px;
   border-radius: 5px;
   font-size: 16px;
   cursor: pointer;
+  transition: 0.2s;
+  font-weight: bold;
 }
 
 .login-card .btn:hover {
-  background-color: #1a5fd6;
+  background-color: white;
+  color: #5f9f9c;
+  border: 1px solid #5f9f9c;
 }
 
 .login-logo {
@@ -66,6 +98,6 @@
 }
 
 .login-logo img {
-  height: 140px; /* Podés ajustar el tamaño acá */
+  height: 140px;
   width: auto;
 }

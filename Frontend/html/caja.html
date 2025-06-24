@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Caja</title>
+  <link rel="stylesheet" href="/frontend/css/caja.css" />
+</head>
+<body>
+  <header class="top-bar">
+    <div class="nav-left">
+        <a href="dashboard.html" class="btn">INICIO</a>
+      <button class="btn active">CAJA</button>
+    </div>
+    <div class="nav-right">
+      <span class="user-icon">👤</span>
+      <span class="user-info">USUARIO: <strong>Belén Contreras</strong></span>
+      <button class="logout-btn">CERRAR SESIÓN</button>
+    </div>
+  </header>
+
+  <hr />
+
+  <main class="content">
+    <section class="filtros">
+      <select><option>Caja</option></select>
+      <select><option>Mes</option></select>
+      <select><option>Tipo de movimiento</option></select>
+      <select><option>Categoría</option></select>
+      <select><option>Formato</option></select>
+      <select><option>Profesional</option></select>
+      <select><option>Beneficiario</option></select>
+      <button class="buscar-btn">Buscar</button>
+    </section>
+
+    <section class="movimientos">
+      <div class="acciones">
+        <label>Nuevo movimiento:</label>
+        <button class="icon-btn">➕</button>
+        <button class="icon-btn">⬇️</button>
+        <div class="saldo">
+          <label>Saldo actual:</label>
+          <span>$<input type="text" placeholder="___________" disabled /></span>
+        </div>
+      </div>
+
+      <div class="tabla">
+        <p class="sin-info">No hay información / seleccionar filtros.</p>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

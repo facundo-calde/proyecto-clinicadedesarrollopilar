@@ -1,5 +1,5 @@
 body {
-    font-family: 'Segoe UI', sans-serif;
+    font-family: 'Montserrat', sans-serif;
     background-color: #f4f4f4;
     margin: 0;
     padding: 0;
@@ -12,6 +12,7 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    font-weight: bold;
 }
 
 .logo {
@@ -26,24 +27,35 @@ body {
 
 .btn {
     font-family: 'Segoe UI', sans-serif;
-    background-color: #2978ffe8;
+    background-color: #5f9f9c;
     color: white;
     border: none;
     border-radius: 5px;
     padding: 8px 12px;
     cursor: pointer;
     font-size: 14px;
-    transition: background-color 0.2s;
+    transition: background-color 0.2s, color 0.2s, border 0.2s;
+    font-weight: bold;
+    text-transform: uppercase;
 }
 
 .btn:hover {
     background-color: white;
-    color: #1a5fd6;
-    border: 1px solid #1a5fd6;
+    color: #5f9f9c;
+    border: 1px solid #5f9f9c;
 }
 
-.logout {
+.logout-btn {
     background-color: #e53835dc;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.2s, color 0.2s, border 0.2s;
+    font-weight: bold;
+    text-transform: uppercase;
 }
 
 .logout:hover {
@@ -75,13 +87,13 @@ body {
 }
 
 .card:visited {
-  color: inherit;
+    color: inherit;
 }
 
 .card:hover {
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
-    border-color: #2979ff;
-    color: #2979ff;
+    border-color: #5f9f9c;
+    color: #5f9f9c;
     text-decoration: none;
 }
 
@@ -96,6 +108,5 @@ body {
 
 .logo-img {
     height: 65px;
-    /* Ajustá este valor según el tamaño deseado */
     width: auto;
 }
