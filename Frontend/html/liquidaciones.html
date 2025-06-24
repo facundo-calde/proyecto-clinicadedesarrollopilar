@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Liquidaciones</title>
+  <link rel="stylesheet" href="/frontend/css/liquidaciones.css" />
+  <link rel="icon" href="/img/fc885963d690a6787ca787cf208cdd25_1778x266_fit.png" type="image/png" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <div class="top-bar">
+    <div class="nav-left">
+      <a href="dashboard.html" class="btn">INICIO</a>
+      <a href="#" class="btn active">LIQUIDACIONES</a>
+    </div>
+    <div class="nav-right">
+      <span class="user-info"><i class="fas fa-user user-icon"></i> USUARIO: <strong>Belén Contreras</strong></span>
+      <button class="logout-btn">CERRAR SESIÓN</button>
+    </div>
+  </div>
+
+  <hr />
+
+  <div class="content">
+    <div class="filtros">
+      <label>Tipo de liquidación:</label>
+      <select><option value="">Módulo</option></select>
+
+      <label>Profesional:</label>
+      <select><option value="">Catalina Sinópoli</option></select>
+
+      <label>Desde:</label>
+      <select><option value="">07</option></select>
+
+      <label>Hasta:</label>
+      <select><option value="">07</option></select>
+
+      <button class="buscar-btn">Buscar</button>
+    </div>
+
+    <h2 style="margin-bottom: 15px;">Liquidaciones por profesional:</h2>
+
+    <div class="tabla">
+      <table>
+        <thead>
+          <tr>
+            <th>Mes</th>
+            <th>Profesional</th>
+            <th>Liquidación total</th>
+            <th>Pagaron padres</th>
+            <th>65% - Honorarios</th>
+            <th>Aporte 35%</th>
+            <th>Aporte realizado</th>
+            <th>Estado</th>
+            <th>Importe</th>
+            <th><i class="fas fa-download"></i></th>
+          </tr>
+        </thead>
+        <tbody id="tabla-liquidaciones">
+          <!-- Lista vacía inicialmente -->
+        </tbody>
+      </table>
+      <div class="sin-info">No hay liquidaciones registradas aún.</div>
+    </div>
+  </div>
+</body>
+</html>

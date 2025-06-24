@@ -1,0 +1,176 @@
+/* Reset */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* Fuente y fondo base */
+body {
+  font-family: 'Segoe UI', 'Montserrat', sans-serif;
+  background-color: #f4f4f4;
+}
+
+/* Top Bar (Header) */
+.top-bar {
+  background-color: #fff;
+  border-bottom: 1px solid #ddd;
+  padding: 10px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.nav-left {
+  display: flex;
+  gap: 10px;
+}
+
+.nav-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+a.btn,
+button.btn {
+  background-color: #5f9f9c;
+  color: white;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 5px;
+  font-size: 14px;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: bold;
+  cursor: pointer;
+  transition: 0.2s;
+  text-decoration: none;
+}
+
+a.btn:hover,
+button.btn:hover {
+  background-color: white;
+  color: #5f9f9c;
+  border: 1px solid #5f9f9c;
+}
+
+a.btn.active,
+button.btn.active {
+  background-color: white;
+  color: #5f9f9c;
+  border: 2px solid #5f9f9c;
+}
+
+.logout-btn {
+  background-color: #e53835dc;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: 0.2s;
+  font-weight: bold;
+}
+
+.logout-btn:hover {
+  background-color: white;
+  color: #c62828;
+  border: 1px solid #c62828;
+}
+
+.user-icon {
+  font-size: 18px;
+}
+
+.user-info {
+  font-weight: 500;
+  color: #333;
+}
+
+/* Línea divisoria */
+hr {
+  border: none;
+  height: 1px;
+  background-color: #ddd;
+  margin: 0;
+}
+
+/* Contenido principal */
+.content {
+  padding: 20px;
+}
+
+/* Botón de registrar nuevo usuario */
+.user-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  font-weight: bold;
+}
+
+.user-actions .btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Tabla de usuarios */
+.tabla {
+  background-color: white;
+  border: 1px solid #ccc;
+  border-radius: 10px;
+  padding: 15px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  min-height: 150px;
+}
+
+.tabla table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.tabla thead th {
+  background-color: #5f9f9c;
+  color: white;
+  padding: 10px;
+  text-align: left;
+  font-family: 'Montserrat', sans-serif;
+  border-bottom: 2px solid #ccc;
+}
+
+.tabla tbody td {
+  padding: 10px;
+  border-bottom: 1px solid #ccc;
+  font-family: 'Montserrat', sans-serif;
+}
+
+.tabla tbody tr:hover {
+  background-color: #f0f0f0;
+}
+
+.tabla .sin-info {
+  padding: 10px;
+  font-style: italic;
+  color: #777;
+}
+
+td .icon-btn {
+  background: none;
+  border: none;
+  font-size: 16px;
+  color: #444;
+  cursor: pointer;
+  margin-right: 5px;
+}
+
+td .icon-btn:hover {
+  color: black;
+}

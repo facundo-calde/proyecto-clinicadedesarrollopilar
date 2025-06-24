@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Usuarios</title>
+  <link rel="icon" href="/img/fc885963d690a6787ca787cf208cdd25_1778x266_fit.png" type="image/png">
+  <link rel="stylesheet" href="/frontend/css/usuarios.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="top-bar">
+    <div class="nav-left">
+      <a href="dashboard.html" class="btn">INICIO</a>
+      <a href="#" class="btn active">USUARIOS</a>
+    </div>
+    <div class="nav-right">
+      <span class="user-info"><i class="fas fa-user user-icon"></i> USUARIO: <strong>Belén Contreras</strong></span>
+      <button class="logout-btn">CERRAR SESIÓN</button>
+    </div>
+  </div>
+
+  <hr />
+
+  <div class="content">
+    <h2 style="margin-bottom: 20px;">Listado de usuarios:</h2>
+
+    <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 10px; gap: 10px;">
+      <span style="font-weight: bold;">Registrar nuevo usuario:</span>
+      <button class="btn">+</button>
+    </div>
+
+    <div class="tabla">
+      <table style="width: 100%; border-collapse: collapse;">
+        <thead>
+          <tr style="background-color: #5f9f9c; color: white;">
+            <th style="padding: 10px; text-align: left;">Usuarios</th>
+            <th>Área</th>
+            <th>Mail</th>
+            <th>WhatsApp</th>
+            <th>Estado</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="user-list">
+          <!-- Contenido dinámico -->
+        </tbody>
+      </table>
+      <div class="sin-info">No hay usuarios registrados aún.</div>
+    </div>
+  </div>
+</body>
+</html>
+
