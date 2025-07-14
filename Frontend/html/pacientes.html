@@ -2,38 +2,85 @@
 <html lang="es">
 
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Pacientes</title>
-    <link rel="icon" href="/img/fc885963d690a6787ca787cf208cdd25_1778x266_fit.png" type="image/png">
-    <link rel="stylesheet" href="/frontend/css/pacientes.css" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pacientes</title>
+
+  <!-- SweetAlert -->
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+  <!-- Favicon -->
+  <link rel="icon" href="/img/fc885963d690a6787ca787cf208cdd25_1778x266_fit.png" type="image/png">
+
+  <!-- Estilos personalizados -->
+  <link rel="stylesheet" href="/frontend/css/pacientes.css" />
+
+  <style>
+    .sugerencias-box {
+      position: absolute;
+      background: #e6f0ff;
+      border: 1px solid #2a6cc0;
+      border-radius: 6px;
+      max-height: 200px;
+      overflow-y: auto;
+      width: 100%;
+      z-index: 10;
+      margin-top: 4px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    }
+
+    .sugerencia-item {
+      padding: 10px;
+      cursor: pointer;
+      font-family: 'Segoe UI', sans-serif;
+      color: #2a6cc0;
+    }
+
+    .sugerencia-item:hover {
+      background: #d0e4ff;
+    }
+
+    .search-bar {
+      position: relative; /* Necesario para que las sugerencias se ubiquen debajo */
+    }
+  </style>
 </head>
 
 <body>
-    <header class="top-bar">
-        <div class="nav-left">
-            <a href="dashboard.html" class="btn">INICIO</a>
-            <button class="btn active">PACIENTES</button>
-            <button class="btn">Búsqueda de pacientes</button>
-            <button class="btn">Cargar nuevo paciente</button>
-        </div>
+  <!-- BARRA SUPERIOR -->
+  <header class="top-bar">
+    <div class="nav-left">
+      <a href="dashboard.html" class="btn">INICIO</a>
+      <button class="btn active">PACIENTES</button>
+      <button class="btn">Búsqueda de pacientes</button>
+      <button id="btnNuevoPaciente" class="btn">Cargar nuevo paciente</button>
+    </div>
 
-        <div class="nav-right">
-            <span class="user-icon">👤</span>
-            <span class="user-info">USUARIO: <strong>Belén Contreras</strong></span>
-            <button class="logout-btn">CERRAR SESIÓN</button>
-        </div>
-    </header>
+    <div class="nav-right">
+      <span class="user-icon">👤</span>
+      <span class="user-info">USUARIO: <strong>Belén Contreras</strong></span>
+      <button class="logout-btn">CERRAR SESIÓN</button>
+    </div>
+  </header>
 
-    <hr />
+  <hr />
 
-    <main class="content">
-        <div class="search-bar">
-            <input type="text" placeholder="Ingresar nombre y apellido" />
-            <span class="search-icon">🔍</span>
-            <button class="search-btn">BUSCAR</button>
-        </div>
-    </main>
+  <!-- CONTENIDO PRINCIPAL -->
+  <main class="content">
+    <!-- Buscador -->
+    <div class="search-bar">
+      <input id="busquedaInput" type="text" placeholder="Ingresar nombre o DNI..." />
+      <div id="sugerencias" class="sugerencias-box"></div>
+      <span class="search-icon">🔍</span>
+      <button class="search-btn" id="buscarBtn">BUSCAR</button>
+    </div>
+
+    <!-- Resultado -->
+    <div id="fichaPacienteContainer"></div>
+  </main>
+
+  <!-- JS principal -->
+  <script src="/frontend/js/pacientes.js" defer></script>
 </body>
 
 </html>

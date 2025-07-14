@@ -38,7 +38,6 @@ body {
   text-decoration: none;
   font-weight: bold;
   text-transform: uppercase;
-  
 }
 
 .btn:hover {
@@ -103,6 +102,7 @@ hr {
 }
 
 .search-bar {
+  position: relative; /* <-- necesario para que .sugerencias-box se posicione bien */
   display: flex;
   align-items: center;
   background-color: white;
@@ -146,3 +146,244 @@ hr {
   border: 1px solid #5f9f9c;
 }
 
+/* Formulario pacientes general */
+.formulario-paciente .grid-form {
+  display: flex;
+  gap: 30px;
+  margin-top: 10px;
+}
+
+.formulario-paciente .columna {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.formulario-paciente label {
+  margin-top: 10px;
+  font-weight: bold;
+}
+
+.swal2-input,
+.swal2-select {
+  width: 100%;
+  padding: 8px;
+  margin-top: 5px;
+}
+
+.areas-box {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 15px;
+  padding: 10px 15px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background-color: #f9f9f9;
+}
+
+.areas-box label {
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  color: #333;
+  font-weight: normal;
+  gap: 10px;
+}
+
+.swal-scrollable-form {
+  max-height: 90vh !important;
+  overflow-y: auto !important;
+}
+
+.grid-form {
+  display: flex;
+  gap: 30px;
+  flex-wrap: wrap;
+}
+
+.columna {
+  flex: 1 1 300px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* === MODAL NUEVO PACIENTE === */
+
+.swal2-popup.swal2-modal {
+  padding: 25px 35px;
+  font-family: 'Segoe UI', 'Montserrat', sans-serif;
+  background-color: #ffffff;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.2);
+  max-width: 1000px;
+}
+
+.formulario-paciente .grid-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 30px;
+  margin-top: 10px;
+}
+
+.formulario-paciente .columna {
+  display: flex;
+  flex-direction: column;
+}
+
+.formulario-paciente label {
+  font-weight: bold;
+  font-size: 14px;
+  margin-top: 10px;
+}
+
+.swal2-input,
+.swal2-select,
+textarea.swal2-textarea {
+  width: 100%;
+  padding: 8px;
+  margin-top: 4px;
+  margin-bottom: 10px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 14px;
+  background-color: #f9f9f9;
+  font-family: 'Segoe UI', sans-serif;
+}
+
+textarea.swal2-textarea {
+  resize: vertical;
+  min-height: 90px;
+}
+
+/* Caja de áreas */
+.areas-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+  border: 1px solid #ccc;
+  padding: 10px 15px;
+  border-radius: 6px;
+  background-color: #f5f5f5;
+}
+
+.areas-box label {
+  display: flex;
+  align-items: center;
+  font-weight: normal;
+  font-size: 14px;
+  color: #333;
+  gap: 10px;
+}
+
+/* Plan seleccionado */
+.plan-titulo {
+  background-color: #cfe2ff;
+  padding: 6px;
+  border-radius: 5px;
+  text-align: center;
+  font-weight: bold;
+  margin-top: 15px;
+}
+
+.plan-box {
+  border: 1px solid #ccc;
+  padding: 10px;
+  border-radius: 5px;
+  margin-top: 5px;
+  font-style: italic;
+  background-color: #fff;
+  min-height: 80px;
+}
+
+/* Botones swal2 */
+.swal2-actions {
+  margin-top: 25px;
+  justify-content: flex-end;
+}
+
+.swal2-confirm {
+  background-color: #2f72c4 !important;
+  color: white !important;
+  padding: 8px 20px;
+  font-weight: bold;
+  border-radius: 5px;
+}
+
+.swal2-cancel {
+  background-color: #e53935 !important;
+  color: white !important;
+  padding: 8px 20px;
+  font-weight: bold;
+  border-radius: 5px;
+  margin-right: 10px;
+}
+
+/* Ficha de paciente */
+.ficha-paciente {
+  display: flex;
+  flex-direction: column;
+  background: white;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  padding: 15px;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.1);
+  font-family: 'Segoe UI', sans-serif;
+  max-width: 800px;
+  margin: auto;
+}
+
+.ficha-paciente h3 {
+  font-weight: 700;
+  font-size: 20px;
+  margin-bottom: 10px;
+}
+
+.ficha-paciente p {
+  margin: 4px 0;
+}
+
+.btn-modificar {
+  margin-top: 10px;
+  background: #5f9f9c;
+  border: none;
+  color: white;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+/* Sugerencias */
+.sugerencias-box {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: #e6f0ff;
+  border: 1px solid #2a6cc0;
+  border-radius: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+  width: 100%;
+  z-index: 1000;
+  margin-top: 5px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+}
+
+.sugerencia-item {
+  padding: 10px;
+  cursor: pointer;
+  font-family: 'Segoe UI', sans-serif;
+  color: #2a6cc0;
+}
+
+.sugerencia-item:hover {
+  background: #d0e4ff;
+}
+
+.search-bar input:focus {
+  outline: none;
+  box-shadow: none;
+  border: none;
+}
