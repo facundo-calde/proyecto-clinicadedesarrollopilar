@@ -6,7 +6,8 @@ const buscarPaciente = async (req, res) => {
     const { nombre } = req.query;
     if (!nombre) return res.status(400).json({ error: 'Falta el nombre o DNI' });
 
-    const regex = new RegExp(nombre, 'i');
+    const nombreLimpio = nombre.replace(/\./g, '');
+    const regex = new RegExp(nombreLimpio, 'i');
 
     const pacientes = await Paciente.find({
       $or: [
@@ -21,6 +22,7 @@ const buscarPaciente = async (req, res) => {
     res.status(500).json({ error: 'Error al buscar paciente' });
   }
 };
+
 
 
 // Obtener por DNI
