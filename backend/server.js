@@ -6,6 +6,8 @@ const mongoose = require('mongoose');
 const pacientesRoutes = require('./routes/pacienteroutes');
 
 const app = express();
+const documentosRoutes = require('./routes/documentosroutes');
+app.use('/api/documentos', documentosRoutes);
 
 // Middleware
 app.use(cors());

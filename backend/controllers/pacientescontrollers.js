@@ -54,14 +54,33 @@ const crearPaciente = async (req, res) => {
 const actualizarPaciente = async (req, res) => {
   try {
     const { dni } = req.params;
-    const actualizado = await Paciente.findOneAndUpdate({ dni }, req.body, { new: true });
-    if (!actualizado) return res.status(404).json({ error: 'No encontrado' });
+    const paciente = await Paciente.findOne({ dni });
 
-    res.json(actualizado);
+    if (!paciente) return res.status(404).json({ error: 'No encontrado' });
+
+    // Actualizá solo los campos permitidos
+    const campos = [
+      'nombre', 'fechaNacimiento', 'colegio', 'curso', 'madre', 'padre',
+      'whatsappMadre', 'whatsappPadre', 'mail', 'abonado', 'estado',
+      'areas', 'planPaciente', 'fechaBaja', 'motivoBaja', 'documentos' // ← acá
+    ];
+
+
+    campos.forEach(campo => {
+      if (req.body[campo] !== undefined) {
+        paciente[campo] = req.body[campo];
+      }
+    });
+
+    await paciente.save();
+    res.json(paciente);
+
   } catch (error) {
+    console.error('❌ Error al actualizar:', error);
     res.status(500).json({ error: 'Error al actualizar' });
   }
 };
+
 
 module.exports = {
   buscarPaciente,
@@ -69,3 +88,4 @@ module.exports = {
   crearPaciente,
   actualizarPaciente
 };
+
