@@ -1,18 +1,19 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Módulos</title>
   <link rel="stylesheet" href="/frontend/css/modulos.css" />
 </head>
+
 <body>
   <header class="top-bar">
     <div class="nav-left">
       <a href="dashboard.html" class="btn">INICIO</a>
       <button class="btn active">MÓDULOS</button>
-      <button class="btn">Listado de módulos</button>
-      <button class="btn">Cargar nuevo módulo</button>
+      <button class="btn" id="btnCargarModulo">Cargar nuevo módulo</button>
     </div>
     <div class="nav-right">
       <span class="user-icon">👤</span>
@@ -25,32 +26,22 @@
 
   <main class="content">
     <div class="search-bar">
-      <input type="text" placeholder="Número del módulo" />
+      <input type="text" id="busquedaModulo" placeholder="Número del módulo" autocomplete="off" />
       <span class="search-icon">🔍</span>
       <button class="search-btn">BUSCAR</button>
+      <ul id="sugerencias" class="sugerencias-lista"></ul>
     </div>
 
-    <section class="tabla">
+
+    
       <h3>Listado de módulos</h3>
-      <div class="table-container">
-        <table>
-          <thead>
-            <tr>
-              <th>Módulo:</th>
-              <th>Última modificación:</th>
-              <th>Valor FONO-PSICO</th>
-              <th>Valor ÁREAS EXTERNAS</th>
-              <th>Valor HABILIDADES SOCIALES</th>
-              <th>Estado</th>
-              <th>Acción</th>
-            </tr>
-          </thead>
-          <tbody>
-            <!-- Aquí agregás los módulos manualmente -->
-          </tbody>
-        </table>
-      </div>
-    </section>
+    
+
+    <div id="fichaModuloContainer" style="margin-top: 30px;"></div>
   </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="/frontend/js/modulos.js"></script>
 </body>
+
 </html>
