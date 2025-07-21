@@ -58,8 +58,8 @@ document.addEventListener('DOMContentLoaded', () => {
         <!-- coordinadores -->
         <div class="grupo-bloque azul">
           <h4>FIJO COORDINADORES</h4>
-          <label>Horas:</label>
-          <input id="coord_horas">
+          <label>Nora:</label>
+          <input id="coord_nora">
           <label>Tete:</label>
           <input id="coord_tete">
         </div>
@@ -140,7 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         direccion: getNumberOrZero('fp_direccion')
                     },
                     coordinadores: {
-                        horas: getNumberOrZero('coord_horas'),
+                        horas: getNumberOrZero('coord_nora'),
                         tete: getNumberOrZero('coord_tete')
                     },
                     profesionales: {
@@ -308,8 +308,8 @@ async function modificarModulo(numero) {
         <!-- coordinadores -->
         <div class="grupo-bloque azul">
           <h4>FIJO COORDINADORES</h4>
-          <label>Horas:</label>
-          <input id="coord_horas" value="${modulo.coordinadores?.horas ?? 0}">
+          <label>Nora:</label>
+          <input id="coord_nora" value="${modulo.coordinadores?.nora ?? 0}">
           <label>Tete:</label>
           <input id="coord_tete" value="${modulo.coordinadores?.tete ?? 0}">
         </div>
@@ -384,7 +384,7 @@ async function modificarModulo(numero) {
                         direccion: getNumberOrZero('fp_direccion')
                     },
                     coordinadores: {
-                        horas: getNumberOrZero('coord_horas'),
+                        horas: getNumberOrZero('coord_nora'),
                         tete: getNumberOrZero('coord_tete')
                     },
                     profesionales: {
