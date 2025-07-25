@@ -3,12 +3,16 @@
 <head>
   <meta charset="UTF-8" />
   <title>Áreas</title>
+
+  <!-- Estilos -->
   <link rel="stylesheet" href="/frontend/css/areas.css" />
   <link rel="icon" href="/img/fc885963d690a6787ca787cf208cdd25_1778x266_fit.png" type="image/png" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet" />
 </head>
+
 <body>
+  <!-- Barra superior -->
   <div class="top-bar">
     <div class="nav-left">
       <a href="dashboard.html" class="btn">INICIO</a>
@@ -22,12 +26,13 @@
 
   <hr />
 
+  <!-- Contenido -->
   <div class="content">
     <h2 style="margin-bottom: 15px;">Listado de áreas:</h2>
 
     <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 10px; gap: 10px;">
       <span style="font-weight: bold;">Registrar nueva área:</span>
-      <button class="btn">+</button>
+      <button class="btn" id="btnAgregar">+</button>
     </div>
 
     <div class="tabla">
@@ -40,11 +45,15 @@
           </tr>
         </thead>
         <tbody id="tabla-areas">
-          <!-- Vacío al inicio -->
+          <!-- Las áreas se cargan con JS -->
         </tbody>
       </table>
       <div class="sin-info">No hay áreas registradas aún.</div>
     </div>
   </div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="/frontend/js/areas.js"></script>
 </body>
 </html>

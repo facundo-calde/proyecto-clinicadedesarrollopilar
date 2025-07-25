@@ -8,8 +8,10 @@
 body {
   font-family: 'Segoe UI', 'Montserrat', sans-serif;
   background-color: #f4f4f4;
+  color: #333;
 }
 
+/* Top bar */
 .top-bar {
   background-color: #fff;
   border-bottom: 1px solid #ddd;
@@ -24,19 +26,35 @@ body {
   gap: 10px;
 }
 
+.nav-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.user-icon {
+  font-size: 18px;
+}
+
+.user-info {
+  font-weight: 500;
+  color: #333;
+}
+
+/* Botones */
 a.btn,
 button.btn {
   background-color: #5f9f9c;
   color: white;
-  padding: 8px 12px;
+  padding: 8px 14px;
   border: none;
   border-radius: 5px;
   font-size: 14px;
-  font-family: 'Montserrat', sans-serif;
   font-weight: bold;
   cursor: pointer;
-  transition: 0.2s;
+  transition: background-color 0.2s, color 0.2s, border 0.2s;
   text-decoration: none;
+  text-transform: uppercase;
 }
 
 a.btn:hover,
@@ -52,16 +70,17 @@ a.btn.active {
   border: 2px solid #5f9f9c;
 }
 
+/* Cerrar sesión */
 .logout-btn {
   background-color: #e53835dc;
   color: white;
   border: none;
   border-radius: 5px;
   padding: 8px 12px;
-  cursor: pointer;
   font-size: 14px;
-  transition: 0.2s;
   font-weight: bold;
+  cursor: pointer;
+  transition: 0.2s;
 }
 
 .logout-btn:hover {
@@ -70,40 +89,34 @@ a.btn.active {
   border: 1px solid #c62828;
 }
 
-.user-icon {
-  font-size: 18px;
-}
-
-.user-info {
-  font-weight: 500;
-  color: #333;
-}
-
+/* Separador */
 hr {
   border: none;
   height: 1px;
   background-color: #ddd;
-  margin: 0;
 }
 
+/* Contenido general */
 .content {
-  padding: 20px;
+  max-width: 1000px;
+  margin: 30px auto;
+  padding: 0 20px;
 }
 
+/* Tabla de áreas */
 .tabla {
   background-color: white;
   border: 1px solid #ccc;
   border-radius: 10px;
   padding: 15px;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-  min-height: 150px;
+  overflow-x: auto;
 }
 
 table {
   width: 100%;
   border-collapse: collapse;
   font-size: 14px;
-  font-family: 'Montserrat', sans-serif;
 }
 
 thead th {
@@ -111,32 +124,90 @@ thead th {
   color: white;
   padding: 10px;
   text-align: left;
+  text-transform: uppercase;
+  font-weight: 600;
 }
 
 tbody td {
   padding: 10px;
-  border-bottom: 1px solid #ccc;
+  border-bottom: 1px solid #ddd;
 }
 
 tbody tr:hover {
   background-color: #f9f9f9;
 }
 
+/* Íconos de acción */
+td i {
+  font-size: 16px;
+  color: #5f9f9c;
+  cursor: pointer;
+  margin-right: 8px;
+}
+
+td i:hover {
+  color: #2a6c68;
+}
+
+/* Texto sin info */
 .sin-info {
-  padding: 10px;
+  padding: 20px;
   font-style: italic;
+  text-align: center;
   color: #777;
 }
 
-td .icon-btn {
-  background: none;
-  border: none;
-  font-size: 16px;
-  color: #444;
-  cursor: pointer;
-  margin-right: 5px;
+/* SweetAlert2 - Inputs */
+.swal2-input {
+  font-family: 'Segoe UI', 'Montserrat', sans-serif;
+  padding: 10px;
+  font-size: 14px;
+  border-radius: 5px;
+  border: 1px solid #ccc;
+  margin-top: 6px;
+  width: 100% !important;
+  box-sizing: border-box !important;
 }
 
-td .icon-btn:hover {
-  color: black;
+/* SweetAlert2 - Contenedor */
+.swal2-popup {
+  max-width: 500px !important;
+  width: 100% !important;
+  overflow-x: hidden !important;
+  overflow-y: visible !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  padding: 20px !important;
+}
+
+/* Forzar que el contenedor externo no meta scroll */
+.swal2-container {
+  overflow-x: hidden !important;
+}
+
+/* Acciones */
+.swal2-actions {
+  margin-top: 20px;
+  justify-content: flex-end;
+}
+
+/* Botón Guardar */
+.swal2-confirm {
+  background-color: #2f72c4 !important;
+  color: white !important;
+  padding: 8px 20px;
+  font-weight: bold;
+  border-radius: 5px;
+}
+
+/* Botón Cancelar */
+.swal2-cancel {
+  background-color: #e53935 !important;
+  color: white !important;
+  padding: 8px 20px;
+  font-weight: bold;
+  border-radius: 5px;
+  margin-right: 10px;
 }

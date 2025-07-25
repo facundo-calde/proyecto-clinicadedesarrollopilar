@@ -5,6 +5,8 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 const pacientesRoutes = require('./routes/pacienteroutes');
 const modulosRoutes = require('./routes/modulosroutes');
+const areasRoutes = require('./routes/areasroutes');
+
 
 const app = express();
 const documentosRoutes = require('./routes/documentosroutes');
@@ -19,6 +21,8 @@ app.use(express.json());
 app.use('/api/pacientes', pacientesRoutes);
 app.use('/api/documentos', documentosRoutes);
 app.use('/api/modulos', modulosRoutes);
+app.use('/api/areas', areasRoutes);
+
 
 // Conexión a la base de datos MongoDB
 mongoose.connect('mongodb://127.0.0.1:27017/clinica')

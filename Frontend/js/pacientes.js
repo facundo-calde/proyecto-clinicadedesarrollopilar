@@ -64,10 +64,8 @@ function renderFichaPaciente(p) {
 
       <div class="ficha-bloque">
         <h4>Padres / Tutores:</h4>
-        <p><strong>Madre:</strong> ${p.madre ?? 'sin datos'}</p>
-        <p><strong>Whatsapp Madre:</strong> ${p.whatsappMadre ?? '-'}</p>
-        <p><strong>Padre:</strong> ${p.padre ?? 'sin datos'}</p>
-        <p><strong>Whatsapp Padre:</strong> ${p.whatsappPadre ?? '-'}</p>
+        <p><strong>Tutor/a:</strong> ${p.tutor?.nombre ?? 'sin datos'}</p>
+<p><strong>Whatsapp Tutor/a:</strong> ${p.tutor?.whatsapp ?? '-'}</p>
         <p><strong>Mail:</strong> ${p.mail ?? 'sin datos'}</p>
       </div>
 
@@ -112,16 +110,10 @@ async function modificarPaciente(dni) {
               <input id="colegio" class="swal2-input" value="${p.colegio}">
               <label>Curso / Nivel:</label>
               <input id="curso" class="swal2-input" value="${p.curso}">
-              <label>Madre:</label>
-              <input id="madre" class="swal2-input" value="${p.madre}">
-              <label>Whatsapp Madre:</label>
-              <input id="wsmadre" class="swal2-input" value="${p.whatsappMadre}">
-              <label>Mail:</label>
-              <input id="mail" class="swal2-input" type="email" value="${p.mail}">
-              <label>Padre:</label>
-              <input id="padre" class="swal2-input" value="${p.padre}">
-              <label>Whatsapp Padre:</label>
-              <input id="wspadre" class="swal2-input" value="${p.whatsappPadre}">
+             <label>Nombre del Tutor/a:</label>
+<input id="tutorNombre" class="swal2-input" value="${p.tutor?.nombre ?? ''}">
+<label>Whatsapp del Tutor/a:</label>
+<input id="tutorWhatsapp" class="swal2-input" value="${p.tutor?.whatsapp ?? ''}">
               <label>Abonado:</label>
               <select id="abonado" class="swal2-select">
                 <option ${p.abonado === 'Obra Social' ? 'selected' : ''}>Obra Social</option>
@@ -256,9 +248,11 @@ async function modificarPaciente(dni) {
       colegio: document.getElementById('colegio')?.value,
       curso: document.getElementById('curso')?.value,
       madre: document.getElementById('madre')?.value,
-      whatsappMadre: document.getElementById('wsmadre')?.value,
-      padre: document.getElementById('padre')?.value,
-      whatsappPadre: document.getElementById('wspadre')?.value,
+      tutor: {
+        nombre: document.getElementById('tutorNombre')?.value,
+        whatsapp: document.getElementById('tutorWhatsapp')?.value
+      },
+
       mail: document.getElementById('mail')?.value,
       abonado: document.getElementById('abonado')?.value,
       estado: estadoElegido,
@@ -277,7 +271,7 @@ async function modificarPaciente(dni) {
     Swal.fire('✅ Cambios guardados', '', 'success');
     renderFichaPaciente({ ...p, ...data, nombre: data.nombre, dni: data.dni });
     // 🔹 Borra la ficha del paciente
-document.getElementById('fichaPacienteContainer').innerHTML = '';
+    document.getElementById('fichaPacienteContainer').innerHTML = '';
     document.getElementById('busquedaInput').value = ''; // 🔹 Limpia la búsqueda
 
 
@@ -310,16 +304,10 @@ document.getElementById('btnNuevoPaciente').addEventListener('click', () => {
             <input id="colegio" class="swal2-input">
             <label>Curso / Nivel:</label>
             <input id="curso" class="swal2-input">
-            <label>Madre:</label>
-            <input id="madre" class="swal2-input">
-            <label>Whatsapp Madre:</label>
-            <input id="wsmadre" class="swal2-input">
-            <label>Mail:</label>
-            <input id="mail" class="swal2-input" type="email">
-            <label>Padre:</label>
-            <input id="padre" class="swal2-input">
-            <label>Whatsapp Padre:</label>
-            <input id="wspadre" class="swal2-input">
+            <label>Nombre del Tutor/a:</label>
+<input id="tutorNombre" class="swal2-input">
+<label>Whatsapp del Tutor/a:</label>
+<input id="tutorWhatsapp" class="swal2-input">
             <label>Abonado:</label>
             <select id="abonado" class="swal2-select">
               <option>Obra Social</option>
@@ -378,17 +366,26 @@ document.getElementById('btnNuevoPaciente').addEventListener('click', () => {
       const nombre = document.getElementById('nombre').value.trim();
       const dni = document.getElementById('dni').value.trim();
       const fechaNacimiento = document.getElementById('fecha').value;
-      const madre = document.getElementById('madre').value.trim();
-      const padre = document.getElementById('padre').value.trim();
-      const whatsappMadre = document.getElementById('wsmadre').value.trim();
-      const whatsappPadre = document.getElementById('wspadre').value.trim();
+      const tutorNombre = document.getElementById('tutorNombre').value.trim();
+      const tutorWhatsapp = document.getElementById('tutorWhatsapp').value.trim();
+
+      if (!tutorNombre || !tutorWhatsapp) {
+        Swal.showValidationMessage('⚠️ El nombre y Whatsapp del tutor/a son obligatorios.');
+        return false;
+      }
+
+      if (!wspRegex.test(tutorWhatsapp)) {
+        Swal.showValidationMessage('⚠️ El Whatsapp del tutor/a no es válido.');
+        return false;
+      }
+
       const mail = document.getElementById('mail').value.trim();
 
       const dniRegex = /^\d{7,8}$/;
       const mailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       const wspRegex = /^\d{10,15}$/;
 
-      if (!fechaNacimiento || !dni || !madre || !padre || !whatsappMadre || !whatsappPadre || !mail) {
+      if (!fechaNacimiento || !dni || !tutorNombre || !tutorWhatsapp || !mail) {
         Swal.showValidationMessage('⚠️ Todos los campos obligatorios deben estar completos.');
         return false;
       }
@@ -414,10 +411,11 @@ document.getElementById('btnNuevoPaciente').addEventListener('click', () => {
         fechaNacimiento,
         colegio: document.getElementById('colegio').value.trim(),
         curso: document.getElementById('curso').value.trim(),
-        madre,
-        whatsappMadre,
-        padre,
-        whatsappPadre,
+        tutor: {
+          nombre: tutorNombre,
+          whatsapp: tutorWhatsapp
+        },
+
         mail,
         abonado: document.getElementById('abonado').value,
         estado: document.getElementById('estado').value,
