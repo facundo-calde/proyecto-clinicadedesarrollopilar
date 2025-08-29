@@ -41,10 +41,14 @@ function renderFichaPaciente(p) {
         <h3>${p.nombre ?? 'Sin nombre'} - DNI ${p.dni ?? 'Sin DNI'}</h3>
       </div>
 
-      <div class="ficha-columna">
+      <div class="ficha-row">
         <div class="ficha-bloque ficha-simple">
           <p><strong>Abonado:</strong> ${p.abonado ?? 'sin datos'}</p>
           <p><strong>Estado:</strong> ${p.estado ?? 'sin datos'}</p>
+          ${p.estado === 'Baja' ? `
+            <p><strong>Fecha de baja:</strong> ${p.fechaBaja ?? '-'}</p>
+            <p><strong>Motivo de baja:</strong> ${p.motivoBaja ?? '-'}</p>
+          ` : ''}
         </div>
 
         <div class="ficha-bloque">
@@ -56,6 +60,14 @@ function renderFichaPaciente(p) {
       </div>
 
       <div class="ficha-bloque">
+        <h4>Familia:</h4>
+        <p><strong>Madre:</strong> ${p.madre ?? 'sin datos'} ${p.whatsappMadre ? `📱 ${p.whatsappMadre}` : ''}</p>
+        <p><strong>Padre:</strong> ${p.padre ?? 'sin datos'} ${p.whatsappPadre ? `📱 ${p.whatsappPadre}` : ''}</p>
+        <p><strong>Tutor/a:</strong> ${p.tutor?.nombre ?? 'sin datos'} ${p.tutor?.whatsapp ? `📱 ${p.tutor.whatsapp}` : ''}</p>
+        <p><strong>Mail:</strong> ${p.mail ?? 'sin datos'}</p>
+      </div>
+
+      <div class="ficha-bloque">
         <h4>Obra Social:</h4>
         <p><strong>Prestador:</strong> ${p.prestador ?? 'sin datos'}</p>
         <p><strong>Credencial:</strong> ${p.credencial ?? 'sin datos'}</p>
@@ -63,27 +75,20 @@ function renderFichaPaciente(p) {
       </div>
 
       <div class="ficha-bloque">
-        <h4>Padres / Tutores:</h4>
-        <p><strong>Tutor/a:</strong> ${p.tutor?.nombre ?? 'sin datos'}</p>
-<p><strong>Whatsapp Tutor/a:</strong> ${p.tutor?.whatsapp ?? '-'}</p>
-        <p><strong>Mail:</strong> ${p.mail ?? 'sin datos'}</p>
+        <h4>Plan y Áreas:</h4>
+        <p><strong>Plan:</strong> ${p.planPaciente ?? 'No hay datos seleccionados'}</p>
+        <p><strong>Áreas asignadas:</strong> ${Array.isArray(p.areas) && p.areas.length > 0 ? p.areas.join(', ') : 'Sin áreas asignadas'}</p>
       </div>
 
       <div class="ficha-acciones">
-  <button onclick="modificarPaciente('${p.dni}')" class="btn-modificar">✏️ Modificar</button>
-  <button onclick="verDiagnosticos('${p.dni}')" class="btn-secundario">Diagnósticos</button>
-  <button onclick="verDocumentos('${p.dni}')" class="btn-secundario">Documentos</button>
-</div>
-
+        <button onclick="modificarPaciente('${p.dni}')" class="btn-modificar">✏️ Modificar</button>
+        <button onclick="verDiagnosticos('${p.dni}')" class="btn-secundario">Diagnósticos</button>
+        <button onclick="verDocumentos('${p.dni}')" class="btn-secundario">Documentos</button>
+      </div>
     </div>
   `;
-
-  // 👉 Escuchar clic en botón Documentos
-  document.querySelector('.btn-documentos')?.addEventListener('click', e => {
-    const dni = e.currentTarget.dataset.dni;
-    if (dni) verDocumentosPaciente(dni);
-  });
 }
+
 
 
 async function modificarPaciente(dni) {
@@ -94,7 +99,40 @@ async function modificarPaciente(dni) {
     let fechaBaja = p.fechaBaja ?? null;
     let motivoBaja = p.motivoBaja ?? null;
 
-    const { isConfirmed } = await Swal.fire({
+    // 🔹 Traer módulos
+    let modulos = [];
+    try {
+      const resModulos = await fetch(`${API_URL.replace('/pacientes', '/modulos')}`);
+      if (resModulos.ok) modulos = await resModulos.json();
+    } catch (e) {
+      console.warn("No se pudieron cargar los módulos:", e);
+    }
+
+    // 🔹 Template de un bloque de selección
+    const renderModuloSelect = (index) => `
+      <div class="modulo-row" style="margin-bottom:10px; padding:8px; border:1px solid #ddd; border-radius:6px;">
+        <label>Módulo:</label>
+        <select class="modulo-select swal2-select" data-index="${index}">
+          <option value="">-- Seleccionar --</option>
+          ${modulos.map(m => `<option value="${m._id}">${m.numero}</option>`).join("")}
+        </select>
+
+        <label>Cantidad:</label>
+        <select class="cantidad-select swal2-select" data-index="${index}">
+          <option value="0">0</option>
+          <option value="0.25">1/4</option>
+          <option value="0.5">1/2</option>
+          <option value="0.75">3/4</option>
+          <option value="1">1</option>
+          <option value="1.25">1 1/4</option>
+          <option value="1.5">1 1/2</option>
+          <option value="2">2</option>
+        </select>
+      </div>
+    `;
+
+    // 🔹 Modal principal
+    const { isConfirmed, value: data } = await Swal.fire({
       title: '<h3 style="font-family: Montserrat; font-weight: 600;">Modificar datos del paciente:</h3>',
       html: `
         <form id="formEditarPaciente" class="formulario-paciente">
@@ -110,10 +148,12 @@ async function modificarPaciente(dni) {
               <input id="colegio" class="swal2-input" value="${p.colegio}">
               <label>Curso / Nivel:</label>
               <input id="curso" class="swal2-input" value="${p.curso}">
-             <label>Nombre del Tutor/a:</label>
-<input id="tutorNombre" class="swal2-input" value="${p.tutor?.nombre ?? ''}">
-<label>Whatsapp del Tutor/a:</label>
-<input id="tutorWhatsapp" class="swal2-input" value="${p.tutor?.whatsapp ?? ''}">
+              <label>Nombre del Tutor/a:</label>
+              <input id="tutorNombre" class="swal2-input" value="${p.tutor?.nombre ?? ''}">
+              <label>Whatsapp del Tutor/a:</label>
+              <input id="tutorWhatsapp" class="swal2-input" value="${p.tutor?.whatsapp ?? ''}">
+              <label>Mail:</label>
+              <input id="mail" class="swal2-input" value="${p.mail ?? ''}">
               <label>Abonado:</label>
               <select id="abonado" class="swal2-select">
                 <option ${p.abonado === 'Obra Social' ? 'selected' : ''}>Obra Social</option>
@@ -129,161 +169,104 @@ async function modificarPaciente(dni) {
             </div>
 
             <div class="columna">
-              <label style="font-weight:bold;">Selección de área:</label>
+              <label style="font-weight:bold;">Selección de áreas:</label>
               <div class="areas-box">
                 ${['Psicopedagogía', 'Fonoaudiología', 'Terapia Ocupacional', 'Atención Temprana', 'Habilidades Sociales']
-          .map(area => `
+                  .map(area => `
                     <label>
                       <input type="checkbox" value="${area}" ${p.areas?.includes(area) ? 'checked' : ''}> ${area}
                     </label>
                   `).join('')}
               </div>
 
-              <div style="margin-top: 20px;">
-                <label style="font-weight:bold;">Área:</label>
-                <select id="areaSeleccionada" class="swal2-select">
-                  <option>Psicopedagogía</option>
-                  <option>Fonoaudiología</option>
-                  <option>Terapia Ocupacional</option>
-                  <option>Atención Temprana</option>
-                  <option>Habilidades Sociales</option>
-                </select>
-                <label style="font-weight:bold;">Profesional:</label>
-                <select id="profesionalSeleccionado" class="swal2-select">
-                  <option>Seleccionar</option>
-                </select>
-                <button type="button" class="swal2-confirm swal2-styled" style="background-color:#f0f0f0; color:#333; border:1px solid #ccc; margin-bottom: 10px;">Confirmar</button>
-              </div>
-
               <div class="plan-titulo">Plan seleccionado para el paciente:</div>
-              <textarea id="planPaciente" rows="4" style="width:100%; border:1px solid #ccc; border-radius:5px; margin-top:5px; padding:10px;">${p.planPaciente ?? 'No hay datos seleccionados.'}</textarea>
+              <textarea id="planPaciente" rows="4" 
+                style="width:100%; border:1px solid #ccc; border-radius:5px; margin-top:5px; padding:10px;">${p.planPaciente ?? ''}
+              </textarea>
             </div>
           </div>
+
+          <hr>
+          <h4 style="margin-top:15px;">Módulos asignados</h4>
+          <div id="modulosContainer">
+            ${renderModuloSelect(0)}
+          </div>
+          <button type="button" id="btnAgregarModulo" 
+            style="margin-top:10px; padding:5px 10px; border:1px solid #ccc; border-radius:5px; background:#f7f7f7; cursor:pointer;">
+            ➕ Agregar otro módulo
+          </button>
         </form>
       `,
-      width: '90%',
-      customClass: {
-        popup: 'swal-scrollable-form'
+      didOpen: () => {
+        // ➕ Evento para agregar más selects dinámicamente
+        document.getElementById("btnAgregarModulo").addEventListener("click", () => {
+          const container = document.getElementById("modulosContainer");
+          const index = container.querySelectorAll(".modulo-row").length;
+          container.insertAdjacentHTML("beforeend", renderModuloSelect(index));
+        });
       },
+      width: "90%",
+      customClass: { popup: "swal-scrollable-form" },
       showCancelButton: true,
-      confirmButtonText: 'Guardar',
-      cancelButtonText: 'Cancelar'
+      confirmButtonText: "Guardar",
+      cancelButtonText: "Cancelar",
+      preConfirm: () => {
+        // 🔹 Leer módulos seleccionados
+        const modulosAsignados = [];
+        document.querySelectorAll(".modulo-row").forEach(row => {
+          const moduloId = row.querySelector(".modulo-select")?.value;
+          const cantidad = parseFloat(row.querySelector(".cantidad-select")?.value);
+          if (moduloId && cantidad > 0) {
+            const moduloSeleccionado = modulos.find(m => m._id === moduloId);
+            modulosAsignados.push({
+              moduloId,
+              nombre: moduloSeleccionado ? `Módulo ${moduloSeleccionado.numero}` : "",
+              cantidad
+            });
+          }
+        });
+
+        return {
+          nombre: document.getElementById("nombre")?.value,
+          dni: document.getElementById("dniInput")?.value,
+          fechaNacimiento: document.getElementById("fecha")?.value,
+          colegio: document.getElementById("colegio")?.value,
+          curso: document.getElementById("curso")?.value,
+          tutor: {
+            nombre: document.getElementById("tutorNombre")?.value,
+            whatsapp: document.getElementById("tutorWhatsapp")?.value
+          },
+          mail: document.getElementById("mail")?.value,
+          abonado: document.getElementById("abonado")?.value,
+          estado: document.getElementById("estado")?.value,
+          areas: [...document.querySelectorAll(".areas-box input:checked")].map(e => e.value),
+          planPaciente: document.getElementById("planPaciente")?.value,
+          fechaBaja,
+          motivoBaja,
+          modulosAsignados
+        };
+      }
     });
 
     if (!isConfirmed) return;
 
-    const estadoElegido = document.getElementById('estado')?.value;
-
-    if (estadoElegido === 'Baja') {
-      const baja = await Swal.fire({
-        title: 'Registrar baja del paciente',
-        html: `
-          <div style="display: flex; flex-direction: column; gap: 10px;">
-            <label>Fecha:</label>
-            <input type="date" id="fechaBaja" class="swal2-input">
-            <label>Motivo:</label>
-            <input type="text" id="motivoBaja" class="swal2-input">
-          </div>
-        `,
-        showCancelButton: true,
-        confirmButtonText: 'Guardar',
-        cancelButtonText: 'Cancelar',
-        preConfirm: () => {
-          const fecha = document.getElementById('fechaBaja')?.value;
-          const motivo = document.getElementById('motivoBaja')?.value;
-          if (!fecha || !motivo) {
-            Swal.showValidationMessage('Completá todos los campos');
-            return false;
-          }
-          return { fecha, motivo };
-        }
-      });
-
-      if (!baja.isConfirmed) return;
-
-      fechaBaja = baja.value.fecha;
-      motivoBaja = baja.value.motivo;
-    }
-
-    if (estadoElegido === 'Alta') {
-      let modulos = [];
-      try {
-        const resModulos = await fetch('/api/modulos');
-        if (resModulos.ok) modulos = await resModulos.json();
-      } catch (e) {
-        console.warn('No se pudieron cargar los módulos:', e);
-      }
-
-      let contenidoAlta = modulos.length > 0 ? modulos.map((m, i) => `
-        <div style="border:1px solid #ccc; padding:10px; margin-bottom:10px; border-radius:6px;">
-          <b>${i + 1} - ${m.nombre}</b><br>
-          <label>Módulo:</label>
-          <select class="swal2-select">
-            <option value="${m.codigo}">${m.codigo}</option>
-          </select>
-          <label>Cantidad:</label>
-          <select class="swal2-select">
-            ${[0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map(c => `<option>${c}</option>`).join('')}
-          </select>
-          <label>Año:</label>
-          <select class="swal2-select">
-            ${[2025, 2026].map(a => `<option>${a}</option>`).join('')}
-          </select>
-        </div>
-      `).join('') : '<p style="color:red;">⚠️ No hay módulos cargados aún.</p>';
-
-      await Swal.fire({
-        title: 'Asignar módulos al paciente',
-        html: `<div style="max-height: 300px; overflow-y: auto">${contenidoAlta}</div>`,
-        confirmButtonText: 'Guardar',
-        cancelButtonText: 'Cancelar',
-        showCancelButton: true
-      });
-    }
-
-    const data = {
-      nombre: document.getElementById('nombre')?.value,
-      dni: document.getElementById('dniInput')?.value,
-      fechaNacimiento: document.getElementById('fecha')?.value,
-      colegio: document.getElementById('colegio')?.value,
-      curso: document.getElementById('curso')?.value,
-      madre: document.getElementById('madre')?.value,
-      tutor: {
-        nombre: document.getElementById('tutorNombre')?.value,
-        whatsapp: document.getElementById('tutorWhatsapp')?.value
-      },
-
-      mail: document.getElementById('mail')?.value,
-      abonado: document.getElementById('abonado')?.value,
-      estado: estadoElegido,
-      areas: [...document.querySelectorAll('.areas-box input:checked')].map(e => e.value),
-      planPaciente: document.getElementById('planPaciente')?.value,
-      fechaBaja,
-      motivoBaja
-    };
-
+    // 🔹 Guardar en backend con lo devuelto en preConfirm
     await fetch(`${API_URL}/${dni}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data)
     });
 
-    Swal.fire('✅ Cambios guardados', '', 'success');
+    Swal.fire("✅ Cambios guardados", "", "success");
     renderFichaPaciente({ ...p, ...data, nombre: data.nombre, dni: data.dni });
-    // 🔹 Borra la ficha del paciente
-    document.getElementById('fichaPacienteContainer').innerHTML = '';
-    document.getElementById('busquedaInput').value = ''; // 🔹 Limpia la búsqueda
-
+    document.getElementById("fichaPacienteContainer").innerHTML = "";
+    document.getElementById("busquedaInput").value = "";
 
   } catch (err) {
     console.error(err);
-    Swal.fire('❌ Error al cargar paciente', '', 'error');
+    Swal.fire("❌ Error al cargar paciente", "", "error");
   }
 }
-
-
-
-
 
 
 
@@ -296,24 +279,35 @@ document.getElementById('btnNuevoPaciente').addEventListener('click', () => {
           <div class="columna">
             <label>Nombre y Apellido:</label>
             <input id="nombre" class="swal2-input">
+
             <label>DNI:</label>
             <input id="dni" class="swal2-input">
+
             <label>Fecha de nacimiento:</label>
             <input id="fecha" class="swal2-input" type="date">
+
             <label>Colegio:</label>
             <input id="colegio" class="swal2-input">
+
             <label>Curso / Nivel:</label>
             <input id="curso" class="swal2-input">
+
             <label>Nombre del Tutor/a:</label>
-<input id="tutorNombre" class="swal2-input">
-<label>Whatsapp del Tutor/a:</label>
-<input id="tutorWhatsapp" class="swal2-input">
+            <input id="tutorNombre" class="swal2-input">
+
+            <label>Whatsapp del Tutor/a:</label>
+            <input id="tutorWhatsapp" class="swal2-input">
+
+            <label>Mail:</label>
+            <input id="mail" class="swal2-input" type="email">
+
             <label>Abonado:</label>
             <select id="abonado" class="swal2-select">
               <option>Obra Social</option>
               <option>Particular</option>
               <option>Obra Social + Particular</option>
             </select>
+
             <label>Estado:</label>
             <select id="estado" class="swal2-select">
               <option>Alta</option>
@@ -326,7 +320,7 @@ document.getElementById('btnNuevoPaciente').addEventListener('click', () => {
             <label style="font-weight:bold;">Selección de área:</label>
             <div class="areas-box">
               ${['Psicopedagogía', 'Fonoaudiología', 'Terapia Ocupacional', 'Atención Temprana', 'Habilidades Sociales']
-        .map(area => `
+                .map(area => `
                   <label>
                     <input type="checkbox" value="${area}"> ${area}
                   </label>
@@ -342,23 +336,28 @@ document.getElementById('btnNuevoPaciente').addEventListener('click', () => {
                 <option>Atención Temprana</option>
                 <option>Habilidades Sociales</option>
               </select>
+
               <label style="font-weight:bold;">Profesional:</label>
               <select id="profesionalSeleccionado" class="swal2-select" style="margin-bottom: 10px;">
                 <option>Seleccionar</option>
               </select>
-              <button type="button" class="swal2-confirm swal2-styled" style="background-color:#f0f0f0; color:#333; border:1px solid #ccc; margin-bottom: 10px;">Confirmar</button>
+
+              <button type="button" class="swal2-confirm swal2-styled" 
+                style="background-color:#f0f0f0; color:#333; border:1px solid #ccc; margin-bottom: 10px;">
+                Confirmar
+              </button>
             </div>
 
             <div class="plan-titulo">Plan seleccionado para el paciente:</div>
-            <textarea id="planPaciente" rows="4" style="width:100%; border:1px solid #ccc; border-radius:5px; margin-top:5px; padding:10px;"></textarea>
+            <textarea id="planPaciente" rows="4" 
+              style="width:100%; border:1px solid #ccc; border-radius:5px; margin-top:5px; padding:10px;">
+            </textarea>
           </div>
         </div>
       </form>
     `,
     width: '90%',
-    customClass: {
-      popup: 'swal-scrollable-form'
-    },
+    customClass: { popup: 'swal-scrollable-form' },
     showCancelButton: true,
     confirmButtonText: 'Guardar',
     cancelButtonText: 'Cancelar',
@@ -368,6 +367,11 @@ document.getElementById('btnNuevoPaciente').addEventListener('click', () => {
       const fechaNacimiento = document.getElementById('fecha').value;
       const tutorNombre = document.getElementById('tutorNombre').value.trim();
       const tutorWhatsapp = document.getElementById('tutorWhatsapp').value.trim();
+      const mail = document.getElementById('mail').value.trim();
+
+      const dniRegex = /^\d{7,8}$/;
+      const mailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const wspRegex = /^\d{10,15}$/;
 
       if (!tutorNombre || !tutorWhatsapp) {
         Swal.showValidationMessage('⚠️ El nombre y Whatsapp del tutor/a son obligatorios.');
@@ -378,12 +382,6 @@ document.getElementById('btnNuevoPaciente').addEventListener('click', () => {
         Swal.showValidationMessage('⚠️ El Whatsapp del tutor/a no es válido.');
         return false;
       }
-
-      const mail = document.getElementById('mail').value.trim();
-
-      const dniRegex = /^\d{7,8}$/;
-      const mailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      const wspRegex = /^\d{10,15}$/;
 
       if (!fechaNacimiento || !dni || !tutorNombre || !tutorWhatsapp || !mail) {
         Swal.showValidationMessage('⚠️ Todos los campos obligatorios deben estar completos.');
@@ -400,22 +398,13 @@ document.getElementById('btnNuevoPaciente').addEventListener('click', () => {
         return false;
       }
 
-      if (!wspRegex.test(whatsappMadre) || !wspRegex.test(whatsappPadre)) {
-        Swal.showValidationMessage('⚠️ Los WhatsApp deben contener solo números (10 a 15 dígitos).');
-        return false;
-      }
-
       return {
         nombre,
         dni,
         fechaNacimiento,
         colegio: document.getElementById('colegio').value.trim(),
         curso: document.getElementById('curso').value.trim(),
-        tutor: {
-          nombre: tutorNombre,
-          whatsapp: tutorWhatsapp
-        },
-
+        tutor: { nombre: tutorNombre, whatsapp: tutorWhatsapp },
         mail,
         abonado: document.getElementById('abonado').value,
         estado: document.getElementById('estado').value,
@@ -423,7 +412,6 @@ document.getElementById('btnNuevoPaciente').addEventListener('click', () => {
         planPaciente: document.getElementById('planPaciente').value.trim()
       };
     }
-
   }).then(async result => {
     if (result.isConfirmed) {
       try {
@@ -445,6 +433,7 @@ document.getElementById('btnNuevoPaciente').addEventListener('click', () => {
     }
   });
 });
+
 
 async function verDocumentos(dni) {
   try {
@@ -608,4 +597,31 @@ async function verDiagnosticos(dni) {
     console.error('Error al mostrar diagnósticos:', e);
     Swal.fire('❌ Error al cargar diagnósticos', '', 'error');
   }
+}
+
+// ==========================
+// 🔹 Manejo de sesión en Pacientes
+// ==========================
+const token = localStorage.getItem("token");
+const usuario = JSON.parse(localStorage.getItem("usuario"));
+
+// Si no hay token → volver al login
+if (!token) {
+  window.location.href = "index.html";
+}
+
+// Mostrar nombre dinámico en el top bar (si existe <strong id="userName">)
+if (usuario && usuario.nombreApellido) {
+  const userNameEl = document.getElementById("userName");
+  if (userNameEl) userNameEl.textContent = usuario.nombreApellido;
+}
+
+// 🔹 Botón cerrar sesión (si existe <button id="btnLogout">)
+const btnLogout = document.getElementById("btnLogout");
+if (btnLogout) {
+  btnLogout.addEventListener("click", () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("usuario");
+    window.location.href = "index.html";
+  });
 }

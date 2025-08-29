@@ -2,33 +2,37 @@
 <html lang="es">
 
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Iniciar sesión</title>
-    <link rel="icon" href="/img/fc885963d690a6787ca787cf208cdd25_1778x266_fit.png" type="image/png" />
-    <link rel="stylesheet" href="/Frontend/css/styles.css" />
-    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Iniciar sesión</title>
+  <link rel="icon" href="/img/fc885963d690a6787ca787cf208cdd25_1778x266_fit.png" type="image/png" />
+  <link rel="stylesheet" href="/Frontend/css/styles.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
 </head>
 
 <body>
-    <div class="login-container">
-        <div class="login-card">
-            <div class="login-logo">
-                <img src="/img/fc885963d690a6787ca787cf208cdd25_1778x266_fit.png" alt="Logo Clínica de Desarrollo Pilar">
-            </div>
-            <h2>Iniciar sesión</h2>
-            <form action="dashboard.html" method="GET">
-                <label for="usuario">Usuario</label>
-                <input type="text" id="usuario" name="usuario" required />
+  <div class="login-container">
+    <div class="login-card">
+      <div class="login-logo">
+        <img src="/img/fc885963d690a6787ca787cf208cdd25_1778x266_fit.png" alt="Logo Clínica de Desarrollo Pilar">
+      </div>
+      <h2>Iniciar sesión</h2>
 
-                <label for="clave">Contraseña</label>
-                <input type="password" id="clave" name="clave" required />
+      <!-- ✅ Form corregido -->
+      <form id="loginForm">
+        <label for="usuario">Usuario</label>
+        <input type="text" id="usuario" name="usuario" required />
 
-                <button type="submit" class="btn">Ingresar</button>
-            </form>
-        </div>
+        <label for="clave">Contraseña</label>
+        <input type="password" id="clave" name="clave" required />
+
+        <button type="submit" class="btn">Ingresar</button>
+      </form>
     </div>
+  </div>
 
+  <!-- ✅ JS de login -->
+  <script src="/Frontend/js/index.js"></script>
 </body>
 
 </html>

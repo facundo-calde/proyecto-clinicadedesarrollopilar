@@ -135,6 +135,9 @@ function mostrarFormularioUsuario(usuario = {}, modoEdicion = false) {
           <label><strong>Usuario y Contraseña:</strong></label>
           <input class="swal2-input" id="usuario" placeholder="Usuario">
           <input class="swal2-input" id="contrasena" type="password" placeholder="Contraseña">
+
+          <label><strong>Documentos:</strong></label>
+          <input type="file" id="documentos" class="swal2-input" multiple>
         </div>
       </div>
     `,
@@ -145,7 +148,7 @@ function mostrarFormularioUsuario(usuario = {}, modoEdicion = false) {
       if (modoEdicion) {
         const set = (id, val) => document.getElementById(id).value = val || '';
         set('nombreApellido', usuario.nombreApellido);
-        set('fechaNacimiento', usuario.fechaNacimiento);
+        set('fechaNacimiento', usuario.fechaNacimiento ? usuario.fechaNacimiento.split('T')[0] : '');
         set('domicilio', usuario.domicilio);
         set('dni', usuario.dni);
         set('matricula', usuario.matricula);
@@ -199,10 +202,25 @@ function mostrarFormularioUsuario(usuario = {}, modoEdicion = false) {
       const url = modoEdicion ? `http://localhost:3000/api/usuarios/${usuario._id}` : 'http://localhost:3000/api/usuarios';
       const method = modoEdicion ? 'PUT' : 'POST';
 
+      const formData = new FormData();
+      // Campos de texto
+      Object.entries(result.value).forEach(([key, val]) => {
+        if (Array.isArray(val)) {
+          val.forEach(v => formData.append(`${key}[]`, v));
+        } else {
+          formData.append(key, val);
+        }
+      });
+
+      // Archivos
+      const archivos = document.getElementById('documentos').files;
+      for (let i = 0; i < archivos.length; i++) {
+        formData.append('documentos', archivos[i]);
+      }
+
       fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(result.value)
+        body: formData
       })
         .then(res => {
           if (!res.ok) throw new Error('Error al guardar');
@@ -219,6 +237,7 @@ function mostrarFormularioUsuario(usuario = {}, modoEdicion = false) {
     }
   });
 }
+
 
 function borrarUsuario(id) {
   Swal.fire({
@@ -279,6 +298,34 @@ function editarUsuario(id) {
     });
 }
 
+// ==========================
+// 🔹 Manejo de sesión
+// ==========================
+const token = localStorage.getItem("token");
+const usuario = JSON.parse(localStorage.getItem("usuario"));
+
+// Si no hay token → volver al login
+if (!token) {
+  window.location.href = "index.html";
+}
+
+// Mostrar nombre dinámico en el top bar
+if (usuario && usuario.nombreApellido) {
+  const userNameEl = document.getElementById("userName");
+  if (userNameEl) userNameEl.textContent = usuario.nombreApellido;
+}
+
+
+
+// 🔹 Botón cerrar sesión
+const btnLogout = document.getElementById("btnLogout");
+if (btnLogout) {
+  btnLogout.addEventListener("click", () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("usuario");
+    window.location.href = "index.html";
+  });
+}
 
 
 

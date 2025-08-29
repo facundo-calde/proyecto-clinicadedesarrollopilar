@@ -51,6 +51,7 @@ const crearPaciente = async (req, res) => {
 };
 
 // Editar por DNI
+// Editar por DNI
 const actualizarPaciente = async (req, res) => {
   try {
     const { dni } = req.params;
@@ -58,19 +59,28 @@ const actualizarPaciente = async (req, res) => {
 
     if (!paciente) return res.status(404).json({ error: 'No encontrado' });
 
-    // Actualizá solo los campos permitidos
+    // Campos simples que se pueden actualizar
     const campos = [
-      'nombre', 'fechaNacimiento', 'colegio', 'curso', 'madre', 'padre',
-      'whatsappMadre', 'whatsappPadre', 'mail', 'abonado', 'estado',
-      'areas', 'planPaciente', 'fechaBaja', 'motivoBaja', 'documentos' // ← acá
+      'nombre', 'fechaNacimiento', 'colegio', 'curso',
+      'mail', 'abonado', 'estado',
+      'areas', 'planPaciente', 'fechaBaja', 'motivoBaja'
     ];
-
 
     campos.forEach(campo => {
       if (req.body[campo] !== undefined) {
         paciente[campo] = req.body[campo];
       }
     });
+
+    // 🔹 Actualizar tutor si vino en el body
+    if (req.body.tutor) {
+      paciente.tutor = req.body.tutor;
+    }
+
+    // 🔹 Actualizar módulos asignados si vinieron en el body
+    if (req.body.modulosAsignados && req.body.modulosAsignados.length > 0) {
+      paciente.modulosAsignados = req.body.modulosAsignados;
+    }
 
     await paciente.save();
     res.json(paciente);
@@ -80,6 +90,7 @@ const actualizarPaciente = async (req, res) => {
     res.status(500).json({ error: 'Error al actualizar' });
   }
 };
+
 
 
 module.exports = {

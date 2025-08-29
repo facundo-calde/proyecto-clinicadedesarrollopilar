@@ -35,13 +35,24 @@ const pacienteSchema = new mongoose.Schema({
   planPaciente: String,
   fechaBaja: String,
   motivoBaja: String,
+
+  // 🔹 Documentos personales
   documentosPersonales: [{
     fecha: String,
     tipo: String,
     observaciones: String,
     archivos: [String]
+  }],
+
+  // 🔹 Módulos asignados
+  modulosAsignados: [{
+    moduloId: { type: mongoose.Schema.Types.ObjectId, ref: 'Modulo' }, // referencia a colección Modulos
+    nombre: String,   // redundancia para mostrar rápido sin hacer populate
+    cantidad: { type: Number, min: 0.25, max: 2 } // cantidades en fracciones (ej: 0.25 = 1/4, 1 = completo, 2 = doble)
   }]
+
 }, { timestamps: true });
 
 module.exports = mongoose.model('Paciente', pacienteSchema);
+
 

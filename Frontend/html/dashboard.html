@@ -2,35 +2,38 @@
 <html lang="es">
 
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Dashboard</title>
-    <link rel="icon" href="/img/fc885963d690a6787ca787cf208cdd25_1778x266_fit.png" type="image/png">
-    <link rel="stylesheet" href="/Frontend/css/dashboard.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard</title>
+  <link rel="icon" href="/img/fc885963d690a6787ca787cf208cdd25_1778x266_fit.png" type="image/png">
+  <link rel="stylesheet" href="/Frontend/css/dashboard.css">
 </head>
 
 <body>
-    <header class="navbar">
-        <div class="logo">
-            <img src="/img/fc885963d690a6787ca787cf208cdd25_1778x266_fit.png" alt="Logo" class="logo-img">
-        </div>
+  <header class="navbar">
+    <div class="logo">
+      <img src="/img/fc885963d690a6787ca787cf208cdd25_1778x266_fit.png" alt="Logo" class="logo-img">
+    </div>
 
-        <div class="user-actions">
-            <button class="btn">Usuario</button>
-            <button class="logout-btn">Cerrar sesión</button>
-        </div>
-    </header>
+    <div class="user-actions">
+      <button id="btnUser" class="btn">Usuario</button>
+      <button id="btnLogout" class="logout-btn">Cerrar sesión</button>
+    </div>
+  </header>
 
   <div class="dashboard">
-  <a href="pacientes.html" class="card">PACIENTES</a>
-  <a href="estado-de-cuenta.html" class="card">ESTADO DE CUENTA</a>
-  <a href="modulos.html" class="card">MÓDULOS</a>
-  <a href="caja.html" class="card">CAJA</a>
-  <a href="usuarios.html" class="card">USUARIOS</a>
-  <a href="cuentas.html" class="card">CUENTAS</a>
-  <a href="liquidaciones.html" class="card">LIQUIDACIONES</a>
-  <a href="areas.html" class="card">ÁREA</a>
-</div>
+    <a href="pacientes.html" class="card">PACIENTES</a>
+    <a href="estado-de-cuenta.html" class="card">ESTADO DE CUENTA</a>
+    <a href="modulos.html" class="card">MÓDULOS</a>
+    <a href="caja.html" class="card">CAJA</a>
+    <a href="usuarios.html" class="card">USUARIOS</a>
+    <a href="cuentas.html" class="card">CUENTAS</a>
+    <a href="liquidaciones.html" class="card">LIQUIDACIONES</a>
+    <a href="areas.html" class="card">ÁREA</a>
+  </div>
 
+  <!-- JS del dashboard -->
+  <script src="/Frontend/js/dashboard.js"></script>
+</body>
 
 </html>

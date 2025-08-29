@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const path = require('path');
+const multer = require('multer');
 
 const pacientesRoutes = require('./routes/pacienteroutes');
 const modulosRoutes = require('./routes/modulosroutes');
@@ -15,9 +16,11 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// 🔽 Archivos estáticos
+// 🔽 Archivos estáticos frontend
 app.use(express.static(path.join(__dirname, '../frontend')));
 
+// 🔽 Archivos subidos (para acceder a los documentos de usuarios, pacientes, etc.)
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Rutas API
 app.use('/api/pacientes', pacientesRoutes);
@@ -38,3 +41,4 @@ mongoose.connect('mongodb://127.0.0.1:27017/clinica')
   .catch(err => {
     console.error('❌ Error al conectar a MongoDB:', err);
   });
+
