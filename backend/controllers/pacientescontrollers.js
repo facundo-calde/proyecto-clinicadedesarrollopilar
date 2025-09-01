@@ -50,8 +50,6 @@ const crearPaciente = async (req, res) => {
   }
 };
 
-// Editar por DNI
-// Editar por DNI
 const actualizarPaciente = async (req, res) => {
   try {
     const { dni } = req.params;
@@ -63,7 +61,8 @@ const actualizarPaciente = async (req, res) => {
     const campos = [
       'nombre', 'fechaNacimiento', 'colegio', 'curso',
       'mail', 'abonado', 'estado',
-      'areas', 'planPaciente', 'fechaBaja', 'motivoBaja'
+      'areas', 'planPaciente', 'fechaBaja', 'motivoBaja',
+      'madrePadre', 'whatsappMadrePadre' // ✅ agregados
     ];
 
     campos.forEach(campo => {
@@ -90,6 +89,7 @@ const actualizarPaciente = async (req, res) => {
     res.status(500).json({ error: 'Error al actualizar' });
   }
 };
+
 
 
 
