@@ -1,48 +1,53 @@
 const mongoose = require('mongoose');
 
+const responsableSchema = new mongoose.Schema({
+  relacion: { type: String, enum: ['padre', 'madre', 'tutor'], required: true },
+  nombre:   { type: String, required: true, trim: true },
+  whatsapp: {
+    type: String,
+    required: true,
+    match: [/^\d{10,15}$/, 'El WhatsApp debe tener entre 10 y 15 dígitos'],
+  },
+}, { _id: false });
+
 const pacienteSchema = new mongoose.Schema({
-  nombre: String,
+  nombre: { type: String, trim: true },
   dni: {
     type: String,
     required: true,
-    match: [/^\d{7,8}$/, 'El DNI debe tener entre 7 y 8 dígitos numéricos']
+    unique: true,
+    match: [/^\d{7,8}$/, 'El DNI debe tener entre 7 y 8 dígitos numéricos'],
   },
-  fechaNacimiento: {
-    type: String,
-    required: true
+  fechaNacimiento: { type: String, required: true },
+
+  // 🔹 Responsables (permite relaciones repetidas)
+  responsables: {
+    type: [responsableSchema],
+    validate: [
+      {
+        validator: function(arr) {
+          return Array.isArray(arr) && arr.length >= 1 && arr.length <= 3;
+        },
+        message: 'Debe tener entre 1 y 3 responsables.',
+      }
+      // ❌ Se elimina el validador que prohibía duplicados de "relacion"
+    ]
   },
 
-  // 🔹 Tutor
-  tutor: {
-    nombre: {
-      type: String,
-      required: true
-    },
-    whatsapp: {
-      type: String,
-      required: true,
-      match: [/^\d{10,15}$/, 'El número de WhatsApp debe tener entre 10 y 15 dígitos']
-    }
-  },
-
-  // 🔹 Padre o Madre (campo unificado)
-  madrePadre: String,
-  whatsappMadrePadre: {
-    type: String,
-    match: [/^\d{10,15}$/, 'El número de WhatsApp debe tener entre 10 y 15 dígitos']
-  },
-
+  // Email y otros datos
   mail: {
     type: String,
     required: true,
-    match: [/.+@.+\..+/, 'El email debe ser válido']
+    match: [/.+@.+\..+/, 'El email debe ser válido'],
+    trim: true,
+    lowercase: true,
   },
   colegio: String,
   curso: String,
-  abonado: String,
-  estado: String, // "Alta", "Baja", "En espera"
+  condicionDePago: String,     // ojo: tu frontend usa "abonado". Unificalo.
+  estado: String,              // "Alta", "Baja", "En espera"
 
-  // 🔹 Campos adicionales para Obra Social
+  // Obra social
   prestador: String,
   credencial: String,
   tipo: String,
@@ -52,7 +57,6 @@ const pacienteSchema = new mongoose.Schema({
   fechaBaja: String,
   motivoBaja: String,
 
-  // 🔹 Documentos personales
   documentosPersonales: [{
     fecha: String,
     tipo: String,
@@ -60,21 +64,36 @@ const pacienteSchema = new mongoose.Schema({
     archivos: [String]
   }],
 
-  // 🔹 Módulos asignados
-modulosAsignados: [{
-  moduloId: { type: mongoose.Schema.Types.ObjectId, ref: 'Modulo' }, // referencia al módulo
-  nombre: String,   // redundancia para mostrar rápido sin populate
-  cantidad: { type: Number, min: 0.25, max: 2 },
+  modulosAsignados: [{
+    moduloId: { type: mongoose.Schema.Types.ObjectId, ref: 'Modulo' },
+    nombre: String,
+    cantidad: { type: Number, min: 0.25, max: 2 },
+    profesionales: [{
+      profesionalId: { type: mongoose.Schema.Types.ObjectId, ref: 'Usuario' },
+      nombre: String,
+      area: String
+    }]
+  }],
 
-  // 🔹 Profesionales asignados a este módulo
-  profesionales: [{
-    profesionalId: { type: mongoose.Schema.Types.ObjectId, ref: 'Usuario' }, // referencia al profesional (si tenés colección Usuarios)
-    nombre: String,  // guardás el nombre también para no hacer populate siempre
-    area: String     // opcional: podés guardar el área en la que trabaja
-  }]
-}]
+  /* ⚠️ Legacy para compat. Quitalos cuando migres todo. */
+  tutor: {
+    nombre: String,
+    whatsapp: { type: String, match: [/^\d{10,15}$/] }
+  },
+  madrePadre: String,
+  whatsappMadrePadre: { type: String, match: [/^\d{10,15}$/] },
 
 }, { timestamps: true });
+
+/* 🔧 Hook opcional de compatibilidad:
+   si hay responsables y alguno es "tutor", completa el campo legacy `tutor` con el primero. */
+pacienteSchema.pre('validate', function(next) {
+  if (Array.isArray(this.responsables)) {
+    const t = this.responsables.find(r => r.relacion === 'tutor');
+    if (t) this.tutor = { nombre: t.nombre, whatsapp: t.whatsapp };
+  }
+  next();
+});
 
 module.exports = mongoose.model('Paciente', pacienteSchema);
 

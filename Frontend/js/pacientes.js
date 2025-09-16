@@ -29,19 +29,56 @@ document.getElementById("busquedaInput").addEventListener("input", async () => {
     console.error("Error cargando sugerencias", error);
   }
 });
-
 function renderFichaPaciente(p) {
   const container = document.getElementById("fichaPacienteContainer");
 
-  // 🔹 Armar listado de módulos asignados
+  // 🔹 Módulos
   const modulosHTML =
     Array.isArray(p.modulosAsignados) && p.modulosAsignados.length > 0
       ? `<ul style="margin:5px 0; padding-left:20px;">
-        ${p.modulosAsignados
-        .map((m) => `<li>${m.nombre} - Cantidad: ${m.cantidad}</li>`)
-        .join("")}
-      </ul>`
+          ${p.modulosAsignados.map(m => `<li>${m.nombre ?? "Módulo"} - Cantidad: ${m.cantidad ?? "-"}</li>`).join("")}
+        </ul>`
       : "Sin módulos asignados";
+
+  // 🔹 Responsables (nuevo modelo, permite repetir relación)
+  const cap = (s) => (typeof s === "string" && s ? s[0].toUpperCase() + s.slice(1) : s);
+  const responsablesHTML = (() => {
+    if (Array.isArray(p.responsables) && p.responsables.length) {
+      return `
+        <ul style="margin:5px 0; padding-left:20px;">
+          ${p.responsables.slice(0,3).map(r => {
+            const rel = cap(r.relacion ?? "");
+            const nom = r.nombre ?? "sin nombre";
+            const wsp = r.whatsapp ? ` 📱 ${r.whatsapp}` : "";
+            return `<li><strong>${rel}:</strong> ${nom}${wsp}</li>`;
+          }).join("")}
+        </ul>`;
+    }
+    // 🔁 Legacy fallback
+    const tutorLinea = (p.tutor?.nombre || p.tutor?.whatsapp)
+      ? `<li><strong>Tutor/a:</strong> ${p.tutor?.nombre ?? "sin datos"}${p.tutor?.whatsapp ? ` 📱 ${p.tutor.whatsapp}` : ""}</li>`
+      : "";
+    const mpLinea = (p.madrePadre || p.whatsappMadrePadre)
+      ? `<li><strong>Padre o Madre:</strong> ${p.madrePadre ?? "sin datos"}${p.whatsappMadrePadre ? ` 📱 ${p.whatsappMadrePadre}` : ""}</li>`
+      : "";
+    if (!tutorLinea && !mpLinea) return "Sin responsables cargados";
+    return `<ul style="margin:5px 0; padding-left:20px;">${mpLinea}${tutorLinea}</ul>`;
+  })();
+
+  // 🔹 Áreas
+  const areasHTML =
+    Array.isArray(p.areas) && p.areas.length > 0
+      ? p.areas.join(", ")
+      : "Sin áreas asignadas";
+
+  // 🔹 Estado + info de baja
+  const estadoBloque =
+    `<p><strong>Estado:</strong> ${p.estado ?? "sin datos"}</p>` +
+    (p.estado === "Baja"
+      ? `
+        <p><strong>Fecha de baja:</strong> ${p.fechaBaja ?? "-"}</p>
+        <p><strong>Motivo de baja:</strong> ${p.motivoBaja ?? "-"}</p>`
+      : "");
 
   container.innerHTML = `
     <div class="ficha-paciente">
@@ -51,60 +88,43 @@ function renderFichaPaciente(p) {
 
       <div class="ficha-row">
         <div class="ficha-bloque ficha-simple">
-          <p><strong>Abonado:</strong> ${p.abonado ?? "sin datos"}</p>
-          <p><strong>Estado:</strong> ${p.estado ?? "sin datos"}</p>
-          ${p.estado === "Baja"
-      ? `
-            <p><strong>Fecha de baja:</strong> ${p.fechaBaja ?? "-"}</p>
-            <p><strong>Motivo de baja:</strong> ${p.motivoBaja ?? "-"}</p>
-          `
-      : ""
-    }
+          <p><strong>Condición de Pago:</strong> ${p.condicionDePago ?? "sin datos"}</p>
+          ${estadoBloque}
         </div>
 
         <div class="ficha-bloque">
           <h4>Datos:</h4>
-          <p><strong>Fecha de nacimiento:</strong> ${p.fechaNacimiento ?? "sin datos"
-    }</p>
+          <p><strong>Fecha de nacimiento:</strong> ${p.fechaNacimiento ?? "sin datos"}</p>
           <p><strong>Colegio:</strong> ${p.colegio ?? "sin datos"}</p>
           <p><strong>Curso / Nivel:</strong> ${p.curso ?? "sin datos"}</p>
+          <p><strong>Mail:</strong> ${p.mail ?? "sin datos"}</p>
         </div>
       </div>
 
-     <div class="ficha-bloque">
-  <h4>Familia:</h4>
-  <p><strong>Padre o Madre:</strong> ${p.madrePadre ?? "sin datos"} ${p.whatsappMadrePadre ? `📱 ${p.whatsappMadrePadre}` : ""
-    }</p>
-  <p><strong>Tutor/a:</strong> ${p.tutor?.nombre ?? "sin datos"} ${p.tutor?.whatsapp ? `📱 ${p.tutor.whatsapp}` : ""
-    }</p>
-  <p><strong>Mail:</strong> ${p.mail ?? "sin datos"}</p>
-</div>
-
+      <div class="ficha-bloque">
+        <h4>Responsables</h4>
+        ${responsablesHTML}
+      </div>
 
       <div class="ficha-bloque">
-        <h4>Obra Social:</h4>
+        <h4>Obra Social</h4>
         <p><strong>Prestador:</strong> ${p.prestador ?? "sin datos"}</p>
         <p><strong>Credencial:</strong> ${p.credencial ?? "sin datos"}</p>
         <p><strong>Tipo:</strong> ${p.tipo ?? "sin datos"}</p>
       </div>
 
       <div class="ficha-bloque">
-        <h4>Plan y Áreas:</h4>
+        <h4>Plan y Áreas</h4>
         <p><strong>Módulos asignados:</strong></p>
         ${modulosHTML}
-        <p><strong>Áreas asignadas:</strong> ${Array.isArray(p.areas) && p.areas.length > 0
-      ? p.areas.join(", ")
-      : "Sin áreas asignadas"
-    }</p>
+        <p><strong>Áreas asignadas:</strong> ${areasHTML}</p>
+        ${p.planPaciente ? `<div style="margin-top:8px;"><strong>Plan:</strong><br><pre style="white-space:pre-wrap;margin:0;">${p.planPaciente}</pre></div>` : ""}
       </div>
 
       <div class="ficha-acciones">
-        <button onclick="modificarPaciente('${p.dni
-    }')" class="btn-modificar">✏️ Modificar</button>
-        <button onclick="verDiagnosticos('${p.dni
-    }')" class="btn-secundario">Diagnósticos</button>
-        <button onclick="verDocumentos('${p.dni
-    }')" class="btn-secundario">Documentos</button>
+        <button onclick="modificarPaciente('${p.dni}')" class="btn-modificar">✏️ Modificar</button>
+        <button onclick="verDiagnosticos('${p.dni}')" class="btn-secundario">Diagnósticos</button>
+        <button onclick="verDocumentos('${p.dni}')" class="btn-secundario">Documentos</button>
       </div>
     </div>
   `;
@@ -189,6 +209,24 @@ async function modificarPaciente(dni) {
       </div>
     `;
 
+    // Armar responsables iniciales desde p.responsables o legacy
+    const responsablesIniciales = Array.isArray(p.responsables) && p.responsables.length
+      ? p.responsables.slice(0, 3)
+      : (() => {
+          const arr = [];
+          if (p.tutor?.nombre && p.tutor?.whatsapp) {
+            arr.push({ relacion: 'tutor', nombre: p.tutor.nombre, whatsapp: p.tutor.whatsapp });
+          }
+          if (p.madrePadre) {
+            arr.push({
+              relacion: /madre/i.test(p.madrePadre) ? 'madre' : 'padre',
+              nombre: String(p.madrePadre).replace(/^(madre|padre)\s*:\s*/i, '').trim(),
+              whatsapp: p.whatsappMadrePadre || ''
+            });
+          }
+          return arr.slice(0, 3);
+        })();
+
     // Modal
     const { isConfirmed, value: data } = await Swal.fire({
       title: '<h3 style="font-family: Montserrat; font-weight: 600;">Modificar datos del paciente:</h3>',
@@ -199,41 +237,53 @@ async function modificarPaciente(dni) {
               <label>Nombre y Apellido:</label>
               <input id="nombre" class="swal2-input" value="${p.nombre ?? ""}">
               <label>DNI:</label>
-              <input id="dniInput" class="swal2-input" value="${p.dni ?? ""}">
+              <input id="dniInput" class="swal2-input" value="${p.dni ?? ""}" disabled>
               <label>Fecha de nacimiento:</label>
               <input id="fecha" class="swal2-input" type="date" value="${p.fechaNacimiento ?? ""}">
               <label>Colegio:</label>
               <input id="colegio" class="swal2-input" value="${p.colegio ?? ""}">
               <label>Curso / Nivel:</label>
               <input id="curso" class="swal2-input" value="${p.curso ?? ""}">
-              <label>Nombre del Tutor/a:</label>
-              <input id="tutorNombre" class="swal2-input" value="${p.tutor?.nombre ?? ""}">
-              <label>Whatsapp del Tutor/a:</label>
-              <input id="tutorWhatsapp" class="swal2-input" value="${p.tutor?.whatsapp ?? ""}">
-              <label>Padre o Madre:</label>
-              <input id="madrePadre" class="swal2-input" value="${p.madrePadre ?? ""}">
-              <label>Whatsapp Padre o Madre:</label>
-              <input id="whatsappMadrePadre" class="swal2-input" value="${p.whatsappMadrePadre ?? ""}">
+
+              <!-- 🔹 Responsables (padre/madre/tutor) -->
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-top:8px;">
+                <label style="font-weight:bold; margin:0;">Responsables</label>
+                <button id="btnAgregarResponsable" type="button" class="swal2-confirm swal2-styled" style="padding:2px 8px; font-size:12px;">+ Agregar</button>
+              </div>
+              <small style="display:block; margin-bottom:6px; color:#666;">Máximo 3. <b>Se puede repetir</b> la relación.</small>
+              <div id="responsablesContainer"></div>
+
               <label>Mail:</label>
               <input id="mail" class="swal2-input" value="${p.mail ?? ""}">
-              <label>Abonado:</label>
-              <select id="abonado" class="swal2-select">
-                <option ${p.abonado === "Obra Social" ? "selected" : ""}>Obra Social</option>
-                <option ${p.abonado === "Particular" ? "selected" : ""}>Particular</option>
-                <option ${p.abonado === "Obra Social + Particular" ? "selected" : ""}>Obra Social + Particular</option>
+
+              <label>Condición de Pago:</label>
+              <select id="condicionDePago" class="swal2-select">
+                <option value="Obra Social" ${p.condicionDePago === "Obra Social" ? "selected" : ""}>Obra Social</option>
+                <option value="Particular" ${p.condicionDePago === "Particular" || !p.condicionDePago ? "selected" : ""}>Particular</option>
+                <option value="Obra Social + Particular" ${p.condicionDePago === "Obra Social + Particular" ? "selected" : ""}>Obra Social + Particular</option>
               </select>
+
+              <!-- 🔹 Extra Obra Social -->
+              <div id="obraSocialExtra" style="display:none; margin-top:10px;">
+                <label>Prestador:</label>
+                <input id="prestador" class="swal2-input" value="${p.prestador ?? ""}">
+                <label>Credencial:</label>
+                <input id="credencial" class="swal2-input" value="${p.credencial ?? ""}">
+                <label>Tipo:</label>
+                <input id="tipo" class="swal2-input" value="${p.tipo ?? ""}">
+              </div>
+
               <label>Estado:</label>
               <select id="estado" class="swal2-select">
                 <option ${p.estado === "Alta" ? "selected" : ""}>Alta</option>
                 <option ${p.estado === "Baja" ? "selected" : ""}>Baja</option>
-                <option ${p.estado === "En espera" ? "selected" : ""}>En espera</option>
+                <option ${p.estado === "En espera" || !p.estado ? "selected" : ""}>En espera</option>
               </select>
             </div>
 
-           
-
+            <div class="columna" style="margin-top: 20px;">
               <div class="plan-titulo">Plan seleccionado para el paciente:</div>
-              <textarea id="planPaciente" rows="4"
+              <textarea id="planPaciente" rows="8"
                 style="width:100%; border:1px solid #ccc; border-radius:5px; margin-top:5px; padding:10px;">${p.planPaciente ?? ""}</textarea>
             </div>
           </div>
@@ -250,13 +300,63 @@ async function modificarPaciente(dni) {
         </form>
       `,
       didOpen: () => {
+        // Toggle obra social
+        const condicionDePagoSelect = document.getElementById("condicionDePago");
+        const obraSocialExtra = document.getElementById("obraSocialExtra");
+        const toggleObraSocial = () => {
+          const v = condicionDePagoSelect.value;
+          obraSocialExtra.style.display =
+            v === "Obra Social" || v === "Obra Social + Particular" ? "block" : "none";
+        };
+        condicionDePagoSelect.addEventListener("change", toggleObraSocial);
+        toggleObraSocial();
+
+        // Responsables dinámicos (permitir repetir relación)
+        const cont = document.getElementById("responsablesContainer");
+        const btnAdd = document.getElementById("btnAgregarResponsable");
+        const relaciones = ['padre','madre','tutor'];
+
+        const makeRelacionOptions = (sel = '') =>
+          ['<option value="">-- Relación --</option>']
+            .concat(relaciones.map(r => `<option value="${r}" ${r===sel?'selected':''}>${r[0].toUpperCase()+r.slice(1)}</option>`))
+            .join('');
+
+        let idx = 0;
+        const addRow = (preset = { relacion:'tutor', nombre:'', whatsapp:'' }) => {
+          const filas = cont.querySelectorAll('.responsable-row').length;
+          if (filas >= 3) return;
+
+          const rowId = `resp-${idx++}`;
+          const html = `
+            <div class="responsable-row" id="${rowId}" style="border:1px solid #ddd; border-radius:8px; padding:8px; margin:8px 0;">
+              <div style="display:grid; grid-template-columns: 1fr 2fr 2fr auto; gap:6px; align-items:center;">
+                <select class="swal2-select resp-relacion">${makeRelacionOptions(preset.relacion || '')}</select>
+                <input class="swal2-input resp-nombre" placeholder="Nombre" value="${preset.nombre || ''}">
+                <input class="swal2-input resp-whatsapp" placeholder="Whatsapp (solo dígitos)" value="${preset.whatsapp || ''}">
+                <button type="button" class="swal2-cancel swal2-styled btn-remove" title="Quitar" style="padding:2px 8px;">✕</button>
+              </div>
+            </div>`;
+          cont.insertAdjacentHTML('beforeend', html);
+          cont.lastElementChild.querySelector('.btn-remove').addEventListener('click', () => {
+            cont.removeChild(document.getElementById(rowId));
+          });
+        };
+
+        // Precargar responsables existentes (o legacy)
+        if (responsablesIniciales.length) {
+          responsablesIniciales.forEach(r => addRow(r));
+        } else {
+          addRow({ relacion:'tutor' });
+        }
+        btnAdd.addEventListener('click', () => addRow());
+
+        // Módulos UI
         document.getElementById("btnAgregarModulo").addEventListener("click", () => {
           const container = document.getElementById("modulosContainer");
           const index = container.querySelectorAll(".modulo-row").length;
           container.insertAdjacentHTML("beforeend", renderModuloSelect(index, MOD_OPTS, PROF_OPTS, AREA_OPTS));
           attachAgregarProfesional(index, PROF_OPTS, AREA_OPTS);
         });
-
         attachAgregarProfesional(0, PROF_OPTS, AREA_OPTS);
       },
       width: "90%",
@@ -265,6 +365,44 @@ async function modificarPaciente(dni) {
       confirmButtonText: "Guardar",
       cancelButtonText: "Cancelar",
       preConfirm: () => {
+        // Validaciones básicas
+        const wspRegex = /^\d{10,15}$/;
+        const mailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        const nombre = document.getElementById("nombre")?.value.trim();
+        const fechaNacimiento = document.getElementById("fecha")?.value;
+        const mail = document.getElementById("mail")?.value.trim();
+
+        if (!nombre || !fechaNacimiento || !mail) {
+          Swal.showValidationMessage("⚠️ Completá los campos obligatorios (Nombre, Fecha, Mail).");
+          return false;
+        }
+        if (!mailRegex.test(mail)) {
+          Swal.showValidationMessage("⚠️ Mail inválido.");
+          return false;
+        }
+
+        // Responsables (permitir repetidos)
+        const filas = Array.from(document.querySelectorAll('#responsablesContainer .responsable-row'));
+        if (filas.length < 1 || filas.length > 3) {
+          Swal.showValidationMessage("⚠️ Debe haber entre 1 y 3 responsables.");
+          return false;
+        }
+        const responsables = [];
+        for (const row of filas) {
+          const relacion = row.querySelector('.resp-relacion')?.value;
+          const nombreR = row.querySelector('.resp-nombre')?.value.trim();
+          const whatsapp = row.querySelector('.resp-whatsapp')?.value.trim();
+          if (!relacion || !nombreR || !whatsapp) {
+            Swal.showValidationMessage("⚠️ Completá relación, nombre y WhatsApp en cada responsable.");
+            return false;
+          }
+          if (!wspRegex.test(whatsapp)) {
+            Swal.showValidationMessage("⚠️ WhatsApp inválido (10 a 15 dígitos).");
+            return false;
+          }
+          responsables.push({ relacion, nombre: nombreR, whatsapp });
+        }
+
         // Recolectar módulos + profesionales
         const modulosAsignados = [];
         document.querySelectorAll(".modulo-row").forEach((row) => {
@@ -287,28 +425,39 @@ async function modificarPaciente(dni) {
           }
         });
 
+        // Plan
         let planTexto = document.getElementById("planPaciente")?.value.trim() || "";
         if (modulosAsignados.length > 0) {
           const resumen = modulosAsignados.map(m => `${m.nombre} (${m.cantidad})`).join(", ");
           planTexto += (planTexto ? "\n" : "") + `Módulos asignados: ${resumen}`;
         }
 
+        // Obra social segun condición de pago
+        const condicionDePagoVal = document.getElementById("condicionDePago").value;
+        let prestador = "", credencial = "", tipo = "";
+        if (condicionDePagoVal === "Obra Social" || condicionDePagoVal === "Obra Social + Particular") {
+          prestador = document.getElementById("prestador")?.value.trim() || "";
+          credencial = document.getElementById("credencial")?.value.trim() || "";
+          tipo = document.getElementById("tipo")?.value.trim() || "";
+        }
+
         return {
-          nombre: document.getElementById("nombre")?.value,
-          dni: document.getElementById("dniInput")?.value,
-          fechaNacimiento: document.getElementById("fecha")?.value,
+          // básicos
+          nombre,
+          fechaNacimiento,
           colegio: document.getElementById("colegio")?.value,
           curso: document.getElementById("curso")?.value,
-          tutor: {
-            nombre: document.getElementById("tutorNombre")?.value,
-            whatsapp: document.getElementById("tutorWhatsapp")?.value
-          },
-          madrePadre: document.getElementById("madrePadre")?.value,
-          whatsappMadrePadre: document.getElementById("whatsappMadrePadre")?.value,
-          mail: document.getElementById("mail")?.value,
-          abonado: document.getElementById("abonado")?.value,
+
+          // nuevo modelo
+          responsables,                // ✅ permite repeticiones
+          mail,
+          condicionDePago: condicionDePagoVal, // ✅ unificado
           estado: document.getElementById("estado")?.value,
-          areas: [...document.querySelectorAll(".areas-box input:checked")].map(e => e.value),
+
+          // obra social
+          prestador, credencial, tipo,
+
+          // plan y módulos
           planPaciente: planTexto,
           modulosAsignados
         };
@@ -317,19 +466,30 @@ async function modificarPaciente(dni) {
 
     if (!isConfirmed) return;
 
-    await fetch(`${API_URL}/${dni}`, {
+    // PUT (no intentes cambiar DNI acá; backend lo ignora)
+    const putRes = await fetch(`${API_URL}/${dni}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data)
     });
 
+    if (!putRes.ok) {
+      let msg = "Error al guardar";
+      try {
+        const j = await putRes.json();
+        msg = j?.error || msg;
+      } catch {}
+      throw new Error(msg);
+    }
+
+    const actualizado = await putRes.json();
     Swal.fire("✅ Cambios guardados", "", "success");
-    renderFichaPaciente({ ...p, ...data, nombre: data.nombre, dni: data.dni });
+    renderFichaPaciente(actualizado);
     document.getElementById("fichaPacienteContainer").innerHTML = "";
     document.getElementById("busquedaInput").value = "";
   } catch (err) {
     console.error(err);
-    Swal.fire("❌ Error al cargar paciente", "", "error");
+    Swal.fire("❌ Error al cargar/modificar paciente", "", "error");
   }
 
   // Agregar otro par Profesional/Área dentro del módulo (usa HTML de opciones pasado por parámetro)
@@ -385,27 +545,23 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
             <label>Curso / Nivel:</label>
             <input id="curso" class="swal2-input">
 
-            <label>Nombre del Tutor/a:</label>
-            <input id="tutorNombre" class="swal2-input">
+            <!-- 🔹 Responsables (padre/madre/tutor) -->
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-top:8px;">
+              <label style="font-weight:bold; margin:0;">Responsables</label>
+              <button id="btnAgregarResponsable" type="button" class="swal2-confirm swal2-styled" style="padding:2px 8px; font-size:12px;">+ Agregar</button>
+            </div>
+            <small style="display:block; margin-bottom:6px; color:#666;">Máximo 3. <b>Se puede repetir</b> la relación.</small>
 
-            <label>Whatsapp del Tutor/a:</label>
-            <input id="tutorWhatsapp" class="swal2-input">
-
-            <!-- 🔹 Madre/Padre -->
-            <label>Madre o Padre:</label>
-            <input id="madrePadre" class="swal2-input">
-
-            <label>Whatsapp Madre o Padre:</label>
-            <input id="whatsappMadrePadre" class="swal2-input">
+            <div id="responsablesContainer"></div>
 
             <label>Mail:</label>
             <input id="mail" class="swal2-input" type="email">
 
-            <label>Abonado:</label>
-            <select id="abonado" class="swal2-select">
-              <option>Obra Social</option>
-              <option selected>Particular</option>
-              <option>Obra Social + Particular</option>
+            <label>Condición de Pago:</label>
+            <select id="condicionDePago" class="swal2-select">
+              <option value="Obra Social">Obra Social</option>
+              <option value="Particular" selected>Particular</option>
+              <option value="Obra Social + Particular">Obra Social + Particular</option>
             </select>
 
             <!-- 🔹 Extra Obra Social -->
@@ -449,87 +605,101 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
     cancelButtonText: "Cancelar",
 
     didOpen: async () => {
-      // Mostrar/ocultar extra de Obra Social según selección
-      const abonadoSelect = document.getElementById("abonado");
+      // --- Toggle Obra Social según condición de pago
+      const condicionDePagoSelect = document.getElementById("condicionDePago");
       const obraSocialExtra = document.getElementById("obraSocialExtra");
       const toggleObraSocial = () => {
-        const v = abonadoSelect.value;
+        const v = condicionDePagoSelect.value;
         obraSocialExtra.style.display =
           v === "Obra Social" || v === "Obra Social + Particular" ? "block" : "none";
       };
-      abonadoSelect.addEventListener("change", toggleObraSocial);
-      toggleObraSocial(); // estado inicial
+      condicionDePagoSelect.addEventListener("change", toggleObraSocial);
+      toggleObraSocial();
 
-      // 🔹 Poblar select de Áreas y Profesionales desde la API
+      // --- Carga de Áreas y Profesionales
       const areaSel = document.getElementById("areaSeleccionada");
       const profSel = document.getElementById("profesionalSeleccionado");
 
-      // Utilidades de carga
       const setOptions = (selectEl, items, mapFn, emptyText) => {
         if (!Array.isArray(items) || items.length === 0) {
           selectEl.innerHTML = `<option value="">${emptyText}</option>`;
           return;
         }
-        const opts = [`<option value="">-- Seleccionar --</option>`]
-          .concat(items.map(mapFn));
+        const opts = [`<option value="">-- Seleccionar --</option>`].concat(items.map(mapFn));
         selectEl.innerHTML = opts.join("");
       };
 
       try {
-        // Ajustá las rutas si tus endpoints difieren
         const [resAreas, resProfs] = await Promise.all([
           fetch(`${API_URL.replace("/pacientes", "/areas")}`),
           fetch(`${API_URL.replace("/pacientes", "/usuarios")}`)
         ]);
-
         const areas = resAreas.ok ? await resAreas.json() : [];
         const profesionales = resProfs.ok ? await resProfs.json() : [];
 
-        setOptions(
-          areaSel,
-          areas,
-          (a) => `<option value="${a._id}">${a.nombre}</option>`,
-          "No disponible"
-        );
-
-        setOptions(
-          profSel,
-          profesionales,
-          (p) => `<option value="${p._id}">${p.nombre}</option>`,
-          "No disponible"
-        );
+        setOptions(areaSel, areas, (a) => `<option value="${a._id}">${a.nombre}</option>`, "No disponible");
+        setOptions(profSel, profesionales, (p) => `<option value="${p._id}">${p.nombre}</option>`, "No disponible");
       } catch (e) {
-        // Si algo falla, mostrar "No disponible"
         areaSel.innerHTML = `<option value="">No disponible</option>`;
         profSel.innerHTML = `<option value="">No disponible</option>`;
         console.warn("No se pudieron cargar áreas/profesionales:", e);
       }
+
+      // --- Responsables dinámicos (permitir repetir relación)
+      const cont = document.getElementById("responsablesContainer");
+      const btnAdd = document.getElementById("btnAgregarResponsable");
+
+      const relaciones = ['padre', 'madre', 'tutor'];
+
+      const makeRelacionOptions = (seleccionActual = '') => {
+        return ['<option value="">-- Relación --</option>']
+          .concat(relaciones.map(r =>
+            `<option value="${r}" ${r === seleccionActual ? 'selected' : ''}>${r[0].toUpperCase()+r.slice(1)}</option>`
+          )).join('');
+      };
+
+      let idx = 0;
+      const addRow = (preset = {relacion:'tutor', nombre:'', whatsapp:''}) => {
+        const filas = cont.querySelectorAll('.responsable-row').length;
+        if (filas >= 3) return;
+
+        const rowId = `resp-${idx++}`;
+        const html = `
+          <div class="responsable-row" id="${rowId}" style="border:1px solid #ddd; border-radius:8px; padding:8px; margin:8px 0;">
+            <div style="display:grid; grid-template-columns: 1fr 2fr 2fr auto; gap:6px; align-items:center;">
+              <select class="swal2-select resp-relacion">${makeRelacionOptions(preset.relacion || '')}</select>
+              <input class="swal2-input resp-nombre" placeholder="Nombre" value="${preset.nombre || ''}">
+              <input class="swal2-input resp-whatsapp" placeholder="Whatsapp (solo dígitos)" value="${preset.whatsapp || ''}">
+              <button type="button" class="swal2-cancel swal2-styled btn-remove" title="Quitar" style="padding:2px 8px;">✕</button>
+            </div>
+          </div>
+        `;
+        cont.insertAdjacentHTML('beforeend', html);
+
+        const removeBtn = cont.lastElementChild.querySelector('.btn-remove');
+        removeBtn.addEventListener('click', () => {
+          cont.removeChild(document.getElementById(rowId));
+        });
+      };
+
+      btnAdd.addEventListener('click', () => addRow());
+
+      // Arranca con 1 responsable por defecto (tutor)
+      addRow({relacion:'tutor'});
     },
 
     preConfirm: () => {
       const nombre = document.getElementById("nombre").value.trim();
       const dni = document.getElementById("dni").value.trim();
       const fechaNacimiento = document.getElementById("fecha").value;
-      const tutorNombre = document.getElementById("tutorNombre").value.trim();
-      const tutorWhatsapp = document.getElementById("tutorWhatsapp").value.trim();
-      const madrePadre = document.getElementById("madrePadre").value.trim();
-      const whatsappMadrePadre = document.getElementById("whatsappMadrePadre").value.trim();
       const mail = document.getElementById("mail").value.trim();
 
       const dniRegex = /^\d{7,8}$/;
       const mailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       const wspRegex = /^\d{10,15}$/;
 
-      if (!tutorNombre || !tutorWhatsapp) {
-        Swal.showValidationMessage("⚠️ El nombre y Whatsapp del tutor/a son obligatorios.");
-        return false;
-      }
-      if (!wspRegex.test(tutorWhatsapp)) {
-        Swal.showValidationMessage("⚠️ El Whatsapp del tutor/a no es válido.");
-        return false;
-      }
-      if (!fechaNacimiento || !dni || !tutorNombre || !tutorWhatsapp || !mail) {
-        Swal.showValidationMessage("⚠️ Todos los campos obligatorios deben estar completos.");
+      if (!nombre || !dni || !fechaNacimiento || !mail) {
+        Swal.showValidationMessage("⚠️ Completá los campos obligatorios (Nombre, DNI, Fecha, Mail).");
         return false;
       }
       if (!dniRegex.test(dni)) {
@@ -541,12 +711,38 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
         return false;
       }
 
+      // --- Tomar responsables (permitiendo repetir relación)
+      const filas = Array.from(document.querySelectorAll('#responsablesContainer .responsable-row'));
+      if (filas.length < 1) {
+        Swal.showValidationMessage("⚠️ Agregá al menos un responsable.");
+        return false;
+      }
+      if (filas.length > 3) {
+        Swal.showValidationMessage("⚠️ Máximo 3 responsables.");
+        return false;
+      }
+
+      const responsables = [];
+      for (const row of filas) {
+        const relacion = row.querySelector('.resp-relacion').value;
+        const nombreR = row.querySelector('.resp-nombre').value.trim();
+        const whatsapp = row.querySelector('.resp-whatsapp').value.trim();
+
+        if (!relacion || !nombreR || !whatsapp) {
+          Swal.showValidationMessage("⚠️ Completá relación, nombre y WhatsApp en cada responsable.");
+          return false;
+        }
+        if (!wspRegex.test(whatsapp)) {
+          Swal.showValidationMessage("⚠️ WhatsApp inválido (10 a 15 dígitos).");
+          return false;
+        }
+        responsables.push({ relacion, nombre: nombreR, whatsapp });
+      }
+
       // Extra: obra social
-      let prestador = "";
-      let credencial = "";
-      let tipo = "";
-      const abonadoVal = document.getElementById("abonado").value;
-      if (abonadoVal === "Obra Social" || abonadoVal === "Obra Social + Particular") {
+      let prestador = "", credencial = "", tipo = "";
+      const condicionDePagoVal = document.getElementById("condicionDePago").value;
+      if (condicionDePagoVal === "Obra Social" || condicionDePagoVal === "Obra Social + Particular") {
         prestador = document.getElementById("prestador").value.trim();
         credencial = document.getElementById("credencial").value.trim();
         tipo = document.getElementById("tipo").value.trim();
@@ -562,17 +758,17 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
         fechaNacimiento,
         colegio: document.getElementById("colegio").value.trim(),
         curso: document.getElementById("curso").value.trim(),
-        tutor: { nombre: tutorNombre, whatsapp: tutorWhatsapp },
-        madrePadre,
-        whatsappMadrePadre,
+
+        responsables, // ✅ puede tener relaciones repetidas
+
         mail,
-        abonado: abonadoVal,
+        condicionDePago: condicionDePagoVal,   // ✅ unificado con el schema
         estado: document.getElementById("estado").value,
         prestador,
         credencial,
         tipo,
-        areaSeleccionada,           // <-- id de área o null
-        profesionalSeleccionado     // <-- id de profesional o null
+        areaSeleccionada,
+        profesionalSeleccionado
       };
     }
   }).then(async (result) => {
@@ -595,6 +791,8 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
     }
   });
 });
+
+
 
 
 
