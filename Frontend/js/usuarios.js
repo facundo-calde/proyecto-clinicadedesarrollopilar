@@ -1,17 +1,72 @@
+// ==========================
+// 🔐 Sesión y helpers
+// ==========================
+const API = 'http://localhost:3000';
+
+// Token y usuario de la sesión
+const token = localStorage.getItem("token");
+const usuarioSesion = JSON.parse(localStorage.getItem("usuario") || "null");
+
+// Si no hay token → volver al login
+if (!token) {
+  window.location.href = "index.html";
+}
+
+// Mostrar nombre dinámico en el top bar
+if (usuarioSesion && usuarioSesion.nombreApellido) {
+  const userNameEl = document.getElementById("userName");
+  if (userNameEl) userNameEl.textContent = usuarioSesion.nombreApellido;
+}
+
+// Helper: agrega Authorization automáticamente y maneja 401
+async function fetchAuth(url, options = {}) {
+  const opts = {
+    ...options,
+    headers: {
+      ...(options.headers || {}),
+      Authorization: `Bearer ${token}`,
+    },
+  };
+  const res = await fetch(url, opts);
+  if (res.status === 401) {
+    // token inválido/expirado
+    localStorage.removeItem("token");
+    localStorage.removeItem("usuario");
+    window.location.href = "index.html";
+    throw new Error("No autorizado");
+  }
+  return res;
+}
+
+// 🔹 Botón cerrar sesión
+const btnLogout = document.getElementById("btnLogout");
+if (btnLogout) {
+  btnLogout.addEventListener("click", () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("usuario");
+    window.location.href = "index.html";
+  });
+}
+
+// ==========================
+// 📋 Listado inicial
+// ==========================
 document.addEventListener('DOMContentLoaded', () => {
   const botonAgregar = document.getElementById('btnAgregarUsuario');
   const userList = document.getElementById('user-list');
 
-  // Mostrar usuarios existentes
-  fetch('http://localhost:3000/api/usuarios')
+  // Mostrar usuarios existentes (con token)
+  fetchAuth(`${API}/api/usuarios`)
     .then(res => res.json())
     .then(data => {
-      if (!data.length) {
-        document.querySelector('.sin-info').style.display = 'block';
+      if (!Array.isArray(data) || data.length === 0) {
+        const sinInfo = document.querySelector('.sin-info');
+        if (sinInfo) sinInfo.style.display = 'block';
         return;
       }
 
-      document.querySelector('.sin-info').style.display = 'none';
+      const sinInfo = document.querySelector('.sin-info');
+      if (sinInfo) sinInfo.style.display = 'none';
 
       data.forEach(usuario => {
         const tr = document.createElement('tr');
@@ -28,14 +83,18 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
         userList.appendChild(tr);
       });
-    });
+    })
+    .catch(err => console.error(err));
 
   if (botonAgregar) {
     botonAgregar.addEventListener('click', () => mostrarFormularioUsuario());
   }
 });
 
-function mostrarFormularioUsuario(usuario = {}, modoEdicion = false) {
+// ==========================
+// 🧾 Formulario (SweetAlert)
+// ==========================
+function mostrarFormularioUsuario(u = {}, modoEdicion = false) { // ← renombrado para no pisar la global
   Swal.fire({
     title: modoEdicion ? 'Editar usuario' : 'Registrar nuevo usuario',
     width: '80%',
@@ -80,9 +139,7 @@ function mostrarFormularioUsuario(usuario = {}, modoEdicion = false) {
           font-size: 14px;
           font-family: 'Montserrat', sans-serif;
         }
-        .area-check {
-          margin-right: 6px;
-        }
+        .area-check { margin-right: 6px; }
         .swal2-confirm {
           background-color: #2f72c4 !important;
           color: white !important;
@@ -147,29 +204,29 @@ function mostrarFormularioUsuario(usuario = {}, modoEdicion = false) {
     didOpen: () => {
       if (modoEdicion) {
         const set = (id, val) => document.getElementById(id).value = val || '';
-        set('nombreApellido', usuario.nombreApellido);
-        set('fechaNacimiento', usuario.fechaNacimiento ? usuario.fechaNacimiento.split('T')[0] : '');
-        set('domicilio', usuario.domicilio);
-        set('dni', usuario.dni);
-        set('matricula', usuario.matricula);
-        set('jurisdiccion', usuario.jurisdiccion);
-        set('whatsapp', usuario.whatsapp);
-        set('mail', usuario.mail);
-        set('salarioAcuerdo', usuario.salarioAcuerdo);
-        set('fijoAcuerdo', usuario.fijoAcuerdo);
-        set('banco', usuario.banco);
-        set('cbu', usuario.cbu);
-        set('alias', usuario.alias);
-        set('tipoCuenta', usuario.tipoCuenta);
-        set('usuario', usuario.usuario);
-        set('contrasena', usuario.contrasena);
+        set('nombreApellido', u.nombreApellido);
+        set('fechaNacimiento', u.fechaNacimiento ? u.fechaNacimiento.split('T')[0] : '');
+        set('domicilio', u.domicilio);
+        set('dni', u.dni);
+        set('matricula', u.matricula);
+        set('jurisdiccion', u.jurisdiccion);
+        set('whatsapp', u.whatsapp);
+        set('mail', u.mail);
+        set('salarioAcuerdo', u.salarioAcuerdo);
+        set('fijoAcuerdo', u.fijoAcuerdo);
+        set('banco', u.banco);
+        set('cbu', u.cbu);
+        set('alias', u.alias);
+        set('tipoCuenta', u.tipoCuenta);
+        set('usuario', u.usuario);
+        set('contrasena', u.contrasena);
 
-        (usuario.areas || []).forEach(area => {
+        (u.areas || []).forEach(area => {
           const checkbox = Array.from(document.querySelectorAll('.area-check')).find(c => c.value === area);
           if (checkbox) checkbox.checked = true;
         });
 
-        if (usuario.rol) document.getElementById('rol').value = usuario.rol;
+        if (u.rol) document.getElementById('rol').value = u.rol;
       }
     },
     preConfirm: () => {
@@ -198,46 +255,56 @@ function mostrarFormularioUsuario(usuario = {}, modoEdicion = false) {
       };
     }
   }).then(result => {
-    if (result.isConfirmed) {
-      const url = modoEdicion ? `http://localhost:3000/api/usuarios/${usuario._id}` : 'http://localhost:3000/api/usuarios';
-      const method = modoEdicion ? 'PUT' : 'POST';
+    if (!result.isConfirmed) return;
 
-      const formData = new FormData();
-      // Campos de texto
-      Object.entries(result.value).forEach(([key, val]) => {
-        if (Array.isArray(val)) {
-          val.forEach(v => formData.append(`${key}[]`, v));
-        } else {
-          formData.append(key, val);
-        }
-      });
+    const url = modoEdicion ? `${API}/api/usuarios/${u._id}` : `${API}/api/usuarios`;
+    const method = modoEdicion ? 'PUT' : 'POST';
 
-      // Archivos
-      const archivos = document.getElementById('documentos').files;
-      for (let i = 0; i < archivos.length; i++) {
-        formData.append('documentos', archivos[i]);
+    const formData = new FormData();
+    // Campos de texto
+    Object.entries(result.value).forEach(([key, val]) => {
+      if (Array.isArray(val)) {
+        val.forEach(v => formData.append(`${key}[]`, v));
+      } else {
+        formData.append(key, val);
       }
+    });
 
-      fetch(url, {
-        method,
-        body: formData
-      })
-        .then(res => {
-          if (!res.ok) throw new Error('Error al guardar');
-          return res.json();
-        })
-        .then(() => {
-          Swal.fire('Éxito', modoEdicion ? 'Usuario actualizado correctamente' : 'Usuario creado correctamente', 'success')
-            .then(() => location.reload());
-        })
-        .catch(err => {
-          console.error(err);
-          Swal.fire('Error', 'No se pudo guardar el usuario', 'error');
-        });
+    // Archivos
+    const archivos = document.getElementById('documentos').files;
+    for (let i = 0; i < archivos.length; i++) {
+      formData.append('documentos', archivos[i]);
     }
+
+    // Envío con token (sin Content-Type manual)
+    fetchAuth(url, { method, body: formData })
+      .then(res => {
+        if (!res.ok) throw new Error('Error al guardar');
+        return res.json();
+      })
+      .then(() => {
+        Swal.fire('Éxito', modoEdicion ? 'Usuario actualizado correctamente' : 'Usuario creado correctamente', 'success')
+          .then(() => location.reload());
+      })
+      .catch(err => {
+        console.error(err);
+        Swal.fire('Error', 'No se pudo guardar el usuario', 'error');
+      });
   });
 }
 
+// ==========================
+// ✏️ Editar / 🗑️ Borrar
+// ==========================
+function editarUsuario(id) {
+  fetchAuth(`${API}/api/usuarios/${id}`)
+    .then(res => res.json())
+    .then(u => mostrarFormularioUsuario(u, true))
+    .catch(err => {
+      console.error(err);
+      Swal.fire('Error', 'No se pudo cargar el usuario', 'error');
+    });
+}
 
 function borrarUsuario(id) {
   Swal.fire({
@@ -254,78 +321,43 @@ function borrarUsuario(id) {
     },
     buttonsStyling: false
   }).then(result => {
-    if (result.isConfirmed) {
-      fetch(`http://localhost:3000/api/usuarios/${id}`, { method: 'DELETE' })
-        .then(() => {
-          Swal.fire({
-            title: 'Eliminado',
-            text: 'El usuario fue eliminado correctamente.',
-            icon: 'success',
-            confirmButtonText: 'OK',
-            customClass: {
-              popup: 'swal2-modal',
-              confirmButton: 'swal2-confirm'
-            },
-            buttonsStyling: false
-          }).then(() => location.reload());
-        })
-        .catch(err => {
-          console.error(err);
-          Swal.fire({
-            title: 'Error',
-            text: 'No se pudo borrar el usuario',
-            icon: 'error',
-            confirmButtonText: 'OK',
-            customClass: {
-              popup: 'swal2-modal',
-              confirmButton: 'swal2-confirm'
-            },
-            buttonsStyling: false
-          });
+    if (!result.isConfirmed) return;
+
+    fetchAuth(`${API}/api/usuarios/${id}`, { method: 'DELETE' })
+      .then(res => {
+        if (!res.ok) throw new Error('Error al borrar');
+        return res.text();
+      })
+      .then(() => {
+        Swal.fire({
+          title: 'Eliminado',
+          text: 'El usuario fue eliminado correctamente.',
+          icon: 'success',
+          confirmButtonText: 'OK',
+          customClass: {
+            popup: 'swal2-modal',
+            confirmButton: 'swal2-confirm'
+          },
+          buttonsStyling: false
+        }).then(() => location.reload());
+      })
+      .catch(err => {
+        console.error(err);
+        Swal.fire({
+          title: 'Error',
+          text: 'No se pudo borrar el usuario',
+          icon: 'error',
+          confirmButtonText: 'OK',
+          customClass: {
+            popup: 'swal2-modal',
+            confirmButton: 'swal2-confirm'
+          },
+          buttonsStyling: false
         });
-    }
+      });
   });
 }
 
-
-function editarUsuario(id) {
-  fetch(`http://localhost:3000/api/usuarios/${id}`)
-    .then(res => res.json())
-    .then(usuario => mostrarFormularioUsuario(usuario, true))
-    .catch(err => {
-      console.error(err);
-      Swal.fire('Error', 'No se pudo cargar el usuario', 'error');
-    });
-}
-
-// ==========================
-// 🔹 Manejo de sesión
-// ==========================
-const token = localStorage.getItem("token");
-const usuario = JSON.parse(localStorage.getItem("usuario"));
-
-// Si no hay token → volver al login
-if (!token) {
-  window.location.href = "index.html";
-}
-
-// Mostrar nombre dinámico en el top bar
-if (usuario && usuario.nombreApellido) {
-  const userNameEl = document.getElementById("userName");
-  if (userNameEl) userNameEl.textContent = usuario.nombreApellido;
-}
-
-
-
-// 🔹 Botón cerrar sesión
-const btnLogout = document.getElementById("btnLogout");
-if (btnLogout) {
-  btnLogout.addEventListener("click", () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("usuario");
-    window.location.href = "index.html";
-  });
-}
 
 
 

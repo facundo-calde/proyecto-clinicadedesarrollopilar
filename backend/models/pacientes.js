@@ -1,5 +1,7 @@
 const mongoose = require('mongoose');
 
+const emailRule = [/.+@.+\..+/, 'El email debe ser válido'];
+
 const responsableSchema = new mongoose.Schema({
   relacion: { type: String, enum: ['padre', 'madre', 'tutor'], required: true },
   nombre:   { type: String, required: true, trim: true },
@@ -7,7 +9,17 @@ const responsableSchema = new mongoose.Schema({
     type: String,
     required: true,
     match: [/^\d{10,15}$/, 'El WhatsApp debe tener entre 10 y 15 dígitos'],
+  }
+}, { _id: false });
+
+const estadoHistorialSchema = new mongoose.Schema({
+  estado: {
+    type: String,
+    enum: ['Alta', 'Baja', 'En espera'],
+    required: true
   },
+  fecha: { type: Date, default: Date.now },
+  descripcion: { type: String, trim: true }
 }, { _id: false });
 
 const pacienteSchema = new mongoose.Schema({
@@ -20,38 +32,39 @@ const pacienteSchema = new mongoose.Schema({
   },
   fechaNacimiento: { type: String, required: true },
 
-  // 🔹 Responsables (permite relaciones repetidas)
+  // Responsables (permite relaciones repetidas; 1..3)
   responsables: {
     type: [responsableSchema],
-    validate: [
-      {
-        validator: function(arr) {
-          return Array.isArray(arr) && arr.length >= 1 && arr.length <= 3;
-        },
-        message: 'Debe tener entre 1 y 3 responsables.',
-      }
-      // ❌ Se elimina el validador que prohibía duplicados de "relacion"
-    ]
+    validate: [{
+      validator: function (arr) {
+        return Array.isArray(arr) && arr.length >= 1 && arr.length <= 3;
+      },
+      message: 'Debe tener entre 1 y 3 responsables.',
+    }]
   },
 
-  // Email y otros datos
-  mail: {
-    type: String,
-    required: true,
-    match: [/.+@.+\..+/, 'El email debe ser válido'],
-    trim: true,
-    lowercase: true,
-  },
+  // Colegio + mails
   colegio: String,
+  colegioMail: { type: String, trim: true, lowercase: true, match: emailRule }, // opcional
   curso: String,
-  condicionDePago: String,     // ojo: tu frontend usa "abonado". Unificalo.
-  estado: String,              // "Alta", "Baja", "En espera"
+
+  // Mails de contacto (opcionales)
+  mailPadres: { type: String, trim: true, lowercase: true, match: emailRule },
+  mailTutor:  { type: String, trim: true, lowercase: true, match: emailRule },
+
+  // Estado / facturación
+  condicionDePago: { type: String, enum: ['Obra Social', 'Particular', 'Obra Social + Particular'], default: 'Particular' },
+  estado: { type: String, enum: ['Alta', 'Baja', 'En espera'], default: 'En espera' },
+
+  // ✅ Historial de cambios de estado
+  estadoHistorial: { type: [estadoHistorialSchema], default: [] },
 
   // Obra social
   prestador: String,
   credencial: String,
   tipo: String,
 
+  // Otros
   areas: [String],
   planPaciente: String,
   fechaBaja: String,
@@ -64,38 +77,43 @@ const pacienteSchema = new mongoose.Schema({
     archivos: [String]
   }],
 
+  // Módulos asignados
   modulosAsignados: [{
     moduloId: { type: mongoose.Schema.Types.ObjectId, ref: 'Modulo' },
-    nombre: String,
+    nombre: String, // opcional (se puede resolver por ref)
     cantidad: { type: Number, min: 0.25, max: 2 },
-    profesionales: [{
-      profesionalId: { type: mongoose.Schema.Types.ObjectId, ref: 'Usuario' },
-      nombre: String,
-      area: String
-    }]
-  }],
 
-  /* ⚠️ Legacy para compat. Quitalos cuando migres todo. */
-  tutor: {
-    nombre: String,
-    whatsapp: { type: String, match: [/^\d{10,15}$/] }
-  },
-  madrePadre: String,
-  whatsappMadrePadre: { type: String, match: [/^\d{10,15}$/] },
+    profesionales: [{
+      profesionalId: { type: mongoose.Schema.Types.ObjectId, ref: 'Usuario', required: true },
+
+      // referencia al área (nuevo)
+      areaId: { type: mongoose.Schema.Types.ObjectId, ref: 'Area' },
+
+      // legacy: nombre del área en texto
+      area: String,
+
+      // legacy opcional
+      nombre: String
+    }]
+  }]
 
 }, { timestamps: true });
 
-/* 🔧 Hook opcional de compatibilidad:
-   si hay responsables y alguno es "tutor", completa el campo legacy `tutor` con el primero. */
-pacienteSchema.pre('validate', function(next) {
-  if (Array.isArray(this.responsables)) {
-    const t = this.responsables.find(r => r.relacion === 'tutor');
-    if (t) this.tutor = { nombre: t.nombre, whatsapp: t.whatsapp };
+/**
+ * Hook: al crear, si hay estado pero no historial aún, guardamos la entrada inicial.
+ */
+pacienteSchema.pre('save', function(next) {
+  if (this.isNew && this.estado && (!Array.isArray(this.estadoHistorial) || this.estadoHistorial.length === 0)) {
+    this.estadoHistorial.push({
+      estado: this.estado,
+      descripcion: 'Estado inicial'
+    });
   }
   next();
 });
 
 module.exports = mongoose.model('Paciente', pacienteSchema);
+
 
 
 

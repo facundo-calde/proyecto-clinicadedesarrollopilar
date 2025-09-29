@@ -5,6 +5,7 @@ const WSP_RE  = /^\d{10,15}$/;
 const DNI_RE  = /^\d{7,8}$/;
 const MAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CP_OK   = new Set(['Obra Social', 'Particular', 'Obra Social + Particular']);
+const ESTADOS = new Set(['Alta', 'Baja', 'En espera']);
 
 // Permite relaciones repetidas y limita a 3
 function sanitizeResponsables(responsables) {
@@ -25,13 +26,15 @@ function sanitizeResponsables(responsables) {
   return out;
 }
 
-// Construye el payload final y resuelve compat con schema viejo (tutor)
+// Construye el payload final (sin legacy)
 function buildPacienteData(body, existing = null) {
   const data = {};
 
-  // Campos simples permitidos (usa condicionDePago, no abonado)
+  // Campos soportados por el schema
   const simples = [
-    'nombre','fechaNacimiento','colegio','curso','mail','condicionDePago','estado',
+    'nombre','fechaNacimiento','colegio','curso',
+    'colegioMail','mailPadres','mailTutor',
+    'condicionDePago','estado',
     'areas','planPaciente','fechaBaja','motivoBaja',
     'prestador','credencial','tipo'
   ];
@@ -42,53 +45,26 @@ function buildPacienteData(body, existing = null) {
   // DNI solo al crear
   if (!existing && body.dni !== undefined) data.dni = String(body.dni).trim();
 
-  // Normalizaciones suaves
-  if (data.mail) data.mail = String(data.mail).trim().toLowerCase();
+  // Validaciones suaves
+  if (data.dni && !DNI_RE.test(data.dni)) delete data.dni;
   if (data.condicionDePago && !CP_OK.has(data.condicionDePago)) delete data.condicionDePago;
 
-  // Validaciones suaves (Mongoose valida fuerte)
-  if (data.dni && !DNI_RE.test(data.dni)) delete data.dni;
-  if (data.mail && !MAIL_RE.test(data.mail)) delete data.mail;
+  // Normalizar/validar mails opcionales
+  ['colegioMail','mailPadres','mailTutor'].forEach(k => {
+    if (data[k] !== undefined) {
+      data[k] = String(data[k]).trim().toLowerCase();
+      if (data[k] && !MAIL_RE.test(data[k])) delete data[k];
+    }
+  });
 
-  // Responsables (nuevo modelo)
+  // Responsables (1..3, permite repetidos)
   if (body.responsables !== undefined) {
     const resp = sanitizeResponsables(body.responsables);
     if (resp.length > 0) data.responsables = resp;
-
-    // Compat con schema legacy `tutor`
-    const t = resp.find(r => r.relacion === 'tutor');
-    if (t) data.tutor = { nombre: t.nombre, whatsapp: t.whatsapp };
-    else data.tutor = undefined;
-  } else if (!existing) {
-    // Alta sin responsables explícitos: intentar mapear legacy si vinieran
-    const tn  = body?.tutor?.nombre || '';
-    const tw  = body?.tutor?.whatsapp || '';
-    const mpn = body?.madrePadre || '';
-    const mpw = body?.whatsappMadrePadre || '';
-
-    const cand = [];
-    if (tn && tw) cand.push({ relacion: 'tutor', nombre: tn, whatsapp: tw });
-    if (mpn) cand.push({
-      relacion: /madre/i.test(mpn) ? 'madre' : 'padre',
-      nombre: mpn.replace(/^(madre|padre)\s*:\s*/i, '').trim(),
-      whatsapp: mpw
-    });
-
-    const resp = sanitizeResponsables(cand);
-    if (resp.length > 0) {
-      data.responsables = resp;
-      const t = resp.find(r => r.relacion === 'tutor');
-      if (t) data.tutor = { nombre: t.nombre, whatsapp: t.whatsapp };
-    }
   }
 
-  // Módulos asignados
+  // Módulos (se valida por Mongoose)
   if (Array.isArray(body.modulosAsignados)) data.modulosAsignados = body.modulosAsignados;
-
-  // Legacy opcional (mientras migres)
-  if (body.tutor) data.tutor = body.tutor;
-  if (body.madrePadre !== undefined) data.madrePadre = body.madrePadre;
-  if (body.whatsappMadrePadre !== undefined) data.whatsappMadrePadre = body.whatsappMadrePadre;
 
   return data;
 }
@@ -137,13 +113,13 @@ const crearPaciente = async (req, res) => {
       return res.status(400).json({ error: 'Debe incluir al menos un responsable (padre/madre/tutor).' });
     }
 
+    // si viene estado y NO viene historial, el pre('save') del modelo cargará el estado inicial
     const nuevo = new Paciente(data);
     await nuevo.save();
     res.status(201).json(nuevo);
   } catch (error) {
     console.error('❌ Error al crear paciente:', error);
     if (error?.code === 11000 && error?.keyPattern?.dni) {
-      // Devolvé el existente para abrirlo desde el front
       const existente = await Paciente.findOne({ dni: req.body.dni }).lean();
       return res.status(409).json({ error: 'El DNI ya existe', dni: req.body.dni, existente });
     }
@@ -164,17 +140,28 @@ const actualizarPaciente = async (req, res) => {
 
     const data = buildPacienteData(req.body, paciente);
 
-    // Asignar campos simples (ignorar intento de cambiar DNI)
-    for (const [k, v] of Object.entries(data)) {
-      if (k === 'dni') continue;
-      paciente[k] = (typeof v === 'string') ? v.trim() : v;
+    // Si cambia el estado, agregamos entrada al historial
+    const nuevoEstado = req.body.estado;
+    const descripcionEstado = req.body.descripcionEstado || req.body.estadoDescripcion || '';
+    if (
+      nuevoEstado !== undefined &&
+      ESTADOS.has(String(nuevoEstado)) &&
+      String(nuevoEstado) !== String(paciente.estado || '')
+    ) {
+      // Asignamos el nuevo estado y registramos historial
+      paciente.estado = String(nuevoEstado);
+      paciente.estadoHistorial = Array.isArray(paciente.estadoHistorial) ? paciente.estadoHistorial : [];
+      paciente.estadoHistorial.push({
+        estado: String(nuevoEstado),
+        fecha: new Date(),
+        descripcion: descripcionEstado
+      });
     }
 
-    // Compat de tutor al actualizar responsables
-    if (Array.isArray(data.responsables)) {
-      const t = data.responsables.find(r => r.relacion === 'tutor');
-      if (t) paciente.tutor = { nombre: t.nombre, whatsapp: t.whatsapp };
-      else paciente.tutor = undefined; // asegurate de que no sea required en schema legacy
+    // Asignar el resto de campos (ignorar intento de cambiar DNI)
+    for (const [k, v] of Object.entries(data)) {
+      if (k === 'dni' || k === 'estado') continue; // estado ya se manejó arriba
+      paciente[k] = (typeof v === 'string') ? v.trim() : v;
     }
 
     await paciente.save();
@@ -195,3 +182,4 @@ module.exports = {
   crearPaciente,
   actualizarPaciente
 };
+
