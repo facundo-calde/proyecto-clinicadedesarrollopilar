@@ -1,11 +1,24 @@
 const mongoose = require('mongoose');
 
 const documentoSchema = new mongoose.Schema({
-  tipo: { type: String, required: true }, // Ej: 'matricula', 'seguro', 'dni'
-  nombre: { type: String, required: true }, // Nombre del archivo original
-  url: { type: String, required: true }, // Ruta o enlace al archivo
+  tipo: { type: String, required: true },
+  nombre: { type: String, required: true },
+  url: { type: String, required: true },
   fechaSubida: { type: Date, default: Date.now }
 });
+
+// Roles (incluye "Directoras")
+const ROLES = Object.freeze([
+  'Administrador',
+  'Directoras',
+  'Coordinador de área',
+  'Profesional',
+  'Administrativo',
+  'Recepcionista',
+]);
+
+// Niveles de profesional
+const NIVELES_PRO = Object.freeze(['Junior', 'Senior']);
 
 const usuarioSchema = new mongoose.Schema({
   nombreApellido: String,
@@ -23,10 +36,12 @@ const usuarioSchema = new mongoose.Schema({
   alias: String,
   tipoCuenta: String,
   areas: [String],
-  rol: String,
 
-  // 🔹 Nuevo campo específico para profesionales
-  seguroMalaPraxis: String, // Ej: número de póliza o nombre de la compañía
+  rol: { type: String, enum: ROLES },
+
+  // Solo para profesionales
+  seguroMalaPraxis: String,
+  nivelProfesional: { type: String, enum: NIVELES_PRO }, // Junior / Senior (requerido si rol=Profesional)
 
   usuario: {
     type: String,
@@ -43,6 +58,26 @@ const usuarioSchema = new mongoose.Schema({
   documentos: [documentoSchema]
 });
 
+// Validación condicional: si es Profesional, exigir nivel y (opcional) seguro
+usuarioSchema.pre('validate', function (next) {
+  if (this.rol === 'Profesional') {
+    if (!this.nivelProfesional) {
+      this.invalidate('nivelProfesional', 'El nivel profesional (Junior/Senior) es obligatorio para profesionales');
+    }
+    // Si querés hacerlo obligatorio, descomentá:
+    // if (!this.seguroMalaPraxis) {
+    //   this.invalidate('seguroMalaPraxis', 'El seguro de mala praxis es obligatorio para profesionales');
+    // }
+  } else {
+    // Si cambian el rol a otro, no guardes nivel
+    this.nivelProfesional = undefined;
+  }
+  next();
+});
 
-module.exports = mongoose.model('Usuario', usuarioSchema);
+// Modelo + export
+const Usuario = mongoose.model('Usuario', usuarioSchema);
+Usuario.ROLES = ROLES;              // opcional
+Usuario.NIVELES_PRO = NIVELES_PRO;  // opcional
 
+module.exports = Usuario;

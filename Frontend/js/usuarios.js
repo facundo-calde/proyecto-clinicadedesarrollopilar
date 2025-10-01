@@ -210,6 +210,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
           <input class="swal2-input" id="alias" placeholder="Alias">
           <input class="swal2-input" id="tipoCuenta" placeholder="Tipo de cuenta">
         </div>
+
         <div class="form-column">
           <div id="areasSection" style="display:none;">
             <label><strong>Áreas asignadas:</strong></label><br>
@@ -223,6 +224,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
           <select id="rol" class="swal2-select">
             <option value="">Seleccionar...</option>
             <option value="Administrador">Administrador</option>
+            <option value="Directoras">Directoras</option>
             <option value="Coordinador de área">Coordinador de área</option>
             <option value="Profesional">Profesional</option>
             <option value="Administrativo">Administrativo</option>
@@ -231,7 +233,15 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
 
           <label id="labelSeguro" style="display:none;margin-top:10px;"><strong>Seguro de mala praxis:</strong></label>
           <input class="swal2-input" id="seguroMalaPraxis" placeholder="Número de póliza o compañía" style="display:none">
+
+          <label id="labelNivelPro" style="display:none;margin-top:10px;"><strong>Categoría profesional:</strong></label>
+          <select id="nivelProfesional" class="swal2-select" style="display:none">
+            <option value="">Seleccionar...</option>
+            <option value="Junior">Junior</option>
+            <option value="Senior">Senior</option>
+          </select>
         </div>
+
         <div class="form-column">
           <label><strong>Usuario y Contraseña:</strong></label>
           <input class="swal2-input" id="usuario" placeholder="Usuario">
@@ -266,18 +276,26 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         set('usuario', u.usuario);
         set('contrasena', u.contrasena);
         if (u.rol) document.getElementById('rol').value = u.rol;
+
         if (u.rol === 'Profesional') {
           document.getElementById('seguroMalaPraxis').style.display = 'block';
           document.getElementById('labelSeguro').style.display = 'block';
           document.getElementById('seguroMalaPraxis').value = u.seguroMalaPraxis || '';
+
+          document.getElementById('nivelProfesional').style.display = 'block';
+          document.getElementById('labelNivelPro').style.display = 'block';
+          // soporta ambas claves por si usás otro nombre en BD
+          document.getElementById('nivelProfesional').value = u.nivelProfesional || u.categoriaProfesional || '';
         }
       }
 
-      // Mostrar/ocultar ÁREAS y SEGURO según rol
-      const rolSelect = document.getElementById('rol');
-      const areasSection = document.getElementById('areasSection');
-      const labelSeguro = document.getElementById('labelSeguro');
-      const inputSeguro = document.getElementById('seguroMalaPraxis');
+      // Mostrar/ocultar ÁREAS, SEGURO y NIVEL según rol
+      const rolSelect     = document.getElementById('rol');
+      const areasSection  = document.getElementById('areasSection');
+      const labelSeguro   = document.getElementById('labelSeguro');
+      const inputSeguro   = document.getElementById('seguroMalaPraxis');
+      const labelNivelPro = document.getElementById('labelNivelPro');
+      const selNivelPro   = document.getElementById('nivelProfesional');
 
       const ROLES_CON_AREAS = new Set(['Profesional', 'Coordinador de área']);
 
@@ -293,11 +311,17 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
           document.querySelectorAll('input[name="areas[]"]').forEach(c => (c.checked = false));
         }
 
-        // SEGURO: solo Profesional
-        const showSeguro = (rol === 'Profesional');
-        labelSeguro.style.display = showSeguro ? 'block' : 'none';
-        inputSeguro.style.display = showSeguro ? 'block' : 'none';
-        if (!showSeguro) inputSeguro.value = '';
+        // SEGURO + NIVEL: solo Profesional
+        const showPro = (rol === 'Profesional');
+        labelSeguro.style.display = showPro ? 'block' : 'none';
+        inputSeguro.style.display = showPro ? 'block' : 'none';
+        labelNivelPro.style.display = showPro ? 'block' : 'none';
+        selNivelPro.style.display = showPro ? 'block' : 'none';
+
+        if (!showPro) {
+          inputSeguro.value = '';
+          selNivelPro.value = '';
+        }
       }
 
       // Inicial
@@ -322,14 +346,14 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
           .map(e => e.value);
       }
 
-      // Validación: seguro obligatorio solo para profesionales (por si acaso)
+      // Validación: seguro obligatorio solo para profesionales
       const seguro = get('seguroMalaPraxis');
       if (rol === 'Profesional' && !seguro) {
         Swal.showValidationMessage('El seguro de mala praxis es obligatorio para profesionales');
         return false;
       }
 
-      return {
+      const result = {
         nombreApellido: get('nombreApellido'),
         fechaNacimiento: get('fechaNacimiento'),
         domicilio: get('domicilio'),
@@ -350,6 +374,13 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         contrasena: get('contrasena'),
         seguroMalaPraxis: seguro
       };
+
+      // Solo si es Profesional agrego nivel/categoría
+      if (rol === 'Profesional') {
+        result.nivelProfesional = get('nivelProfesional'); // (si querés guardarlo en BD, agregá este campo al schema)
+      }
+
+      return result;
     }
   }).then(result => {
     if (!result.isConfirmed) return;
@@ -360,6 +391,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
     const formData = new FormData();
     // Campos de texto
     Object.entries(result.value).forEach(([key, val]) => {
+      if (val === undefined || val === null) return; // no adjuntar vacíos
       if (Array.isArray(val)) {
         val.forEach(v => formData.append(`${key}[]`, v));
       } else {
@@ -389,6 +421,8 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
       });
   });
 }
+
+
 
 
 
