@@ -22,6 +22,16 @@ exports.crearUsuario = async (req, res) => {
       }));
     }
 
+    // Validación de seguro para profesionales
+    if (body.rol === 'Profesional' && (!body.seguroMalaPraxis || body.seguroMalaPraxis.trim() === '')) {
+      return res.status(400).json({ error: 'El seguro de mala praxis es obligatorio para profesionales.' });
+    }
+
+    // Si no es profesional, no guardamos el campo
+    if (body.rol !== 'Profesional') {
+      delete body.seguroMalaPraxis;
+    }
+
     let hashedPassword = body.contrasena;
     if (body.contrasena) {
       const salt = await bcrypt.genSalt(10);
@@ -41,6 +51,7 @@ exports.crearUsuario = async (req, res) => {
     res.status(500).json({ error: 'Error al crear usuario', detalles: err });
   }
 };
+
 
 // ==================================================
 // Obtener todos los usuarios
@@ -94,8 +105,22 @@ exports.actualizarUsuario = async (req, res) => {
       delete body.contrasena;
     }
 
+    // Rol final (nuevo si viene en body, si no el actual)
+    const rolFinal = body.rol || usuario.rol;
+
+    if (rolFinal === 'Profesional') {
+      if (!body.seguroMalaPraxis && !usuario.seguroMalaPraxis) {
+        return res.status(400).json({ error: 'El seguro de mala praxis es obligatorio para profesionales.' });
+      }
+    } else {
+      // Si no es profesional, borramos el campo
+      body.seguroMalaPraxis = undefined;
+    }
+
     usuario.set(body);
-    if (documentos.length > 0) usuario.documentos = usuario.documentos.concat(documentos);
+    if (documentos.length > 0) {
+      usuario.documentos = usuario.documentos.concat(documentos);
+    }
 
     await usuario.save();
     usuario.contrasena = undefined;
@@ -104,6 +129,7 @@ exports.actualizarUsuario = async (req, res) => {
     res.status(500).json({ error: 'Error al actualizar usuario', detalles: err });
   }
 };
+
 
 // ==================================================
 // Eliminar usuario
@@ -123,16 +149,17 @@ exports.eliminarUsuario = async (req, res) => {
 exports.login = async (req, res) => {
   try {
     const { usuario, contrasena } = req.body;
+    const loginUsuario = (usuario || '').toLowerCase().trim();
 
-    const user = await Usuario.findOne({ usuario });
+    const user = await Usuario.findOne({ usuario: loginUsuario });
     if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
     const validPassword = await bcrypt.compare(contrasena, user.contrasena);
     if (!validPassword) return res.status(401).json({ error: 'Contraseña incorrecta' });
 
     const token = jwt.sign(
-      { id: user._id, usuario: user.usuario, rol: user.rol },
-      JWT_SECRET,                         // <-- MISMO secreto
+      { id: user._id, usuario: user.usuario, rol: user.rol, nombreApellido: user.nombreApellido },
+      JWT_SECRET,
       { expiresIn: '8h' }
     );
 
@@ -145,6 +172,7 @@ exports.login = async (req, res) => {
     res.status(500).json({ error: 'Error en login', detalles: err.message });
   }
 };
+
 
 // ==================================================
 // Middleware de autenticación con JWT

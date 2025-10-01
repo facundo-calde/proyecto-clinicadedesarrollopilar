@@ -140,7 +140,15 @@ const actualizarPaciente = async (req, res) => {
 
     const data = buildPacienteData(req.body, paciente);
 
-    // Si cambia el estado, agregamos entrada al historial
+    // ===== AUDITORÍA: datos del usuario que modifica (del token) =====
+    const actor = {
+      usuarioId: req.user?.id || null,
+      usuario: req.user?.usuario || null,
+      nombre: req.user?.nombreApellido || null  // viene del token (login actualizado)
+    };
+    // =================================================================
+
+    // Si cambia el estado, agregamos entrada al historial (con snapshot completo)
     const nuevoEstado = req.body.estado;
     const descripcionEstado = req.body.descripcionEstado || req.body.estadoDescripcion || '';
     if (
@@ -148,19 +156,26 @@ const actualizarPaciente = async (req, res) => {
       ESTADOS.has(String(nuevoEstado)) &&
       String(nuevoEstado) !== String(paciente.estado || '')
     ) {
-      // Asignamos el nuevo estado y registramos historial
-      paciente.estado = String(nuevoEstado);
-      paciente.estadoHistorial = Array.isArray(paciente.estadoHistorial) ? paciente.estadoHistorial : [];
+      const estadoAnterior = String(paciente.estado ?? '—');
+      const estadoNuevo    = String(nuevoEstado);
+
+      paciente.estado = estadoNuevo;
+      if (!Array.isArray(paciente.estadoHistorial)) paciente.estadoHistorial = [];
+
       paciente.estadoHistorial.push({
-        estado: String(nuevoEstado),
+        // compat y datos explícitos para el render
+        estado: estadoNuevo,
+        estadoAnterior,
+        estadoNuevo,
         fecha: new Date(),
-        descripcion: descripcionEstado
+        descripcion: descripcionEstado,
+        cambiadoPor: actor
       });
     }
 
-    // Asignar el resto de campos (ignorar intento de cambiar DNI)
+    // Asignar el resto de campos (ignorar cambio de DNI y estado: ya se manejó)
     for (const [k, v] of Object.entries(data)) {
-      if (k === 'dni' || k === 'estado') continue; // estado ya se manejó arriba
+      if (k === 'dni' || k === 'estado') continue;
       paciente[k] = (typeof v === 'string') ? v.trim() : v;
     }
 
@@ -175,6 +190,7 @@ const actualizarPaciente = async (req, res) => {
     res.status(500).json({ error: 'Error al actualizar' });
   }
 };
+
 
 module.exports = {
   buscarPaciente,

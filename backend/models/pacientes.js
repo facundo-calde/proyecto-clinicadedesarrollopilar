@@ -12,6 +12,7 @@ const responsableSchema = new mongoose.Schema({
   }
 }, { _id: false });
 
+// ✅ Historial de estado con quién lo cambió
 const estadoHistorialSchema = new mongoose.Schema({
   estado: {
     type: String,
@@ -19,7 +20,14 @@ const estadoHistorialSchema = new mongoose.Schema({
     required: true
   },
   fecha: { type: Date, default: Date.now },
-  descripcion: { type: String, trim: true }
+  descripcion: { type: String, trim: true },
+
+  // Quién realizó el cambio (snapshot)
+  cambiadoPor: {
+    usuarioId: { type: mongoose.Schema.Types.ObjectId, ref: 'Usuario' }, // lo validás en el controller
+    nombre: String,   // ej: "Juan Pérez" (snapshot)
+    usuario: String   // ej: correo/login (snapshot)
+  }
 }, { _id: false });
 
 const pacienteSchema = new mongoose.Schema({
@@ -32,7 +40,7 @@ const pacienteSchema = new mongoose.Schema({
   },
   fechaNacimiento: { type: String, required: true },
 
-  // Responsables (permite relaciones repetidas; 1..3)
+  // Responsables (1..3)
   responsables: {
     type: [responsableSchema],
     validate: [{
@@ -80,7 +88,7 @@ const pacienteSchema = new mongoose.Schema({
   // Módulos asignados
   modulosAsignados: [{
     moduloId: { type: mongoose.Schema.Types.ObjectId, ref: 'Modulo' },
-    nombre: String, // opcional (se puede resolver por ref)
+    nombre: String, // opcional
     cantidad: { type: Number, min: 0.25, max: 2 },
 
     profesionales: [{
@@ -101,12 +109,14 @@ const pacienteSchema = new mongoose.Schema({
 
 /**
  * Hook: al crear, si hay estado pero no historial aún, guardamos la entrada inicial.
+ * (cambiadoPor se deja vacío en el inicial; el controller lo setea en cambios posteriores)
  */
 pacienteSchema.pre('save', function(next) {
   if (this.isNew && this.estado && (!Array.isArray(this.estadoHistorial) || this.estadoHistorial.length === 0)) {
     this.estadoHistorial.push({
       estado: this.estado,
       descripcion: 'Estado inicial'
+      // cambiadoPor: { ... } → lo maneja el controller si hace falta
     });
   }
   next();

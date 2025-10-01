@@ -85,6 +85,7 @@ async function renderFichaPaciente(p) {
       return dt.toLocaleString(); // usa la locale del navegador
     } catch { return String(d ?? ""); }
   };
+  const shortId = (id) => String(id || "").slice(-6);
 
   const areaName = (val) => {
     if (!val) return "";
@@ -165,21 +166,47 @@ async function renderFichaPaciente(p) {
     return `<ul style="margin:5px 0; padding-left:20px;">${mpLinea}${tutorLinea}</ul>`;
   })();
 
-  // ---- historial de estado ----
+  // ---- historial de estado (con usuario que hizo el cambio) ----
   const historialHTML = (() => {
     const hist = Array.isArray(p.estadoHistorial) ? p.estadoHistorial.slice() : [];
     if (!hist.length) return "<em>Sin movimientos</em>";
-    // opcional: mostrar más reciente primero
-    hist.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+
+    // Orden cronológico ascendente para derivar "de → a" si no viene en la entrada
+    hist.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+
+    // Recorro para construir items con from/to + actor
+    let prevEstado = null;
+    const items = hist.map((h, idx) => {
+      // Soporte dual: si existen campos explícitos, úsalos; si no, derivá
+      const from = (h.estadoAnterior ?? h.desde ?? (idx === 0 ? "—" : prevEstado ?? "—"));
+      const to   = (h.estadoNuevo    ?? h.hasta ?? h.estado ?? "—");
+      prevEstado = to;
+
+      // Actor (preferí snapshot; si no, buscá por usuarioId)
+      let actor = "";
+      const cp = h.cambiadoPor || {};
+      if (cp.nombre) actor = cp.nombre;
+      else if (cp.usuario) actor = cp.usuario;
+      else if (cp.usuarioId && cache.userById.has(String(cp.usuarioId))) {
+        const u = cache.userById.get(String(cp.usuarioId));
+        actor = u?.nombreApellido || u?.usuario || shortId(cp.usuarioId);
+      } else if (cp.usuarioId) {
+        actor = `ID:${shortId(cp.usuarioId)}`;
+      }
+
+      const actorHTML = actor ? ` — <em style="color:#666;">por ${actor}</em>` : "";
+      const descHTML  = h.descripcion ? ` — <span style="color:#555;">${h.descripcion}</span>` : "";
+      const fechaHTML = ` <span style="color:#777;">(${fmtDateTime(h.fecha)})</span>`;
+
+      return `<li><strong>${from}</strong> → <strong>${to}</strong>${fechaHTML}${actorHTML}${descHTML}</li>`;
+    });
+
+    // Mostramos más reciente primero
+    items.reverse();
+
     return `
       <ul style="margin:6px 0 0 14px; padding-left:6px; list-style: disc;">
-        ${hist.map(h => {
-          const de = h.estadoAnterior || "—";
-          const a  = h.estadoNuevo || "—";
-          const f  = fmtDateTime(h.fecha);
-          const d  = h.descripcion ? ` — <span style="color:#555;">${h.descripcion}</span>` : "";
-          return `<li><strong>${de}</strong> → <strong>${a}</strong> <span style="color:#777;">(${f})</span>${d}</li>`;
-        }).join("")}
+        ${items.join("")}
       </ul>
     `;
   })();
@@ -254,15 +281,12 @@ async function renderFichaPaciente(p) {
 
 
 
-
-
-
 async function modificarPaciente(dni) {
   try {
     const res = await fetch(`${API_URL}/${dni}`);
     const p = await res.json();
 
-    // ---- Token (para /usuarios) ----
+    // ---- Token (para /usuarios y para el PUT) ----
     const TOKEN =
       localStorage.getItem("token") ||
       sessionStorage.getItem("token") ||
@@ -573,15 +597,12 @@ async function modificarPaciente(dni) {
         } else {
           existentes.forEach(m => {
             const row = addModuloRow();
-            // set módulo y cantidad
             const selMod = row.querySelector(".modulo-select");
             const selCant = row.querySelector(".cantidad-select");
             if (selMod) selMod.value = String(m.moduloId || "");
             if (selCant) selCant.value = String(m.cantidad ?? "0");
 
-            // profesionales del módulo
             const contProf = row.querySelector(".profesionales-container");
-            // la primera fila ya existe, las extra hay que agregarlas
             const ensureRows = (n) => {
               const actuales = contProf.querySelectorAll(".profesional-row").length;
               for (let i = actuales; i < n; i++) {
@@ -599,21 +620,14 @@ async function modificarPaciente(dni) {
               const areaSel = f.querySelector(".area-select");
               const profSel = f.querySelector(".profesional-select");
 
-              // set área
               const areaId = pr.areaId || pr.area || "";
               areaSel.value = String(areaId);
-
-              // disparar change para poblar profesionales y luego setear
               areaSel.dispatchEvent(new Event("change", { bubbles: true }));
-              // dar un tick al event loop para que se reemplace el innerHTML antes de setear el value
-              setTimeout(() => {
-                profSel.value = String(pr.profesionalId || "");
-              }, 0);
+              setTimeout(() => { profSel.value = String(pr.profesionalId || ""); }, 0);
             });
           });
         }
 
-        // botón agregar módulo manual
         document.getElementById("btnAgregarModulo").addEventListener("click", () => {
           addModuloRow();
         });
@@ -712,15 +726,25 @@ async function modificarPaciente(dni) {
 
     if (!isConfirmed) return;
 
-    // PUT
+    // === PUT con token ===
+    if (!TOKEN) {
+      Swal.fire('Sesión requerida', 'Volvé a iniciar sesión para guardar cambios.', 'warning');
+      return;
+    }
+
     const putRes = await fetch(`${API_URL}/${dni}`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${TOKEN}`
+      },
       body: JSON.stringify(data)
     });
+
     if (!putRes.ok) {
       let msg = "Error al guardar";
       try { const j = await putRes.json(); msg = j?.error || msg; } catch {}
+      if (putRes.status === 401) msg = 'Token requerido o inválido. Iniciá sesión nuevamente.';
       throw new Error(msg);
     }
 
@@ -731,9 +755,10 @@ async function modificarPaciente(dni) {
     document.getElementById("busquedaInput").value = "";
   } catch (err) {
     console.error(err);
-    Swal.fire("❌ Error al cargar/modificar paciente", "", "error");
+    Swal.fire("❌ Error al cargar/modificar paciente", err.message || "", "error");
   }
 }
+
 
 
 

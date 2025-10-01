@@ -24,6 +24,10 @@ const usuarioSchema = new mongoose.Schema({
   tipoCuenta: String,
   areas: [String],
   rol: String,
+
+  // 🔹 Nuevo campo específico para profesionales
+  seguroMalaPraxis: String, // Ej: número de póliza o nombre de la compañía
+
   usuario: {
     type: String,
     required: true,
@@ -36,9 +40,9 @@ const usuarioSchema = new mongoose.Schema({
   activo: { type: Boolean, default: true },
   fechaAlta: { type: Date, default: Date.now },
 
-  // 🔹 Nuevo campo para documentos
   documentos: [documentoSchema]
 });
+
 
 module.exports = mongoose.model('Usuario', usuarioSchema);
 

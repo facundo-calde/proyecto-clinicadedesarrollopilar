@@ -94,7 +94,44 @@ document.addEventListener('DOMContentLoaded', () => {
 // ==========================
 // 🧾 Formulario (SweetAlert)
 // ==========================
-function mostrarFormularioUsuario(u = {}, modoEdicion = false) { // ← renombrado para no pisar la global
+// Crea el HTML de checkboxes de áreas con las seleccionadas marcadas
+function buildAreasCheckboxes(areas = [], seleccionadas = new Set()) {
+  return areas
+    .map((a) => {
+      const label = (typeof a === "string")
+        ? a
+        : (a.nombre || a.name || a.titulo || a.descripcion || a.area || "");
+      const safe = String(label).replace(/"/g, "&quot;");
+      const checked = seleccionadas.has(label) ? "checked" : "";
+      return `<label><input type="checkbox" class="area-check" name="areas[]" value="${safe}" ${checked}> ${safe}</label><br>`;
+    })
+    .join("");
+}
+
+async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
+  // 1) Traigo áreas desde la API
+  let AREAS = [];
+  try {
+    const res = await fetchAuth(`${API}/api/areas`, { method: "GET" });
+    if (!res.ok) throw new Error("No se pudo obtener áreas");
+    const data = await res.json();
+    AREAS = (Array.isArray(data) ? data : []).map(a =>
+      (typeof a === "string") ? a : (a.nombre || a.name || a.titulo || a.descripcion || a.area || "")
+    ).filter(Boolean);
+  } catch (e) {
+    console.error(e);
+    AREAS = [];
+  }
+
+  // 2) Set de áreas ya asignadas al usuario
+  const AREAS_SELECCIONADAS = new Set(
+    (u.areas || []).map(a => (typeof a === "string") ? a : (a.nombre || a.name || a.descripcion || a.area || ""))
+  );
+
+  // 3) HTML dinámico de áreas
+  const areasHTML = buildAreasCheckboxes(AREAS, AREAS_SELECCIONADAS);
+
+  // 4) Muestro el modal
   Swal.fire({
     title: modoEdicion ? 'Editar usuario' : 'Registrar nuevo usuario',
     width: '80%',
@@ -174,10 +211,14 @@ function mostrarFormularioUsuario(u = {}, modoEdicion = false) { // ← renombra
           <input class="swal2-input" id="tipoCuenta" placeholder="Tipo de cuenta">
         </div>
         <div class="form-column">
-          <label><strong>Área asignada:</strong></label><br>
-          ${['Fonoaudiología', 'Psicopedagogía', 'Terapia Ocupacional', 'Atención Temprana', 'Abordaje Integral', 'Habilidades Sociales']
-            .map(area => `<label><input type="checkbox" class="area-check" value="${area}"> ${area}</label><br>`).join('')}
-          <br>
+          <div id="areasSection" style="display:none;">
+            <label><strong>Áreas asignadas:</strong></label><br>
+            <div id="areasContainer">
+              ${areasHTML || '<em>No hay áreas cargadas.</em>'}
+            </div>
+            <br>
+          </div>
+
           <label><strong>Rol asignado:</strong></label>
           <select id="rol" class="swal2-select">
             <option value="">Seleccionar...</option>
@@ -187,6 +228,9 @@ function mostrarFormularioUsuario(u = {}, modoEdicion = false) { // ← renombra
             <option value="Administrativo">Administrativo</option>
             <option value="Recepcionista">Recepcionista</option>
           </select>
+
+          <label id="labelSeguro" style="display:none;margin-top:10px;"><strong>Seguro de mala praxis:</strong></label>
+          <input class="swal2-input" id="seguroMalaPraxis" placeholder="Número de póliza o compañía" style="display:none">
         </div>
         <div class="form-column">
           <label><strong>Usuario y Contraseña:</strong></label>
@@ -202,10 +246,11 @@ function mostrarFormularioUsuario(u = {}, modoEdicion = false) { // ← renombra
     showCancelButton: true,
     cancelButtonText: 'Cancelar',
     didOpen: () => {
+      // Preload datos si es edición
       if (modoEdicion) {
         const set = (id, val) => document.getElementById(id).value = val || '';
         set('nombreApellido', u.nombreApellido);
-        set('fechaNacimiento', u.fechaNacimiento ? u.fechaNacimiento.split('T')[0] : '');
+        set('fechaNacimiento', u.fechaNacimiento ? String(u.fechaNacimiento).split('T')[0] : '');
         set('domicilio', u.domicilio);
         set('dni', u.dni);
         set('matricula', u.matricula);
@@ -220,18 +265,69 @@ function mostrarFormularioUsuario(u = {}, modoEdicion = false) { // ← renombra
         set('tipoCuenta', u.tipoCuenta);
         set('usuario', u.usuario);
         set('contrasena', u.contrasena);
-
-        (u.areas || []).forEach(area => {
-          const checkbox = Array.from(document.querySelectorAll('.area-check')).find(c => c.value === area);
-          if (checkbox) checkbox.checked = true;
-        });
-
         if (u.rol) document.getElementById('rol').value = u.rol;
+        if (u.rol === 'Profesional') {
+          document.getElementById('seguroMalaPraxis').style.display = 'block';
+          document.getElementById('labelSeguro').style.display = 'block';
+          document.getElementById('seguroMalaPraxis').value = u.seguroMalaPraxis || '';
+        }
       }
+
+      // Mostrar/ocultar ÁREAS y SEGURO según rol
+      const rolSelect = document.getElementById('rol');
+      const areasSection = document.getElementById('areasSection');
+      const labelSeguro = document.getElementById('labelSeguro');
+      const inputSeguro = document.getElementById('seguroMalaPraxis');
+
+      const ROLES_CON_AREAS = new Set(['Profesional', 'Coordinador de área']);
+
+      function syncVisibility() {
+        const rol = rolSelect.value;
+
+        // ÁREAS: solo Profesional o Coordinador de área
+        if (ROLES_CON_AREAS.has(rol)) {
+          areasSection.style.display = 'block';
+        } else {
+          areasSection.style.display = 'none';
+          // limpio checks si se ocultó
+          document.querySelectorAll('input[name="areas[]"]').forEach(c => (c.checked = false));
+        }
+
+        // SEGURO: solo Profesional
+        const showSeguro = (rol === 'Profesional');
+        labelSeguro.style.display = showSeguro ? 'block' : 'none';
+        inputSeguro.style.display = showSeguro ? 'block' : 'none';
+        if (!showSeguro) inputSeguro.value = '';
+      }
+
+      // Inicial
+      syncVisibility();
+      // Si viene en edición con rol que habilita áreas, mostrarlas
+      if (u.rol && (u.rol === 'Profesional' || u.rol === 'Coordinador de área')) {
+        areasSection.style.display = 'block';
+      }
+
+      // Listener
+      rolSelect.addEventListener('change', syncVisibility);
     },
     preConfirm: () => {
-      const get = id => document.getElementById(id).value;
-      const areasSeleccionadas = Array.from(document.querySelectorAll('.area-check:checked')).map(e => e.value);
+      const get = id => document.getElementById(id)?.value?.trim();
+      const rol = get('rol');
+
+      // Si el rol NO requiere áreas, no enviar ninguna
+      let areasSeleccionadas = [];
+      if (rol === 'Profesional' || rol === 'Coordinador de área') {
+        areasSeleccionadas = Array
+          .from(document.querySelectorAll('input[name="areas[]"]:checked'))
+          .map(e => e.value);
+      }
+
+      // Validación: seguro obligatorio solo para profesionales (por si acaso)
+      const seguro = get('seguroMalaPraxis');
+      if (rol === 'Profesional' && !seguro) {
+        Swal.showValidationMessage('El seguro de mala praxis es obligatorio para profesionales');
+        return false;
+      }
 
       return {
         nombreApellido: get('nombreApellido'),
@@ -249,9 +345,10 @@ function mostrarFormularioUsuario(u = {}, modoEdicion = false) { // ← renombra
         alias: get('alias'),
         tipoCuenta: get('tipoCuenta'),
         areas: areasSeleccionadas,
-        rol: get('rol'),
+        rol,
         usuario: get('usuario'),
-        contrasena: get('contrasena')
+        contrasena: get('contrasena'),
+        seguroMalaPraxis: seguro
       };
     }
   }).then(result => {
@@ -271,12 +368,12 @@ function mostrarFormularioUsuario(u = {}, modoEdicion = false) { // ← renombra
     });
 
     // Archivos
-    const archivos = document.getElementById('documentos').files;
+    const archivos = document.getElementById('documentos').files || [];
     for (let i = 0; i < archivos.length; i++) {
       formData.append('documentos', archivos[i]);
     }
 
-    // Envío con token (sin Content-Type manual)
+    // Envío con token
     fetchAuth(url, { method, body: formData })
       .then(res => {
         if (!res.ok) throw new Error('Error al guardar');
@@ -292,6 +389,9 @@ function mostrarFormularioUsuario(u = {}, modoEdicion = false) { // ← renombra
       });
   });
 }
+
+
+
 
 // ==========================
 // ✏️ Editar / 🗑️ Borrar
