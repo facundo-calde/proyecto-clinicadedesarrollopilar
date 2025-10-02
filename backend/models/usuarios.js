@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 
+// ------------ Subdocs ------------
 const documentoSchema = new mongoose.Schema({
   tipo: { type: String, required: true },
   nombre: { type: String, required: true },
@@ -7,19 +8,33 @@ const documentoSchema = new mongoose.Schema({
   fechaSubida: { type: Date, default: Date.now }
 });
 
-// Roles (incluye "Directoras")
+// Catálogos
 const ROLES = Object.freeze([
   'Administrador',
   'Directoras',
+  'Coordinador y profesional',
   'Coordinador de área',
   'Profesional',
   'Administrativo',
   'Recepcionista',
 ]);
 
-// Niveles de profesional
 const NIVELES_PRO = Object.freeze(['Junior', 'Senior']);
 
+// Profesional por área (permite distintos niveles por área)
+const areaProfesionalSchema = new mongoose.Schema({
+  areaId:      { type: mongoose.Schema.Types.ObjectId, ref: 'Area' }, // recomendado
+  areaNombre:  { type: String },                                       // fallback/legacy
+  nivel:       { type: String, enum: NIVELES_PRO, required: true }
+}, { _id: false });
+
+// Coordinación por área
+const areaCoordinadaSchema = new mongoose.Schema({
+  areaId:     { type: mongoose.Schema.Types.ObjectId, ref: 'Area' },
+  areaNombre: { type: String }
+}, { _id: false });
+
+// ------------ Usuario ------------
 const usuarioSchema = new mongoose.Schema({
   nombreApellido: String,
   fechaNacimiento: Date,
@@ -35,13 +50,18 @@ const usuarioSchema = new mongoose.Schema({
   cbu: String,
   alias: String,
   tipoCuenta: String,
+
+  // ✅ NUEVO: detalle por rol/área
+  areasProfesional: [areaProfesionalSchema], // {areaId/areaNombre, nivel: 'Junior'|'Senior'}
+  areasCoordinadas: [areaCoordinadaSchema],  // {areaId/areaNombre}
+
+  // ⚠️ LEGACY: lista “chata” para compat con front viejo (se autollenará)
   areas: [String],
 
-  rol: { type: String, enum: ROLES },
+  rol: { type: String, enum: ROLES, required: true },
 
-  // Solo para profesionales
+  // Solo para roles que incluyen parte profesional
   seguroMalaPraxis: String,
-  nivelProfesional: { type: String, enum: NIVELES_PRO }, // Junior / Senior (requerido si rol=Profesional)
 
   usuario: {
     type: String,
@@ -56,28 +76,66 @@ const usuarioSchema = new mongoose.Schema({
   fechaAlta: { type: Date, default: Date.now },
 
   documentos: [documentoSchema]
-});
+}, { timestamps: true });
 
-// Validación condicional: si es Profesional, exigir nivel y (opcional) seguro
+// ------------ Validaciones condicionales ------------
 usuarioSchema.pre('validate', function (next) {
-  if (this.rol === 'Profesional') {
-    if (!this.nivelProfesional) {
-      this.invalidate('nivelProfesional', 'El nivel profesional (Junior/Senior) es obligatorio para profesionales');
+  const rol = this.rol || '';
+  const esProfesional = rol === 'Profesional' || rol === 'Coordinador y profesional';
+  const esCoordinador = rol === 'Coordinador de área' || rol === 'Coordinador y profesional';
+
+  if (esProfesional) {
+    if (!Array.isArray(this.areasProfesional) || this.areasProfesional.length === 0) {
+      this.invalidate('areasProfesional', 'Debe tener al menos un área como profesional');
+    } else {
+      // cada entrada debe tener nivel
+      for (const ap of this.areasProfesional) {
+        if (!ap?.nivel) {
+          this.invalidate('areasProfesional.nivel', 'Cada área profesional debe tener nivel (Junior/Senior)');
+          break;
+        }
+      }
     }
-    // Si querés hacerlo obligatorio, descomentá:
+    // si querés obligar seguro, descomentá:
     // if (!this.seguroMalaPraxis) {
     //   this.invalidate('seguroMalaPraxis', 'El seguro de mala praxis es obligatorio para profesionales');
     // }
   } else {
-    // Si cambian el rol a otro, no guardes nivel
-    this.nivelProfesional = undefined;
+    // si no tiene parte profesional, limpiá detalle profesional
+    this.areasProfesional = [];
+    this.seguroMalaPraxis = undefined;
   }
+
+  if (esCoordinador) {
+    if (!Array.isArray(this.areasCoordinadas) || this.areasCoordinadas.length === 0) {
+      this.invalidate('areasCoordinadas', 'Debe tener al menos un área como coordinador');
+    }
+  } else {
+    this.areasCoordinadas = [];
+  }
+
   next();
 });
 
-// Modelo + export
+// ------------ Compat: autollenar `areas` (legacy) ------------
+usuarioSchema.pre('save', function (next) {
+  // Combina nombres de áreas de ambos bloques para no romper el front viejo
+  const nombres = new Set();
+
+  (this.areasProfesional || []).forEach(a => {
+    if (a?.areaNombre) nombres.add(a.areaNombre);
+  });
+  (this.areasCoordinadas || []).forEach(a => {
+    if (a?.areaNombre) nombres.add(a.areaNombre);
+  });
+
+  this.areas = Array.from(nombres);
+  next();
+});
+
+// ------------ Modelo ------------
 const Usuario = mongoose.model('Usuario', usuarioSchema);
-Usuario.ROLES = ROLES;              // opcional
-Usuario.NIVELES_PRO = NIVELES_PRO;  // opcional
+Usuario.ROLES = ROLES;
+Usuario.NIVELES_PRO = NIVELES_PRO;
 
 module.exports = Usuario;

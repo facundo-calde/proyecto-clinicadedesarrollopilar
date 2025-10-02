@@ -82,7 +82,7 @@ async function renderFichaPaciente(p) {
     try {
       const dt = new Date(d);
       if (isNaN(dt.getTime())) return String(d ?? "");
-      return dt.toLocaleString(); // usa la locale del navegador
+      return dt.toLocaleString();
     } catch { return String(d ?? ""); }
   };
   const shortId = (id) => String(id || "").slice(-6);
@@ -123,7 +123,23 @@ async function renderFichaPaciente(p) {
       </ul>`
     : "Sin módulos asignados";
 
-  // ---- responsables (con WhatsApp cliqueable) ----
+  // ---- mails cliqueables ----
+  const clickableMail = (mail) =>
+    mail
+      ? `<a href="mailto:${mail}" style="color:#1a73e8; text-decoration:none;">${mail}</a>`
+      : "sin datos";
+
+  // Tomar email por relación desde responsables (fallback legacy si existiera)
+  const getEmailByRel = (rel) => {
+    const r = (Array.isArray(p.responsables) ? p.responsables : [])
+      .find(x => String(x.relacion || "").toLowerCase() === rel);
+    return (r && r.email) ? r.email : "";
+  };
+  const mailTutorRel = getEmailByRel("tutor") || p.mailTutor || "";
+  const mailPadreRel = getEmailByRel("padre") || p.mailPadre || "";
+  const mailMadreRel = getEmailByRel("madre") || p.mailMadre || "";
+
+  // ---- responsables (con WhatsApp y Email cliqueables) ----
   const responsablesHTML = (() => {
     if (Array.isArray(p.responsables) && p.responsables.length) {
       return `
@@ -131,19 +147,17 @@ async function renderFichaPaciente(p) {
           ${p.responsables.slice(0,3).map(r => {
             const rel = cap(r.relacion ?? "");
             const nom = r.nombre ?? "sin nombre";
-            if (r.whatsapp) {
-              return `<li><strong>${rel}:</strong> ${nom} 
-                        📱 <a href="https://wa.me/${r.whatsapp}" target="_blank" 
-                          style="color:#25d366; text-decoration:none;">
-                          ${r.whatsapp}
-                        </a>
-                      </li>`;
-            }
-            return `<li><strong>${rel}:</strong> ${nom}</li>`;
+            const wspHTML = r.whatsapp
+              ? ` 📱 <a href="https://wa.me/${r.whatsapp}" target="_blank" style="color:#25d366; text-decoration:none;">${r.whatsapp}</a>`
+              : "";
+            const mailHTML = r.email
+              ? ` ✉️ ${clickableMail(r.email)}`
+              : "";
+            return `<li><strong>${rel}:</strong> ${nom}${wspHTML}${mailHTML}</li>`;
           }).join("")}
         </ul>`;
     }
-    // fallback legacy
+    // fallback legacy si no hay responsables cargados
     const tutorLinea = (p.tutor?.nombre || p.tutor?.whatsapp)
       ? `<li><strong>Tutor/a:</strong> ${p.tutor?.nombre ?? "sin datos"}${
           p.tutor?.whatsapp
@@ -171,18 +185,16 @@ async function renderFichaPaciente(p) {
     const hist = Array.isArray(p.estadoHistorial) ? p.estadoHistorial.slice() : [];
     if (!hist.length) return "<em>Sin movimientos</em>";
 
-    // Orden cronológico ascendente para derivar "de → a" si no viene en la entrada
+    // Orden ascendente para derivar "de → a" si no viene
     hist.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
 
-    // Recorro para construir items con from/to + actor
     let prevEstado = null;
     const items = hist.map((h, idx) => {
-      // Soporte dual: si existen campos explícitos, úsalos; si no, derivá
       const from = (h.estadoAnterior ?? h.desde ?? (idx === 0 ? "—" : prevEstado ?? "—"));
       const to   = (h.estadoNuevo    ?? h.hasta ?? h.estado ?? "—");
       prevEstado = to;
 
-      // Actor (preferí snapshot; si no, buscá por usuarioId)
+      // Actor (snapshot preferente)
       let actor = "";
       const cp = h.cambiadoPor || {};
       if (cp.nombre) actor = cp.nombre;
@@ -201,7 +213,7 @@ async function renderFichaPaciente(p) {
       return `<li><strong>${from}</strong> → <strong>${to}</strong>${fechaHTML}${actorHTML}${descHTML}</li>`;
     });
 
-    // Mostramos más reciente primero
+    // más reciente primero
     items.reverse();
 
     return `
@@ -210,12 +222,6 @@ async function renderFichaPaciente(p) {
       </ul>
     `;
   })();
-
-  // ---- mails cliqueables ----
-  const clickableMail = (mail) =>
-    mail
-      ? `<a href="mailto:${mail}" style="color:#1a73e8; text-decoration:none;">${mail}</a>`
-      : "sin datos";
 
   // ---- render ----
   container.innerHTML = `
@@ -244,8 +250,7 @@ async function renderFichaPaciente(p) {
           <p><strong>Colegio:</strong> ${p.colegio ?? "sin datos"}</p>
           <p><strong>Mail del colegio:</strong> ${clickableMail(p.colegioMail)}</p>
           <p><strong>Curso / Nivel:</strong> ${p.curso ?? "sin datos"}</p>
-          <p><strong>Mail de los padres:</strong> ${clickableMail(p.mailPadres)}</p>
-          <p><strong>Mail del tutor:</strong> ${clickableMail(p.mailTutor)}</p>
+          <!-- (No mostramos mails de tutor/padre/madre aquí; van en "Responsables") -->
         </div>
       </div>
 
@@ -276,6 +281,8 @@ async function renderFichaPaciente(p) {
     </div>
   `;
 }
+
+
 
 
 
@@ -316,18 +323,29 @@ async function modificarPaciente(dni) {
       ? AREAS.map(a => `<option value="${a._id}">${a.nombre}</option>`).join("")
       : `<option value="">No disponible</option>`;
 
-    // ---- helpers para filtrar profesionales por área ----
+    // ---- helpers para filtrar profesionales por área (incluye "Coordinador y profesional") ----
     const norm  = (s) => (s ?? "").toString().normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
     const HEX24 = /^[a-f0-9]{24}$/i;
     const AREA_ID_TO_NAME_NORM = new Map();
     AREAS.forEach(a => AREA_ID_TO_NAME_NORM.set(String(a._id), norm(a.nombre)));
+    const ROLES_PROF = new Set(["profesional", "coordinador y profesional"]);
 
     const profesionalesDeArea = (areaId) => {
       const targetNameNorm = AREA_ID_TO_NAME_NORM.get(String(areaId)) || "";
       const lista = USUARIOS
-        .filter(u => norm(u.rol || u.rolAsignado) === "profesional")
+        .filter(u => ROLES_PROF.has(norm(u.rol || u.rolAsignado)))
         .filter(u => {
           if (!areaId) return true;
+
+          // 1) Nuevo: areasProfesional [{areaId/areaNombre, nivel}]
+          if (Array.isArray(u.areasProfesional) && u.areasProfesional.length) {
+            for (const ap of u.areasProfesional) {
+              const nombre = ap?.areaNombre || "";
+              if (norm(nombre) === targetNameNorm) return true;
+            }
+          }
+
+          // 2) Legacy: areas como strings/objetos
           const arr = Array.isArray(u.areas) ? u.areas : [];
           for (const it of arr) {
             const idCandidate   = typeof it === "object" ? it._id    : it;
@@ -340,6 +358,7 @@ async function modificarPaciente(dni) {
           }
           return false;
         });
+
       if (!lista.length) return `<option value="">Sin profesionales para el área</option>`;
       return `<option value="">-- Seleccionar --</option>` +
              lista.map(u => `<option value="${u._id}">${u.nombreApellido || u.nombre || u.usuario}</option>`).join("");
@@ -392,19 +411,22 @@ async function modificarPaciente(dni) {
       </div>
     `;
 
-    // ---- responsables iniciales ----
+    // ---- responsables iniciales (trae email si existe) ----
     const responsablesIniciales = Array.isArray(p.responsables) && p.responsables.length
-      ? p.responsables.slice(0,3)
+      ? p.responsables.slice(0,3).map(r => ({
+          relacion: r.relacion, nombre: r.nombre, whatsapp: r.whatsapp, email: r.email || ""
+        }))
       : (() => {
           const arr = [];
           if (p.tutor?.nombre && p.tutor?.whatsapp) {
-            arr.push({ relacion:'tutor', nombre:p.tutor.nombre, whatsapp:p.tutor.whatsapp });
+            arr.push({ relacion:'tutor', nombre:p.tutor.nombre, whatsapp:p.tutor.whatsapp, email: "" });
           }
           if (p.madrePadre) {
             arr.push({
               relacion: /madre/i.test(p.madrePadre) ? 'madre' : 'padre',
               nombre: String(p.madrePadre).replace(/^(madre|padre)\s*:\s*/i,'').trim(),
-              whatsapp: p.whatsappMadrePadre || ''
+              whatsapp: p.whatsappMadrePadre || '',
+              email: ""
             });
           }
           return arr.slice(0,3);
@@ -437,11 +459,6 @@ async function modificarPaciente(dni) {
               </div>
               <small style="display:block; margin-bottom:6px; color:#666;">Máximo 3. <b>Se puede repetir</b> la relación.</small>
               <div id="responsablesContainer"></div>
-
-              <label>Mail de los padres:</label>
-              <input id="mailPadres" class="swal2-input" type="email" value="${p.mailPadres ?? ""}">
-              <label>Mail del tutor:</label>
-              <input id="mailTutor" class="swal2-input" type="email" value="${p.mailTutor ?? ""}">
 
               <label>Condición de Pago:</label>
               <select id="condicionDePago" class="swal2-select">
@@ -496,7 +513,7 @@ async function modificarPaciente(dni) {
         const toggleObraSocial = () => {
           const v = condicionDePagoSelect.value;
           obraSocialExtra.style.display =
-            v === "Obra Social" || v === "Obra Social + Particular" ? "block" : "none";
+            (v === "Obra Social" || v === "Obra Social + Particular") ? "block" : "none";
         };
         condicionDePagoSelect.addEventListener("change", toggleObraSocial);
         toggleObraSocial();
@@ -512,7 +529,7 @@ async function modificarPaciente(dni) {
         estadoSel.addEventListener("change", toggleDesc);
         toggleDesc();
 
-        // Responsables dinámicos
+        // Responsables dinámicos (con email opcional por fila)
         const cont = document.getElementById("responsablesContainer");
         const btnAdd = document.getElementById("btnAgregarResponsable");
         const relaciones = ['padre','madre','tutor'];
@@ -522,17 +539,18 @@ async function modificarPaciente(dni) {
             .join('');
 
         let idx = 0;
-        const addRespRow = (preset={relacion:'tutor', nombre:'', whatsapp:''}) => {
+        const addRespRow = (preset={relacion:'tutor', nombre:'', email:'', whatsapp:''}) => {
           const filas = cont.querySelectorAll('.responsable-row').length;
           if (filas >= 3) return;
           const rowId = `resp-${idx++}`;
           const html = `
             <div class="responsable-row" id="${rowId}" style="border:1px solid #ddd; border-radius:8px; padding:8px; margin:8px 0;">
-              <div style="display:grid; grid-template-columns: 150px 1fr 1fr 48px; gap:10px; align-items:center;">
+              <div style="display:grid; grid-template-columns: 140px 1fr 1fr 1fr 40px; gap:10px; align-items:center;">
                 <select class="swal2-select resp-relacion" style="margin:0;height:40px;">
                   ${makeRelacionOptions(preset.relacion || '')}
                 </select>
                 <input class="swal2-input resp-nombre" placeholder="Nombre" value="${preset.nombre || ''}" style="margin:0;height:40px;">
+                <input class="swal2-input resp-email" type="email" placeholder="Email (opcional)" value="${preset.email || ''}" style="margin:0;height:40px;">
                 <input class="swal2-input resp-whatsapp" placeholder="Whatsapp (solo dígitos)" value="${preset.whatsapp || ''}" style="margin:0;height:40px;">
                 <button type="button" class="swal2-cancel swal2-styled btn-remove" title="Quitar"
                         style="width:36px;height:36px;margin:0;padding:0;line-height:1;display:flex;align-items:center;justify-content:center;">✕</button>
@@ -632,7 +650,7 @@ async function modificarPaciente(dni) {
           addModuloRow();
         });
       },
-      width: "90%",
+      width: "80%",
       customClass: { popup: "swal-scrollable-form" },
       showCancelButton: true,
       confirmButtonText: "Guardar",
@@ -646,8 +664,6 @@ async function modificarPaciente(dni) {
         const colegio     = gv("colegio");
         const colegioMail = gv("colegioMail");
         const curso       = gv("curso");
-        const mailPadres  = gv("mailPadres");
-        const mailTutor   = gv("mailTutor");
 
         const condicionDePagoVal = gv("condicionDePago");
         const estado = gv("estado");
@@ -663,8 +679,6 @@ async function modificarPaciente(dni) {
           return false;
         }
         if (colegioMail && !mailRegex.test(colegioMail)) { Swal.showValidationMessage("⚠️ Mail del colegio inválido."); return false; }
-        if (mailPadres  && !mailRegex.test(mailPadres))  { Swal.showValidationMessage("⚠️ Mail de los padres inválido."); return false; }
-        if (mailTutor   && !mailRegex.test(mailTutor))   { Swal.showValidationMessage("⚠️ Mail del tutor inválido."); return false; }
 
         const filas = Array.from(document.querySelectorAll('#responsablesContainer .responsable-row'));
         if (filas.length < 1 || filas.length > 3) {
@@ -675,10 +689,25 @@ async function modificarPaciente(dni) {
         for (const row of filas) {
           const relacion = row.querySelector('.resp-relacion')?.value || "";
           const nombreR  = (row.querySelector('.resp-nombre')?.value || "").trim();
+          const emailR   = (row.querySelector('.resp-email')?.value || "").trim().toLowerCase();
           const whatsapp = (row.querySelector('.resp-whatsapp')?.value || "").trim();
-          if (!relacion || !nombreR || !whatsapp) { Swal.showValidationMessage("⚠️ Completá relación, nombre y WhatsApp en cada responsable."); return false; }
-          if (!wspRegex.test(whatsapp)) { Swal.showValidationMessage("⚠️ WhatsApp inválido (10 a 15 dígitos)."); return false; }
-          responsables.push({ relacion, nombre: nombreR, whatsapp });
+
+          if (!relacion || !nombreR || !whatsapp) {
+            Swal.showValidationMessage("⚠️ Completá relación, nombre y WhatsApp en cada responsable.");
+            return false;
+          }
+          if (!wspRegex.test(whatsapp)) {
+            Swal.showValidationMessage("⚠️ WhatsApp inválido (10 a 15 dígitos).");
+            return false;
+          }
+          if (emailR && !mailRegex.test(emailR)) {
+            Swal.showValidationMessage("⚠️ Email de responsable inválido.");
+            return false;
+          }
+
+          const r = { relacion, nombre: nombreR, whatsapp };
+          if (emailR) r.email = emailR; // opcional
+          responsables.push(r);
         }
 
         const modulosAsignados = [];
@@ -711,8 +740,6 @@ async function modificarPaciente(dni) {
           colegio,
           colegioMail,
           curso,
-          mailPadres: mailPadres || undefined,
-          mailTutor:  mailTutor  || undefined,
           responsables,
           condicionDePago: condicionDePagoVal,
           estado,
@@ -767,11 +794,19 @@ async function modificarPaciente(dni) {
 
 
 
-
 document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
+  const getAuthHeaders = () => {
+    const token =
+      localStorage.getItem("token") ||
+      sessionStorage.getItem("token") ||
+      "";
+    return token
+      ? { Authorization: `Bearer ${token}`, "x-access-token": token }
+      : {};
+  };
+
   Swal.fire({
-    title:
-      '<h3 style="font-family: Montserrat; font-weight: 600;">Cargar nuevo paciente:</h3>',
+    title: '<h3 style="font-family: Montserrat; font-weight: 600;">Cargar nuevo paciente:</h3>',
     html: `
       <form id="formNuevoPaciente" class="formulario-paciente">
         <div class="grid-form">
@@ -794,20 +829,12 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
             <label>Curso / Nivel:</label>
             <input id="curso" class="swal2-input">
 
-            <!-- 🔹 Responsables (padre/madre/tutor) -->
             <div style="display:flex; align-items:center; justify-content:space-between; margin-top:8px;">
               <label style="font-weight:bold; margin:0;">Responsables</label>
               <button id="btnAgregarResponsable" type="button" class="swal2-confirm swal2-styled" style="padding:2px 8px; font-size:12px;">+ Agregar</button>
             </div>
-            <small style="display:block; margin-bottom:6px; color:#666;">Máximo 3. </small>
-
+            <small style="display:block; margin-bottom:6px; color:#666;">Máximo 3.</small>
             <div id="responsablesContainer"></div>
-
-            <label>Mail de los padres:</label>
-            <input id="mailPadres" class="swal2-input" type="email">
-
-            <label>Mail del tutor:</label>
-            <input id="mailTutor" class="swal2-input" type="email">
 
             <label>Condición de Pago:</label>
             <select id="condicionDePago" class="swal2-select">
@@ -816,14 +843,11 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
               <option value="Obra Social + Particular">Obra Social + Particular</option>
             </select>
 
-            <!-- 🔹 Extra Obra Social -->
             <div id="obraSocialExtra" style="display:none; margin-top:10px;">
               <label>Prestador:</label>
               <input id="prestador" class="swal2-input">
-
               <label>Credencial:</label>
               <input id="credencial" class="swal2-input">
-
               <label>Tipo:</label>
               <input id="tipo" class="swal2-input">
             </div>
@@ -850,14 +874,14 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
         </div>
       </form>
     `,
-    width: "90%",
+    width: "80%",
     customClass: { popup: "swal-scrollable-form" },
     showCancelButton: true,
     confirmButtonText: "Guardar",
     cancelButtonText: "Cancelar",
 
     didOpen: async () => {
-      // --- Toggle Obra Social según condición de pago
+      // Toggle obra social
       const condicionDePagoSelect = document.getElementById("condicionDePago");
       const obraSocialExtra = document.getElementById("obraSocialExtra");
       const toggleObraSocial = () => {
@@ -868,129 +892,122 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
       condicionDePagoSelect.addEventListener("change", toggleObraSocial);
       toggleObraSocial();
 
-  // --- Carga de Áreas y Profesionales (con filtro por rol/área)
-const areaSel = document.getElementById("areaSeleccionada");
-const profSel = document.getElementById("profesionalSeleccionado");
+      // Carga de áreas y profesionales
+      const areaSel = document.getElementById("areaSeleccionada");
+      const profSel = document.getElementById("profesionalSeleccionado");
 
-const setOptions = (selectEl, items, mapFn, emptyText) => {
-  if (!Array.isArray(items) || items.length === 0) {
-    selectEl.innerHTML = `<option value="">${emptyText}</option>`;
-    return;
-  }
-  const opts = [`<option value="">-- Seleccionar --</option>`].concat(items.map(mapFn));
-  selectEl.innerHTML = opts.join("");
-};
-
-let AREAS = [];
-let PROFES = [];
-
-try {
-  const token = localStorage.getItem("token") || "";
-  const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
-
-  const [resAreas, resProfs] = await Promise.all([
-    fetch(`${API_URL.replace("/pacientes", "/areas")}`),
-    fetch(`${API_URL.replace("/pacientes", "/usuarios")}`, { headers: authHeaders })
-  ]);
-
-  // si viene 401/403 mostramos algo útil
-  if (!resProfs.ok) {
-    console.warn("No se pudieron cargar usuarios:", resProfs.status, await resProfs.text());
-  }
-
-  AREAS  = resAreas.ok ? await resAreas.json() : [];
-  PROFES = resProfs.ok ? await resProfs.json()  : [];
-
-  setOptions(areaSel, AREAS, (a) => `<option value="${a._id}">${a.nombre}</option>`, "No disponible");
-
-  // -------- filtro por rol/área (mismo que ya tenías) --------
-  const norm = (s) =>
-    (s ?? "").toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
-
-  const ID2NAME_NORM = new Map();
-  AREAS.forEach(a => ID2NAME_NORM.set(String(a._id), norm(a.nombre)));
-  const HEX24 = /^[a-f0-9]{24}$/i;
-
-  const renderProfesionales = () => {
-    const selId = areaSel.value || "";
-    if (!selId) {
-      profSel.innerHTML = `<option value="">-- Seleccioná un área primero --</option>`;
-      return;
-    }
-    const targetNameNorm =
-      ID2NAME_NORM.get(selId) || norm(areaSel.options[areaSel.selectedIndex]?.text || "");
-
-    const lista = PROFES
-      .filter(p => norm(p.rol || p.rolAsignado) === "profesional")
-      .filter(p => {
-        const arr = Array.isArray(p.areas) ? p.areas : [];
-        for (const it of arr) {
-          const idCandidate   = typeof it === "object" ? it._id    : it;
-          const nameCandidate = typeof it === "object" ? it.nombre : it;
-          if (HEX24.test(String(idCandidate || ""))) {
-            const n = ID2NAME_NORM.get(String(idCandidate));
-            if (n && n === targetNameNorm) return true;
-          }
-          if (norm(nameCandidate) === targetNameNorm) return true;
+      const setOptions = (selectEl, items, mapFn, emptyText) => {
+        if (!Array.isArray(items) || items.length === 0) {
+          selectEl.innerHTML = `<option value="">${emptyText}</option>`;
+          return;
         }
-        return false;
-      });
+        const opts = [`<option value="">-- Seleccionar --</option>`].concat(items.map(mapFn));
+        selectEl.innerHTML = opts.join("");
+      };
 
-    profSel.innerHTML = lista.length === 0
-      ? `<option value="">Sin profesionales para el área</option>`
-      : `<option value="">-- Seleccionar --</option>` +
-        lista.map(p =>
-          `<option value="${p._id}">${p.nombreApellido || p.nombre || p.usuario}</option>`
-        ).join("");
-  };
+      let AREAS = [];
+      let USUARIOS = [];
 
-  renderProfesionales();
-  areaSel.addEventListener("change", renderProfesionales);
-} catch (e) {
-  console.warn("No se pudieron cargar áreas/profesionales:", e);
-  areaSel.innerHTML = `<option value="">No disponible</option>`;
-  profSel.innerHTML = `<option value="">No disponible</option>`;
-}
+      try {
+        const authHeaders = getAuthHeaders();
 
+        const [resAreas, resUsers] = await Promise.all([
+          fetch(`${API_URL.replace("/pacientes", "/areas")}`),
+          fetch(`${API_URL.replace("/pacientes", "/usuarios")}`, { headers: authHeaders })
+        ]);
 
+        if (!resUsers.ok) {
+          console.warn("No se pudieron cargar usuarios:", resUsers.status, await resUsers.text());
+        }
 
-      // --- Responsables dinámicos (permitir repetir relación)
+        AREAS    = resAreas.ok ? await resAreas.json()   : [];
+        USUARIOS = resUsers.ok ? await resUsers.json()   : [];
+
+        setOptions(areaSel, AREAS, (a) => `<option value="${a._id}">${a.nombre}</option>`, "No disponible");
+
+        const norm = (s) =>
+          (s ?? "").toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
+        const ID2NAME = new Map();
+        AREAS.forEach(a => ID2NAME.set(String(a._id), a.nombre));
+
+        const ROLES_PROF = new Set(['profesional', 'coordinador y profesional']);
+
+        const renderProfesionales = () => {
+          const selId = areaSel.value || "";
+          if (!selId) {
+            profSel.innerHTML = `<option value="">-- Seleccioná un área primero --</option>`;
+            return;
+          }
+          const targetNameNorm = norm(ID2NAME.get(selId) || "");
+
+          const lista = USUARIOS
+            .filter(u => ROLES_PROF.has(norm(u.rol || "")))
+            .filter(u => {
+              if (Array.isArray(u.areasProfesional) && u.areasProfesional.length) {
+                for (const ap of u.areasProfesional) {
+                  if (norm(ap?.areaNombre) === targetNameNorm) return true;
+                }
+              }
+              if (Array.isArray(u.areas) && u.areas.length) {
+                for (const a of u.areas) {
+                  const name = typeof a === 'object' ? (a.nombre || a.name) : a;
+                  if (norm(name) === targetNameNorm) return true;
+                }
+              }
+              return false;
+            });
+
+          profSel.innerHTML = lista.length === 0
+            ? `<option value="">Sin profesionales para el área</option>`
+            : `<option value="">-- Seleccionar --</option>` +
+              lista.map(u =>
+                `<option value="${u._id}">${u.nombreApellido || u.nombre || u.usuario}</option>`
+              ).join("");
+        };
+
+        renderProfesionales();
+        areaSel.addEventListener("change", renderProfesionales);
+      } catch (e) {
+        console.warn("No se pudieron cargar áreas/profesionales:", e);
+        areaSel.innerHTML = `<option value="">No disponible</option>`;
+        profSel.innerHTML = `<option value="">No disponible</option>`;
+      }
+
+      // Responsables dinámicos (ahora con EMAIL)
       const cont = document.getElementById("responsablesContainer");
       const btnAdd = document.getElementById("btnAgregarResponsable");
 
       const relaciones = ['padre', 'madre', 'tutor'];
-      const makeRelacionOptions = (seleccionActual = '') => {
-        return ['<option value="">-- Relación --</option>']
+      const makeRelacionOptions = (seleccionActual = '') =>
+        ['<option value="">-- Relación --</option>']
           .concat(relaciones.map(r =>
             `<option value="${r}" ${r === seleccionActual ? 'selected' : ''}>${r[0].toUpperCase()+r.slice(1)}</option>`
           )).join('');
-      };
 
       let idx = 0;
-      const addRow = (preset = {relacion:'tutor', nombre:'', whatsapp:''}) => {
+      const addRow = (preset = {relacion:'tutor', nombre:'', whatsapp:'', email:''}) => {
         const filas = cont.querySelectorAll('.responsable-row').length;
         if (filas >= 3) return;
 
         const rowId = `resp-${idx++}`;
         const html = `
           <div class="responsable-row" id="${rowId}" style="border:1px solid #ddd; border-radius:8px; padding:8px; margin:8px 0;">
-            <div style="display:grid; grid-template-columns: 150px 1fr 1fr 48px; gap:12px; align-items:center;">
+            <div style="display:grid; grid-template-columns: 140px 1fr 1fr 1fr 42px; gap:10px; align-items:center;">
               <select class="swal2-select resp-relacion" style="margin:0;height:40px;">
                 ${makeRelacionOptions(preset.relacion || '')}
               </select>
               <input class="swal2-input resp-nombre" placeholder="Nombre" value="${preset.nombre || ''}" style="margin:0;height:40px;">
               <input class="swal2-input resp-whatsapp" placeholder="Whatsapp (solo dígitos)" value="${preset.whatsapp || ''}" style="margin:0;height:40px;">
+              <input class="swal2-input resp-email" placeholder="Email (opcional)" type="email" value="${preset.email || ''}" style="margin:0;height:40px;">
               <button type="button" class="swal2-cancel swal2-styled btn-remove" title="Quitar"
                 style="width:36px;height:36px;margin:0;padding:0;line-height:1;display:flex;align-items:center;justify-content:center;">✕</button>
             </div>
           </div>
         `;
         cont.insertAdjacentHTML('beforeend', html);
-
-        const removeBtn = cont.lastElementChild.querySelector('.btn-remove');
-        removeBtn.addEventListener('click', () => {
-          cont.removeChild(document.getElementById(rowId));
-        });
+        cont.lastElementChild.querySelector('.btn-remove')
+          .addEventListener('click', () => cont.removeChild(document.getElementById(rowId)));
       };
 
       btnAdd.addEventListener('click', () => addRow());
@@ -1007,14 +1024,12 @@ try {
       const colegio      = gv("colegio");
       const colegioMail  = gv("colegioMail");
       const curso        = gv("curso");
-      const mailPadres   = gv("mailPadres");
-      const mailTutor    = gv("mailTutor");
+
       const condicionDePagoVal = gv("condicionDePago");
       const estado       = gv("estado");
 
       const dniRegex  = /^\d{7,8}$/;
       const mailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      const wspRegex  = /^\d{10,15}$/;
 
       if (!nombre || !dni || !fechaNacimiento) {
         Swal.showValidationMessage("⚠️ Completá los campos obligatorios (Nombre, DNI, Fecha).");
@@ -1024,22 +1039,12 @@ try {
         Swal.showValidationMessage("⚠️ El DNI debe tener entre 7 y 8 dígitos numéricos.");
         return false;
       }
-
-      // mails opcionales → si vienen, validar
       if (colegioMail && !mailRegex.test(colegioMail)) {
         Swal.showValidationMessage("⚠️ El mail del colegio no es válido.");
         return false;
       }
-      if (mailPadres && !mailRegex.test(mailPadres)) {
-        Swal.showValidationMessage("⚠️ El mail de los padres no es válido.");
-        return false;
-      }
-      if (mailTutor && !mailRegex.test(mailTutor)) {
-        Swal.showValidationMessage("⚠️ El mail del tutor no es válido.");
-        return false;
-      }
 
-      // Responsables (1..3)
+      // Responsables (1..3) con email opcional
       const filas = Array.from(document.querySelectorAll('#responsablesContainer .responsable-row'));
       if (filas.length < 1 || filas.length > 3) {
         Swal.showValidationMessage("⚠️ Debe haber entre 1 y 3 responsables.");
@@ -1050,18 +1055,26 @@ try {
         const relacion = row.querySelector('.resp-relacion')?.value || "";
         const nombreR  = (row.querySelector('.resp-nombre')?.value || "").trim();
         const whatsapp = (row.querySelector('.resp-whatsapp')?.value || "").trim();
+        const email    = (row.querySelector('.resp-email')?.value || "").trim().toLowerCase();
+
         if (!relacion || !nombreR || !whatsapp) {
           Swal.showValidationMessage("⚠️ Completá relación, nombre y WhatsApp en cada responsable.");
           return false;
         }
-        if (!wspRegex.test(whatsapp)) {
+        if (!/^\d{10,15}$/.test(whatsapp)) {
           Swal.showValidationMessage("⚠️ WhatsApp inválido (10 a 15 dígitos).");
           return false;
         }
-        responsables.push({ relacion, nombre: nombreR, whatsapp });
+        if (email && !mailRegex.test(email)) {
+          Swal.showValidationMessage("⚠️ Email de responsable inválido.");
+          return false;
+        }
+
+        const r = { relacion, nombre: nombreR, whatsapp };
+        if (email) r.email = email;
+        responsables.push(r);
       }
 
-      // Obra social opcional
       let prestador="", credencial="", tipo="";
       if (condicionDePagoVal === "Obra Social" || condicionDePagoVal === "Obra Social + Particular") {
         prestador  = gv("prestador");
@@ -1069,44 +1082,10 @@ try {
         tipo       = gv("tipo");
       }
 
-      // ---- Módulos (si existieran filas .modulo-row en el DOM) ----
+      // (si no usás módulos acá)
       const modulosAsignados = [];
-      document.querySelectorAll(".modulo-row").forEach((row) => {
-        const moduloSel    = row.querySelector(".modulo-select");
-        const moduloId     = moduloSel?.value;
-        const moduloNombre = moduloSel?.selectedOptions?.[0]?.textContent.trim();
-        const cantidad     = parseFloat(row.querySelector(".cantidad-select")?.value);
+      const areasDerivadas = [];
 
-        if (moduloId && cantidad > 0) {
-          const profesionales = [];
-          row.querySelectorAll(".profesional-row").forEach(profRow => {
-            const profSel  = profRow.querySelector(".profesional-select");
-            const areaSel  = profRow.querySelector(".area-select");
-
-            const profesionalId   = profSel?.value;
-            const profesionalName = profSel?.selectedOptions?.[0]?.textContent.trim();
-            const areaName        = areaSel?.selectedOptions?.[0]?.textContent.trim();
-
-            if (profesionalId && areaName) {
-              profesionales.push({ profesionalId, nombre: profesionalName, area: areaName });
-            }
-          });
-
-          modulosAsignados.push({
-            moduloId,
-            nombre: moduloNombre || "Módulo",
-            cantidad,
-            profesionales
-          });
-        }
-      });
-
-      // Derivar áreas desde módulos (si hay)
-      const areasDerivadas = [...new Set(
-        modulosAsignados.flatMap(m => (m.profesionales || []).map(pr => pr.area).filter(Boolean))
-      )];
-
-      // Payload
       return {
         nombre,
         dni,
@@ -1117,40 +1096,45 @@ try {
 
         responsables,
 
-        mailPadres: mailPadres || undefined,
-        mailTutor:  mailTutor  || undefined,
-
         condicionDePago: condicionDePagoVal,
         estado,
         prestador,
         credencial,
         tipo,
 
-        // módulos/áreas (si no hay UI, van vacíos y no pasa nada)
         modulosAsignados,
         areas: areasDerivadas
       };
     }
   }).then(async (result) => {
-    if (result.isConfirmed) {
-      try {
-        const response = await fetch(API_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(result.value)
-        });
-        if (!response.ok) throw new Error("No se pudo guardar");
+    if (!result.isConfirmed) return;
 
-        const nuevoPaciente = await response.json();
-        Swal.fire("✅ Paciente cargado con éxito", "", "success");
-        renderFichaPaciente(nuevoPaciente);
-      } catch (error) {
-        console.error("Error al guardar el nuevo paciente", error);
-        Swal.fire("❌ Error al guardar", "", "error");
-      }
+    try {
+      const headers = {
+        "Content-Type": "application/json",
+        ...getAuthHeaders()
+      };
+
+      const response = await fetch(API_URL, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(result.value)
+      });
+
+      if (!response.ok) throw new Error("No se pudo guardar");
+
+      const nuevoPaciente = await response.json();
+      Swal.fire("✅ Paciente cargado con éxito", "", "success");
+      renderFichaPaciente(nuevoPaciente);
+    } catch (error) {
+      console.error("Error al guardar el nuevo paciente", error);
+      Swal.fire("❌ Error al guardar", "", "error");
     }
   });
 });
+
+
+
 
 
 

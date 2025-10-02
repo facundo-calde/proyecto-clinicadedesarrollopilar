@@ -7,7 +7,7 @@ const MAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CP_OK   = new Set(['Obra Social', 'Particular', 'Obra Social + Particular']);
 const ESTADOS = new Set(['Alta', 'Baja', 'En espera']);
 
-// Permite relaciones repetidas y limita a 3
+// Permite relaciones repetidas y limita a 3 (agregado: email opcional)
 function sanitizeResponsables(responsables) {
   if (!Array.isArray(responsables)) return [];
   const out = [];
@@ -17,23 +17,32 @@ function sanitizeResponsables(responsables) {
       nombre:   (r0.nombre || '').trim(),
       whatsapp: (r0.whatsapp || '').trim(),
     };
+
+    // email opcional dentro de responsable
+    const emailRaw = (r0.email || '').toString().trim().toLowerCase();
+    if (emailRaw) {
+      if (!MAIL_RE.test(emailRaw)) continue; // si viene email inválido, descartamos ese responsable
+      r.email = emailRaw;
+    }
+
     if (!['padre','madre','tutor'].includes(r.relacion)) continue;
     if (!r.nombre) continue;
     if (!WSP_RE.test(r.whatsapp)) continue;
+
     out.push(r);
     if (out.length >= 3) break; // máx. 3
   }
   return out;
 }
 
-// Construye el payload final (sin legacy)
+// Construye el payload final (sin legacy de mails sueltos)
 function buildPacienteData(body, existing = null) {
   const data = {};
 
   // Campos soportados por el schema
   const simples = [
     'nombre','fechaNacimiento','colegio','curso',
-    'colegioMail','mailPadres','mailTutor',
+    'colegioMail',
     'condicionDePago','estado',
     'areas','planPaciente','fechaBaja','motivoBaja',
     'prestador','credencial','tipo'
@@ -49,15 +58,13 @@ function buildPacienteData(body, existing = null) {
   if (data.dni && !DNI_RE.test(data.dni)) delete data.dni;
   if (data.condicionDePago && !CP_OK.has(data.condicionDePago)) delete data.condicionDePago;
 
-  // Normalizar/validar mails opcionales
-  ['colegioMail','mailPadres','mailTutor'].forEach(k => {
-    if (data[k] !== undefined) {
-      data[k] = String(data[k]).trim().toLowerCase();
-      if (data[k] && !MAIL_RE.test(data[k])) delete data[k];
-    }
-  });
+  // Normalizar/validar mail del colegio (opcional)
+  if (data.colegioMail !== undefined) {
+    data.colegioMail = String(data.colegioMail).trim().toLowerCase();
+    if (data.colegioMail && !MAIL_RE.test(data.colegioMail)) delete data.colegioMail;
+  }
 
-  // Responsables (1..3, permite repetidos)
+  // Responsables (1..3, permite repetidos, con email opcional)
   if (body.responsables !== undefined) {
     const resp = sanitizeResponsables(body.responsables);
     if (resp.length > 0) data.responsables = resp;
@@ -113,7 +120,6 @@ const crearPaciente = async (req, res) => {
       return res.status(400).json({ error: 'Debe incluir al menos un responsable (padre/madre/tutor).' });
     }
 
-    // si viene estado y NO viene historial, el pre('save') del modelo cargará el estado inicial
     const nuevo = new Paciente(data);
     await nuevo.save();
     res.status(201).json(nuevo);
@@ -144,11 +150,11 @@ const actualizarPaciente = async (req, res) => {
     const actor = {
       usuarioId: req.user?.id || null,
       usuario: req.user?.usuario || null,
-      nombre: req.user?.nombreApellido || null  // viene del token (login actualizado)
+      nombre: req.user?.nombreApellido || null
     };
     // =================================================================
 
-    // Si cambia el estado, agregamos entrada al historial (con snapshot completo)
+    // Si cambia el estado, agregamos entrada al historial (se guardan solo campos definidos en el schema)
     const nuevoEstado = req.body.estado;
     const descripcionEstado = req.body.descripcionEstado || req.body.estadoDescripcion || '';
     if (
@@ -156,17 +162,10 @@ const actualizarPaciente = async (req, res) => {
       ESTADOS.has(String(nuevoEstado)) &&
       String(nuevoEstado) !== String(paciente.estado || '')
     ) {
-      const estadoAnterior = String(paciente.estado ?? '—');
-      const estadoNuevo    = String(nuevoEstado);
-
-      paciente.estado = estadoNuevo;
+      paciente.estado = String(nuevoEstado);
       if (!Array.isArray(paciente.estadoHistorial)) paciente.estadoHistorial = [];
-
       paciente.estadoHistorial.push({
-        // compat y datos explícitos para el render
-        estado: estadoNuevo,
-        estadoAnterior,
-        estadoNuevo,
+        estado: String(nuevoEstado),
         fecha: new Date(),
         descripcion: descripcionEstado,
         cambiadoPor: actor
@@ -190,7 +189,6 @@ const actualizarPaciente = async (req, res) => {
     res.status(500).json({ error: 'Error al actualizar' });
   }
 };
-
 
 module.exports = {
   buscarPaciente,
