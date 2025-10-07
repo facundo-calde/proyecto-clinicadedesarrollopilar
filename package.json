@@ -1,12 +1,16 @@
 {
   "name": "proyecto-clinicadedesarrollopilar",
   "version": "1.0.0",
-  "main": "server.js",
   "description": "",
+  "main": "backend/server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
+    "start": "node backend/server.js",
+    "dev": "NODE_ENV=development node backend/server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
   "dependencies": {
     "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
@@ -15,17 +19,7 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.16.3",
     "multer": "^2.0.2"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/facundo-calde/proyecto-clinicadedesarrollopilar.git"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/facundo-calde/proyecto-clinicadedesarrollopilar/issues"
-  },
-  "homepage": "https://github.com/facundo-calde/proyecto-clinicadedesarrollopilar#readme"
+  }
 }
+
 
