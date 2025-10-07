@@ -34,13 +34,15 @@ app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
 
-// 👉 Archivos estáticos
-app.use(express.static(path.join(__dirname, '../frontend')));
+// Estáticos (soportar /frontend y /Frontend)
+const FRONT_DIR = path.join(__dirname, '../frontend');
+app.use('/frontend', express.static(FRONT_DIR));
+app.use('/Frontend', express.static(FRONT_DIR));
 
-// 👉 Subidas de archivos
+// Subidas
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// 👉 Rutas API
+// Rutas API
 const pacientesRoutes  = require('./routes/pacienteroutes');
 const modulosRoutes    = require('./routes/modulosroutes');
 const areasRoutes      = require('./routes/areasroutes');
@@ -53,12 +55,15 @@ app.use('/api/modulos',     modulosRoutes);
 app.use('/api/areas',       areasRoutes);
 app.use('/api',             usuariosRoutes);
 
-// 👉 Healthcheck
+// Health
 app.get('/health', (_req, res) => res.status(200).send('ok'));
 app.get('/salud',  (_req, res) => res.status(200).send('ok'));
 
-// 👉 Fallback para SPA
-const INDEX_HTML = path.resolve(__dirname, '../frontend/html/index.html');
+// Home -> index.html del front
+const INDEX_HTML = path.join(FRONT_DIR, 'html/index.html');
+app.get('/', (req, res) => res.sendFile(INDEX_HTML));
+
+// Fallback para rutas no-API
 app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) return next();
   res.sendFile(INDEX_HTML);
