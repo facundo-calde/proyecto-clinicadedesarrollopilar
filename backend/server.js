@@ -52,20 +52,19 @@ app.use('/api',            usuariosRoutes);
 /* ============ STATIC: uploads ============ */
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-/* ============ STATIC: Frontend (autodetección de carpeta) ============ */
+/* ============ STATIC: Frontend ============ */
+/* Sirve toda la carpeta (Frontend o frontend) y usa index en html/index.html */
 const frontCandidates = [
-  path.join(__dirname, '../Frontend/html'),
   path.join(__dirname, '../Frontend'),
-  path.join(__dirname, '../frontend/html'),
   path.join(__dirname, '../frontend'),
 ];
 
 const FRONT_DIR = frontCandidates.find(p => fs.existsSync(p)) || frontCandidates[0];
-const INDEX_HTML = path.join(FRONT_DIR, 'index.html');
+const INDEX_HTML = path.join(FRONT_DIR, 'html/index.html');
 
 if (!fs.existsSync(INDEX_HTML)) {
   console.warn('⚠️ No se encontró index.html en:', INDEX_HTML);
-  console.warn('   Ajustá la ruta del FRONT_DIR o generá el build correspondiente.');
+  console.warn('   Ajustá la ruta del FRONT_DIR o mové el index a html/index.html.');
 }
 
 app.use(express.static(FRONT_DIR));
@@ -103,6 +102,7 @@ const HOST = '0.0.0.0';
     app.listen(PORT, HOST, () => {
       console.log(`✅ Server escuchando en http://${HOST}:${PORT}`);
       console.log('📂 Sirviendo frontend desde:', FRONT_DIR);
+      console.log('🧭 Index:', INDEX_HTML);
     });
   } catch (err) {
     console.error('❌ Error al conectar a MongoDB:', err.message);
@@ -116,5 +116,4 @@ process.on('SIGINT', async () => {
   try { await mongoose.connection.close(); } catch {}
   process.exit(0);
 });
-
 
