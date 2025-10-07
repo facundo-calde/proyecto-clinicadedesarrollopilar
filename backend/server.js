@@ -60,7 +60,7 @@ app.get('/salud',  (_req, res) => res.status(200).send('ok'));
 // Fallback para frontend
 app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) return next();
-  res.sendFile(path.join(__dirname, '../frontend/html/index.html'));
+  res.sendFile(path.resolve(__dirname, '../frontend/html/index.html'));
 });
 
 // Arranque servidor
