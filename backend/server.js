@@ -52,19 +52,12 @@ app.use('/api',            usuariosRoutes);
 /* ============ STATIC: uploads ============ */
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-/* ============ STATIC: Frontend ============ */
-/* Sirve toda la carpeta (Frontend o frontend) y usa index en html/index.html */
-const frontCandidates = [
-  path.join(__dirname, '../Frontend'),
-  path.join(__dirname, '../frontend'),
-];
-
-const FRONT_DIR = frontCandidates.find(p => fs.existsSync(p)) || frontCandidates[0];
+/* ============ STATIC: frontend completo ============ */
+const FRONT_DIR = path.join(__dirname, '../frontend');
 const INDEX_HTML = path.join(FRONT_DIR, 'html/index.html');
 
 if (!fs.existsSync(INDEX_HTML)) {
   console.warn('⚠️ No se encontró index.html en:', INDEX_HTML);
-  console.warn('   Ajustá la ruta del FRONT_DIR o mové el index a html/index.html.');
 }
 
 app.use(express.static(FRONT_DIR));
@@ -81,7 +74,7 @@ app.get('*', (req, res, next) => {
   return res.status(500).send('index.html no encontrado');
 });
 
-/* ============ 404 API (solo si no matcheó nada) ============ */
+/* ============ 404 API ============ */
 app.use((req, res) => {
   if (req.path.startsWith('/api')) {
     return res.status(404).json({ error: 'Ruta no encontrada' });
@@ -116,4 +109,3 @@ process.on('SIGINT', async () => {
   try { await mongoose.connection.close(); } catch {}
   process.exit(0);
 });
-
