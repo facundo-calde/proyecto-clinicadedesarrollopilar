@@ -7,7 +7,6 @@ const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const path = require('path');
-// const multer = require('multer'); // si no lo usás acá, podés borrarlo
 
 // 🔹 Validación mínima de env
 if (!process.env.MONGODB_URI) {
@@ -43,6 +42,7 @@ app.use('/api',             usuariosRoutes);
 
 // ===== Healthcheck =====
 app.get('/health', (_req, res) => res.status(200).send('ok'));
+app.get('/salud',  (_req, res) => res.status(200).send('ok')); // alias en español
 
 // ===== Arranque del servidor =====
 const PORT = process.env.PORT || 3000;
@@ -66,7 +66,7 @@ mongoose.connect(process.env.MONGODB_URI, {
   console.error('ℹ️  Verificá el whitelist de IP en Atlas y las credenciales de la URI.');
 });
 
-// ===== Manejo básico de 404 (opcional) =====
+// ===== Manejo básico de 404 =====
 app.use((req, res) => {
   res.status(404).json({ error: 'Ruta no encontrada' });
 });
