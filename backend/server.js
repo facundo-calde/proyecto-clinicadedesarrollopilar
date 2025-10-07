@@ -1,10 +1,11 @@
-// server.js
+// backend/server.js
 require('dotenv').config();
 
-const express = require('express');
-const cors = require('cors');
+const express  = require('express');
+const cors     = require('cors');
 const mongoose = require('mongoose');
-const path = require('path');
+const path     = require('path');
+const fs       = require('fs');
 
 if (!process.env.MONGODB_URI) {
   console.error('❌ Falta MONGODB_URI en .env');
@@ -13,7 +14,7 @@ if (!process.env.MONGODB_URI) {
 
 const app = express();
 
-// CORS
+/* ============ CORS ============ */
 const allowedOrigins = (process.env.CORS_ORIGIN || '')
   .split(',')
   .map(s => s.trim())
@@ -22,69 +23,98 @@ const allowedOrigins = (process.env.CORS_ORIGIN || '')
 const corsOptions = {
   origin: (origin, cb) => {
     if (!origin) return cb(null, true);
-    if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) return cb(null, true);
+    if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+      return cb(null, true);
+    }
     return cb(new Error('CORS bloqueado para ' + origin));
   },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   credentials: true,
 };
+
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
 
-// Frontend estático
-app.use(express.static(path.join(__dirname, '../frontend')));
-
-// Uploads estáticos
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
-// Rutas API
+/* ============ RUTAS API ============ */
 const pacientesRoutes  = require('./routes/pacienteroutes');
 const modulosRoutes    = require('./routes/modulosroutes');
 const areasRoutes      = require('./routes/areasroutes');
 const usuariosRoutes   = require('./routes/usuariosRoutes');
 const documentosRoutes = require('./routes/documentosroutes');
 
-app.use('/api/pacientes',   pacientesRoutes);
-app.use('/api/documentos',  documentosRoutes);
-app.use('/api/modulos',     modulosRoutes);
-app.use('/api/areas',       areasRoutes);
-app.use('/api',             usuariosRoutes);
+app.use('/api/pacientes',  pacientesRoutes);
+app.use('/api/documentos', documentosRoutes);
+app.use('/api/modulos',    modulosRoutes);
+app.use('/api/areas',      areasRoutes);
+app.use('/api',            usuariosRoutes);
 
-// Healthcheck
+/* ============ STATIC: uploads ============ */
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+/* ============ STATIC: Frontend (autodetección de carpeta) ============ */
+const frontCandidates = [
+  path.join(__dirname, '../Frontend/html'),
+  path.join(__dirname, '../Frontend'),
+  path.join(__dirname, '../frontend/html'),
+  path.join(__dirname, '../frontend'),
+];
+
+const FRONT_DIR = frontCandidates.find(p => fs.existsSync(p)) || frontCandidates[0];
+const INDEX_HTML = path.join(FRONT_DIR, 'index.html');
+
+if (!fs.existsSync(INDEX_HTML)) {
+  console.warn('⚠️ No se encontró index.html en:', INDEX_HTML);
+  console.warn('   Ajustá la ruta del FRONT_DIR o generá el build correspondiente.');
+}
+
+app.use(express.static(FRONT_DIR));
+
+/* ============ Healthchecks ============ */
 app.get('/health', (_req, res) => res.status(200).send('ok'));
 app.get('/salud',  (_req, res) => res.status(200).send('ok'));
 
-// Fallback a index.html del frontend
+/* ============ Home y fallback (solo no-API) ============ */
+app.get('/', (_req, res) => res.sendFile(INDEX_HTML));
 app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) return next();
-  res.sendFile(path.join(__dirname, '../frontend/html/index.html'));
+  if (fs.existsSync(INDEX_HTML)) return res.sendFile(INDEX_HTML);
+  return res.status(500).send('index.html no encontrado');
 });
 
-// Arranque
+/* ============ 404 API (solo si no matcheó nada) ============ */
+app.use((req, res) => {
+  if (req.path.startsWith('/api')) {
+    return res.status(404).json({ error: 'Ruta no encontrada' });
+  }
+  res.status(404).send('Not found');
+});
+
+/* ============ Start ============ */
 const PORT = process.env.PORT || 3000;
 const HOST = '0.0.0.0';
-console.log('🚀 Iniciando servidor...');
-app.listen(PORT, HOST, () => {
-  console.log(`✅ API escuchando en http://${HOST}:${PORT}`);
-});
 
-// MongoDB
-mongoose.connect(process.env.MONGODB_URI, { serverSelectionTimeoutMS: 5000 })
-  .then(() => console.log('✅ Conectado a MongoDB Atlas'))
-  .catch(err => console.error('❌ Error al conectar a MongoDB:', err.message));
+(async () => {
+  try {
+    console.log('🔌 Conectando a MongoDB...');
+    await mongoose.connect(process.env.MONGODB_URI, { serverSelectionTimeoutMS: 5000 });
+    console.log('✅ Conectado a MongoDB');
 
-// 404
-app.use((req, res) => {
-  res.status(404).json({ error: 'Ruta no encontrada' });
-});
+    app.listen(PORT, HOST, () => {
+      console.log(`✅ Server escuchando en http://${HOST}:${PORT}`);
+      console.log('📂 Sirviendo frontend desde:', FRONT_DIR);
+    });
+  } catch (err) {
+    console.error('❌ Error al conectar a MongoDB:', err.message);
+    process.exit(1);
+  }
+})();
 
-// Apagado limpio
+/* ============ Señales ============ */
 process.on('SIGINT', async () => {
   console.log('🛑 Cerrando servidor...');
-  await mongoose.connection.close().catch(() => {});
+  try { await mongoose.connection.close(); } catch {}
   process.exit(0);
 });
-
 
 
