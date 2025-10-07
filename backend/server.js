@@ -45,7 +45,7 @@ app.use(express.json({ limit: '10mb' }));
 
 // --- Archivos estáticos frontend ---
 // En tu repo la carpeta es "Frontend" (mayúscula)
-app.use(express.static(path.join(__dirname, '../Frontend')));
+app.use(express.static(path.join(__dirname, '../frontend')));
 
 // Archivos subidos (documentos, imágenes, etc.)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
