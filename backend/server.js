@@ -16,19 +16,15 @@ const app = express();
 
 /* ============ CORS ============ */
 const allowedOrigins = (process.env.CORS_ORIGIN || '')
-  .split(',')
-  .map(s => s.trim())
-  .filter(Boolean);
+  .split(',').map(s => s.trim()).filter(Boolean);
 
 const corsOptions = {
   origin: (origin, cb) => {
     if (!origin) return cb(null, true);
-    if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
-      return cb(null, true);
-    }
+    if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) return cb(null, true);
     return cb(new Error('CORS bloqueado para ' + origin));
   },
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
   credentials: true,
 };
 
@@ -52,12 +48,42 @@ app.use('/api',            usuariosRoutes);
 /* ============ STATIC: uploads ============ */
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-/* ============ STATIC: frontend completo ============ */
-const FRONT_DIR = path.join(__dirname, '../frontend');
-const INDEX_HTML = path.join(FRONT_DIR, 'html/index.html');
+/* ============ STATIC: Frontend (elige la carpeta que SÍ tiene html/index.html) ============ */
+const baseCandidates = [
+  path.join(__dirname, '../frontend'),
+  path.join(__dirname, '../Frontend'),
+];
 
-if (!fs.existsSync(INDEX_HTML)) {
-  console.warn('⚠️ No se encontró index.html en:', INDEX_HTML);
+let FRONT_DIR = null;
+let INDEX_HTML = null;
+
+for (const base of baseCandidates) {
+  const idx = path.join(base, 'html/index.html');
+  if (fs.existsSync(idx)) {
+    FRONT_DIR = base;
+    INDEX_HTML = idx;
+    break;
+  }
+}
+// fallback: por si movés el index a la raíz
+if (!INDEX_HTML) {
+  for (const base of baseCandidates) {
+    const idx = path.join(base, 'index.html');
+    if (fs.existsSync(idx)) {
+      FRONT_DIR = base;
+      INDEX_HTML = idx;
+      break;
+    }
+  }
+}
+
+if (!INDEX_HTML) {
+  console.error('❌ No se encontró index.html ni en frontend/html/ ni en Frontend/html/. Verificá la ruta.');
+  // igual monto la primera carpeta para poder ver estáticos si existen
+  FRONT_DIR = baseCandidates.find(fs.existsSync) || baseCandidates[0];
+} else {
+  console.log('📂 Sirviendo frontend desde:', FRONT_DIR);
+  console.log('🧭 Index:', INDEX_HTML);
 }
 
 app.use(express.static(FRONT_DIR));
@@ -67,18 +93,19 @@ app.get('/health', (_req, res) => res.status(200).send('ok'));
 app.get('/salud',  (_req, res) => res.status(200).send('ok'));
 
 /* ============ Home y fallback (solo no-API) ============ */
-app.get('/', (_req, res) => res.sendFile(INDEX_HTML));
+app.get('/', (_req, res) => {
+  if (!INDEX_HTML) return res.status(500).send('index.html no encontrado');
+  res.sendFile(INDEX_HTML);
+});
 app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) return next();
-  if (fs.existsSync(INDEX_HTML)) return res.sendFile(INDEX_HTML);
-  return res.status(500).send('index.html no encontrado');
+  if (!INDEX_HTML) return res.status(500).send('index.html no encontrado');
+  res.sendFile(INDEX_HTML);
 });
 
 /* ============ 404 API ============ */
 app.use((req, res) => {
-  if (req.path.startsWith('/api')) {
-    return res.status(404).json({ error: 'Ruta no encontrada' });
-  }
+  if (req.path.startsWith('/api')) return res.status(404).json({ error: 'Ruta no encontrada' });
   res.status(404).send('Not found');
 });
 
@@ -94,8 +121,6 @@ const HOST = '0.0.0.0';
 
     app.listen(PORT, HOST, () => {
       console.log(`✅ Server escuchando en http://${HOST}:${PORT}`);
-      console.log('📂 Sirviendo frontend desde:', FRONT_DIR);
-      console.log('🧭 Index:', INDEX_HTML);
     });
   } catch (err) {
     console.error('❌ Error al conectar a MongoDB:', err.message);
