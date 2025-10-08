@@ -1,6 +1,12 @@
 document.addEventListener("DOMContentLoaded", () => {
   const form = document.getElementById("loginForm");
 
+  // Detectar automáticamente si está en producción o en local
+  const API =
+    window.location.hostname.includes("localhost") || window.location.hostname.includes("127.0.0.1")
+      ? "http://localhost:3000"
+      : "https://app.clinicadedesarrollopilar.com.ar";
+
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
 
@@ -8,7 +14,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const contrasena = document.getElementById("clave").value.trim();
 
     try {
-      const res = await fetch("http://localhost:3000/api/login", {
+      const res = await fetch(`${API}/api/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ usuario, contrasena }),
@@ -28,7 +34,7 @@ document.addEventListener("DOMContentLoaded", () => {
       localStorage.setItem("token", data.token);
       localStorage.setItem("usuario", JSON.stringify(data.user));
 
-      // 👉 Verificación (solo para debug, podés borrar esto después)
+      // 👉 Verificación (para debug, borrar después si no lo necesitás)
       console.log("Usuario logueado:", data.user);
 
       // Redirigir al dashboard
