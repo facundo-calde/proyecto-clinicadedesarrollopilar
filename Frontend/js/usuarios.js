@@ -1,56 +1,68 @@
 // ==========================
-// 🔐 Sesión y helpers
+// 🔐 Sesión, anti-back y helpers
 // ==========================
-const API = '';
+const API   = 'http://localhost:3000';   // <-- ajustá si corresponde
+const LOGIN = 'index.html';
 
-// Token y usuario de la sesión (seguro ante JSON inválido)
+const goLogin = () => location.replace(LOGIN);
+
+// Usuario y token
 let usuarioSesion = null;
-try { usuarioSesion = JSON.parse(localStorage.getItem("usuario") || "null"); } catch { usuarioSesion = null; }
-const token = localStorage.getItem("token");
+try { usuarioSesion = JSON.parse(localStorage.getItem('usuario') || 'null'); } catch { usuarioSesion = null; }
+const token = localStorage.getItem('token');
 
-// Si no hay token → volver al login (también cubre “volver atrás”)
-if (!token) {
-  window.location.href = "index.html";
-}
+// Guard inmediato
+if (!token) goLogin();
 
-// Mostrar nombre dinámico en el top bar (si existe <strong id="userName">)
-if (usuarioSesion && usuarioSesion.nombreApellido) {
-  const userNameEl = document.getElementById("userName");
+// Anti-BFCache: si vuelven con atrás y la página se restaura desde caché
+window.addEventListener('pageshow', (e) => {
+  const nav = performance.getEntriesByType('navigation')[0];
+  const fromBF = e.persisted || nav?.type === 'back_forward';
+  if (fromBF && !localStorage.getItem('token')) goLogin();
+});
+
+// Anti-atrás: si no hay token, mandá a login; si hay, re-inyectá el estado
+history.pushState(null, '', location.href);
+window.addEventListener('popstate', () => {
+  if (!localStorage.getItem('token')) goLogin();
+  else history.pushState(null, '', location.href);
+});
+
+// Pintar nombre en top bar (si existe id="userName")
+if (usuarioSesion?.nombreApellido) {
+  const userNameEl = document.getElementById('userName');
   if (userNameEl) userNameEl.textContent = usuarioSesion.nombreApellido;
 }
 
-// Helper: agrega Authorization automáticamente y maneja 401
+// Helper fetch con Authorization y manejo de 401
 async function fetchAuth(url, options = {}) {
   const opts = {
     ...options,
     headers: {
       ...(options.headers || {}),
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
     },
-    cache: 'no-store'
+    cache: 'no-store',
   };
   const res = await fetch(url, opts);
   if (res.status === 401) {
-    // token inválido/expirado → limpiar y a login
-    localStorage.removeItem("token");
-    localStorage.removeItem("usuario");
-    window.location.href = "index.html";
-    throw new Error("No autorizado");
+    localStorage.removeItem('token');
+    localStorage.removeItem('usuario');
+    goLogin();
+    throw new Error('No autorizado');
   }
   return res;
 }
 
-// 🔹 Botón cerrar sesión
-const btnLogout = document.getElementById("btnLogout");
+// 🔹 Logout
+const btnLogout = document.getElementById('btnLogout');
 if (btnLogout) {
-  btnLogout.addEventListener("click", () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("usuario");
-    // Evitar volver con el botón atrás a una vista cacheada
-    history.replaceState(null, "", "index.html");
-    window.location.href = "index.html";
+  btnLogout.addEventListener('click', () => {
+    localStorage.clear();
+    goLogin();
   });
 }
+
 
 // ==========================
 // 📋 Listado inicial
