@@ -1,7 +1,7 @@
 // ==========================
 // 🔐 Sesión y helpers
 // ==========================
-const API = 'http://localhost:3000';
+const API = '';
 
 // Token y usuario de la sesión
 const token = localStorage.getItem("token");

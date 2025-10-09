@@ -1,4 +1,4 @@
-const API_URL = 'http://localhost:3000/api/areas';
+const API_URL = '/api/areas';
 const tablaBody = document.getElementById('tabla-areas');
 const sinInfo = document.querySelector('.sin-info');
 const btnRegistrar = document.getElementById('btnAgregar');

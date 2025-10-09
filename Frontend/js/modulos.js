@@ -1,4 +1,4 @@
-const API_URL = 'http://localhost:3000/api/modulos';
+const API_URL = '/api/modulos';
 
 document.addEventListener('DOMContentLoaded', () => {
     const botonCargar = document.getElementById('btnCargarModulo');
@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (valor.length < 2) return;
 
         try {
-            const res = await fetch(`http://localhost:3000/api/modulos?numero=${valor}`);
+            const res = await fetch(`/api/modulos?numero=${valor}`);
             const modulos = await res.json();
 
             if (Array.isArray(modulos)) {

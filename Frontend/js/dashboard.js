@@ -29,7 +29,7 @@ if (usuario.rol === "Recepcionista") {
 }
 
 // Ejemplo de request protegido
-fetch("http://localhost:3000/api/usuarios", {
+fetch("/api/usuarios", {
   headers: {
     "Authorization": "Bearer " + token
   }

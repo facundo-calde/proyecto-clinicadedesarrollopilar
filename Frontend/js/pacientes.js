@@ -1,6 +1,6 @@
 // pacientes.js
 
-const API_URL = "http://localhost:3000/api/pacientes";
+const API_URL = "/api/pacientes";
 
 document.getElementById("busquedaInput").addEventListener("input", async () => {
   const input = document.getElementById("busquedaInput").value.trim();

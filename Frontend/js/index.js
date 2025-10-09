@@ -2,7 +2,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const form = document.getElementById("loginForm");
   const API =
     location.hostname.includes("localhost") || location.hostname.includes("127.0.0.1")
-      ? "http://localhost:3000"
+      ? ""
       : `${location.protocol}//${location.host}`;
 
   form.addEventListener("submit", async (e) => {
