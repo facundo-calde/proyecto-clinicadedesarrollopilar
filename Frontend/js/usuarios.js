@@ -3,16 +3,17 @@
 // ==========================
 const API = '';
 
-// Token y usuario de la sesión
+// Token y usuario de la sesión (seguro ante JSON inválido)
+let usuarioSesion = null;
+try { usuarioSesion = JSON.parse(localStorage.getItem("usuario") || "null"); } catch { usuarioSesion = null; }
 const token = localStorage.getItem("token");
-const usuarioSesion = JSON.parse(localStorage.getItem("usuario") || "null");
 
-// Si no hay token → volver al login
+// Si no hay token → volver al login (también cubre “volver atrás”)
 if (!token) {
   window.location.href = "index.html";
 }
 
-// Mostrar nombre dinámico en el top bar
+// Mostrar nombre dinámico en el top bar (si existe <strong id="userName">)
 if (usuarioSesion && usuarioSesion.nombreApellido) {
   const userNameEl = document.getElementById("userName");
   if (userNameEl) userNameEl.textContent = usuarioSesion.nombreApellido;
@@ -26,10 +27,11 @@ async function fetchAuth(url, options = {}) {
       ...(options.headers || {}),
       Authorization: `Bearer ${token}`,
     },
+    cache: 'no-store'
   };
   const res = await fetch(url, opts);
   if (res.status === 401) {
-    // token inválido/expirado
+    // token inválido/expirado → limpiar y a login
     localStorage.removeItem("token");
     localStorage.removeItem("usuario");
     window.location.href = "index.html";
@@ -44,6 +46,8 @@ if (btnLogout) {
   btnLogout.addEventListener("click", () => {
     localStorage.removeItem("token");
     localStorage.removeItem("usuario");
+    // Evitar volver con el botón atrás a una vista cacheada
+    history.replaceState(null, "", "index.html");
     window.location.href = "index.html";
   });
 }
@@ -447,13 +451,6 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
   });
 }
 
-
-
-
-
-
-
-
 // ==========================
 // ✏️ Editar / 🗑️ Borrar
 // ==========================
@@ -518,7 +515,6 @@ function borrarUsuario(id) {
       });
   });
 }
-
 
 
 
