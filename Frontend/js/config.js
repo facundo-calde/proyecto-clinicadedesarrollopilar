@@ -16,43 +16,35 @@
 
   w.fetch = function (url, options) {
     try {
-      // Solo strings (Request también se podría envolver, pero con esto alcanza)
       if (typeof url === "string") {
         const origin = location.origin;
 
         // Normalizamos todos los formatos comunes a la misma base:
-        // 1) /api/xxx
         if (url.startsWith("/api/")) {
-          url = API_BASE + url.slice(4); // conserva el path después de /api
-        }
-        // 2) http://localhost:3000/api/xxx  -> API_BASE
-        else if (url.startsWith("http://localhost:3000/api/")) {
+          url = API_BASE + url.slice(4);
+        } else if (url.startsWith("http://localhost:3000/api/")) {
           url = API_BASE + url.slice("http://localhost:3000/api".length);
-        }
-        // 3) https://tu-dominio/api/xxx  -> API_BASE
-        else if (url.startsWith(`${PROD_BASE}/api/`)) {
+        } else if (url.startsWith(`${PROD_BASE}/api/`)) {
           url = API_BASE + url.slice(`${PROD_BASE}/api`.length);
-        }
-        // 4) ${API}/api/xxx donde API = window.location.origin
-        else if (url.startsWith(origin + "/api/")) {
+        } else if (url.startsWith(origin + "/api/")) {
           url = API_BASE + url.slice((origin + "/api").length);
         }
       }
 
-      // Agregamos token si existe (equivalente a tu fetchAuth)
+      const opts = options ? { ...options } : {};
+      const headers = new Headers(opts.headers || {});
+
+      // Token (equivalente a fetchAuth)
       const token =
         localStorage.getItem("token") ||
         sessionStorage.getItem("token") || "";
-
-      const opts = options ? { ...options } : {};
-      const headers = new Headers(opts.headers || {});
       if (token && !headers.has("Authorization")) {
         headers.set("Authorization", `Bearer ${token}`);
       }
 
-      // Si el body no es FormData, ponemos JSON por default cuando corresponde
+      // Si hay body y no es FormData → Content-Type JSON por default
       const isFormData = opts.body instanceof FormData;
-      if (!isFormData && !headers.has("Content-Type") && opts.method && opts.method !== "GET") {
+      if (opts.body && !isFormData && !headers.has("Content-Type") && opts.method && opts.method !== "GET") {
         headers.set("Content-Type", "application/json");
       }
 
@@ -64,8 +56,7 @@
           // manejo centralizado de sesión
           localStorage.removeItem("token");
           localStorage.removeItem("usuario");
-          // si querés redirigir:
-          // location.replace("index.html");
+          // location.replace("index.html"); // opcional
         }
         return res;
       });
@@ -74,9 +65,11 @@
     }
   };
 
-  // Helper opcional por si querés usarlo
+  // Helper opcional para llamadas más limpias
   w.apiFetch = async function apiFetch(path, options = {}) {
-    const url = path.startsWith("/") ? (path.startsWith("/api/") ? path : `/api${path}`) : `/api/${path}`;
+    const url = path.startsWith("/")
+      ? (path.startsWith("/api/") ? path : `/api${path}`)
+      : `/api/${path}`;
     const res = await w.fetch(url, options);
     const ct = res.headers.get("content-type") || "";
     return ct.includes("application/json") ? res.json() : res.text();

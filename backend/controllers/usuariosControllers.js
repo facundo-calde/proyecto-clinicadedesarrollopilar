@@ -3,7 +3,7 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
 // Usa un solo secreto SIEMPRE
-const JWT_SECRET = process.env.JWT_SECRET || 'supersecreto'; // <-- mismo valor para firmar y verificar
+const JWT_SECRET = process.env.JWT_SECRET || 'supersecreto';
 
 // ==================================================
 // Crear usuario
@@ -27,7 +27,6 @@ exports.crearUsuario = async (req, res) => {
       return res.status(400).json({ error: 'El seguro de mala praxis es obligatorio para profesionales.' });
     }
 
-    // Si no es profesional, no guardamos el campo
     if (body.rol !== 'Profesional') {
       delete body.seguroMalaPraxis;
     }
@@ -48,7 +47,7 @@ exports.crearUsuario = async (req, res) => {
     nuevo.contrasena = undefined;
     res.status(201).json(nuevo);
   } catch (err) {
-    res.status(500).json({ error: 'Error al crear usuario', detalles: err });
+    res.status(500).json({ error: 'Error al crear usuario', detalles: err.message });
   }
 };
 
@@ -105,15 +104,12 @@ exports.actualizarUsuario = async (req, res) => {
       delete body.contrasena;
     }
 
-    // Rol final (nuevo si viene en body, si no el actual)
     const rolFinal = body.rol || usuario.rol;
-
     if (rolFinal === 'Profesional') {
       if (!body.seguroMalaPraxis && !usuario.seguroMalaPraxis) {
         return res.status(400).json({ error: 'El seguro de mala praxis es obligatorio para profesionales.' });
       }
     } else {
-      // Si no es profesional, borramos el campo
       body.seguroMalaPraxis = undefined;
     }
 
@@ -126,7 +122,7 @@ exports.actualizarUsuario = async (req, res) => {
     usuario.contrasena = undefined;
     res.json(usuario);
   } catch (err) {
-    res.status(500).json({ error: 'Error al actualizar usuario', detalles: err });
+    res.status(500).json({ error: 'Error al actualizar usuario', detalles: err.message });
   }
 };
 
@@ -148,13 +144,28 @@ exports.eliminarUsuario = async (req, res) => {
 // ==================================================
 exports.login = async (req, res) => {
   try {
-    const { usuario, contrasena } = req.body;
-    const loginUsuario = (usuario || '').toLowerCase().trim();
+    const usuarioBody = (req.body?.usuario || '').toLowerCase().trim();
+    const emailBody   = (req.body?.email || '').toLowerCase().trim();
+    const loginUsuario = usuarioBody || emailBody;
 
-    const user = await Usuario.findOne({ usuario: loginUsuario });
+    const password = (req.body?.contrasena || req.body?.password || '').trim();
+
+    // Validar campos
+    if (!loginUsuario || !password) {
+      return res.status(400).json({ error: 'Faltan credenciales' });
+    }
+
+    const user = await Usuario.findOne({
+      $or: [{ usuario: loginUsuario }, { mail: loginUsuario }]
+    });
     if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
-    const validPassword = await bcrypt.compare(contrasena, user.contrasena);
+    const hash = user.contrasena || user.passwordHash || user.clave;
+    if (!hash) {
+      return res.status(500).json({ error: 'Usuario sin contraseña configurada' });
+    }
+
+    const validPassword = await bcrypt.compare(password, hash);
     if (!validPassword) return res.status(401).json({ error: 'Contraseña incorrecta' });
 
     const token = jwt.sign(
@@ -165,6 +176,8 @@ exports.login = async (req, res) => {
 
     const userData = user.toObject();
     delete userData.contrasena;
+    delete userData.passwordHash;
+    delete userData.clave;
 
     res.json({ mensaje: 'Login exitoso', user: userData, token });
   } catch (err) {
@@ -178,7 +191,6 @@ exports.login = async (req, res) => {
 // Middleware de autenticación con JWT
 // ==================================================
 exports.authMiddleware = (req, res, next) => {
-  // Acepta "Authorization: Bearer <token>" o "x-access-token: <token>"
   const authHeader = req.headers.authorization || req.headers['x-access-token'];
   if (!authHeader) return res.status(401).json({ error: 'Token requerido' });
 
@@ -189,16 +201,13 @@ exports.authMiddleware = (req, res, next) => {
   if (!token) return res.status(401).json({ error: 'Token inválido' });
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET); // <-- MISMO secreto
+    const decoded = jwt.verify(token, JWT_SECRET);
     req.user = decoded;
     next();
   } catch (err) {
-    // 401 si el token es inválido/expirado, 403 reservalo para falta de permisos
     return res.status(401).json({ error: 'Token no válido o expirado' });
   }
 };
-
-
 
 
 
