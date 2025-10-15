@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (valor.length < 2) return;
 
         try {
-            const res = await fetch(`/api/modulos?numero=${valor}`);
+            const res = await fetch(`${API}/api/modulos?numero=${valor}`);
             const modulos = await res.json();
 
             if (Array.isArray(modulos)) {
