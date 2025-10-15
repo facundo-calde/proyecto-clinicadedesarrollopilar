@@ -1,6 +1,5 @@
 // pacientes.js
 
-const API = window.location.origin;
 
 document.getElementById("busquedaInput").addEventListener("input", async () => {
   const input = document.getElementById("busquedaInput").value.trim();
@@ -10,7 +9,7 @@ document.getElementById("busquedaInput").addEventListener("input", async () => {
   if (input.length < 2) return;
 
   try {
-    const res = await fetch(`${API_URL}?nombre=${encodeURIComponent(input)}`);
+    const res = await apiFetch(`/pacientes?nombre=${encodeURIComponent(input)}`);
     const pacientes = await res.json();
 
     if (!Array.isArray(pacientes)) return;
@@ -48,8 +47,8 @@ async function renderFichaPaciente(p) {
     if (!cache.modulos || !cache.areas || !cache.usersTried) {
       try {
         const [rm, ra] = await Promise.all([
-          fetch(API_URL.replace("/pacientes", "/modulos")),
-          fetch(API_URL.replace("/pacientes", "/areas")),
+          apiFetch(".replace("/pacientes", "/modulos")),
+          apiFetch(".replace("/pacientes", "/areas")),
         ]);
         cache.modulos = rm.ok ? await rm.json() : [];
         cache.areas   = ra.ok ? await ra.json() : [];
@@ -61,7 +60,7 @@ async function renderFichaPaciente(p) {
       cache.users = [];
       try {
         const ru = await fetch(
-          API_URL.replace("/pacientes", "/usuarios"),
+          "/usuarios",
           { headers: getAuthHeaders() }
         );
         if (ru.ok) cache.users = await ru.json();
@@ -290,7 +289,7 @@ async function renderFichaPaciente(p) {
 
 async function modificarPaciente(dni) {
   try {
-    const res = await fetch(`${API_URL}/${dni}`);
+    const res = await apiFetch(`/${dni}`);
     const p = await res.json();
 
     // ---- Token (para /usuarios y para el PUT) ----
@@ -303,9 +302,9 @@ async function modificarPaciente(dni) {
     let MODULOS = [], AREAS = [], USUARIOS = [];
     try {
       const [resMod, resAreas, resUsers] = await Promise.all([
-        fetch(`${API_URL.replace("/pacientes", "/modulos")}`),
-        fetch(`${API_URL.replace("/pacientes", "/areas")}`),
-        fetch(`${API_URL.replace("/pacientes", "/usuarios")}`, {
+        apiFetch(`/modulos`),
+        apiFetch(`/areas`),
+        apiFetch(`/usuarios`, {
           headers: TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {}
         })
       ]);
@@ -759,7 +758,7 @@ async function modificarPaciente(dni) {
       return;
     }
 
-    const putRes = await fetch(`${API_URL}/${dni}`, {
+    const putRes = await apiFetch(`/${dni}`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
@@ -912,8 +911,8 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
         const authHeaders = getAuthHeaders();
 
         const [resAreas, resUsers] = await Promise.all([
-          fetch(`${API_URL.replace("/pacientes", "/areas")}`),
-          fetch(`${API_URL.replace("/pacientes", "/usuarios")}`, { headers: authHeaders })
+          apiFetch(`/areas`),
+          apiFetch(`/usuarios`, { headers: authHeaders })
         ]);
 
         if (!resUsers.ok) {
@@ -1115,7 +1114,7 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
         ...getAuthHeaders()
       };
 
-      const response = await fetch(API_URL, {
+      const response = await apiFetch(", {
         method: "POST",
         headers,
         body: JSON.stringify(result.value)
@@ -1140,7 +1139,7 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
 
 async function verDocumentos(dni) {
   try {
-    const res = await fetch(`${API_URL}/${dni}`);
+    const res = await apiFetch(`/${dni}`);
     const paciente = await res.json();
     const documentos = paciente.documentosPersonales ?? [];
 
@@ -1231,7 +1230,7 @@ async function agregarDocumento(dni) {
 
   try {
     // Traer paciente actual
-    const res = await fetch(`${API_URL}/${dni}`);
+    const res = await apiFetch(`/${dni}`);
     const paciente = await res.json();
 
     const nuevoDoc = {
@@ -1248,7 +1247,7 @@ async function agregarDocumento(dni) {
       nuevoDoc,
     ];
 
-    await fetch(`${API_URL}/${dni}`, {
+    await apiFetch(`/${dni}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ documentosPersonales: documentosActualizados }), // ✅ corregido
@@ -1264,7 +1263,7 @@ async function agregarDocumento(dni) {
 
 async function verDiagnosticos(dni) {
   try {
-    const res = await fetch(`${API_URL}/${dni}`);
+    const res = await apiFetch(`/${dni}`);
     const paciente = await res.json();
     const diagnosticos = paciente.diagnosticos ?? [];
 
@@ -1312,7 +1311,6 @@ async function verDiagnosticos(dni) {
 // ==========================
 // 🔐 Sesión, anti-back y helpers
 // ==========================
-const API = window.location.origin;
 const LOGIN = 'index.html';
 
 const goLogin = () => location.replace(LOGIN);

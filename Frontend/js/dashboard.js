@@ -29,7 +29,7 @@ if (usuario.rol === "Recepcionista") {
 }
 
 // Ejemplo de request protegido
-fetch(`${API}/api/usuarios`, {
+apiFetch(`/usuarios`, {
 
   headers: {
     "Authorization": "Bearer " + token

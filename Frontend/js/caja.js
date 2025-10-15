@@ -1,7 +1,6 @@
 // ==========================
 // 🔐 Sesión, anti-back y helpers
 // ==========================
-const API = window.location.origin;
 const LOGIN = 'index.html';
 
 const goLogin = () => location.replace(LOGIN);

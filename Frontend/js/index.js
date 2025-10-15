@@ -1,6 +1,5 @@
 document.addEventListener("DOMContentLoaded", () => {
   const form = document.getElementById("loginForm");
-  const API = window.location.origin;
     location.hostname.includes("localhost") || location.hostname.includes("127.0.0.1")
       ? ""
       : `${location.protocol}//${location.host}`;
@@ -12,7 +11,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const contrasena = document.getElementById("clave").value.trim();
 
     try {
-      const res = await fetch(`${API}/api/login`, {
+      const res = await apiFetch(`/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ usuario, contrasena }),

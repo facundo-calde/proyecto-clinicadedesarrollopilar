@@ -1,4 +1,3 @@
-const API = window.location.origin;
 
 document.addEventListener('DOMContentLoaded', () => {
     const botonCargar = document.getElementById('btnCargarModulo');
@@ -12,7 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (valor.length < 2) return;
 
         try {
-            const res = await fetch(`${API}/api/modulos?numero=${valor}`);
+            const res = await apiFetch(`/modulos?numero=${valor}`);
             const modulos = await res.json();
 
             if (Array.isArray(modulos)) {
@@ -164,7 +163,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!formValues) return;
 
         try {
-            const res = await fetch(API_URL, {
+            const res = await apiFetch(", {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(formValues)
@@ -192,7 +191,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (input.length < 2) return;
 
         try {
-            const res = await fetch(`${API_URL}?numero=${input}`);
+            const res = await apiFetch(`/modulos?numero=${input}`);
             const modulos = await res.json();
 
             if (!Array.isArray(modulos)) return;
@@ -261,7 +260,7 @@ async function borrarModulo(numero) {
 
     if (confirmacion.isConfirmed) {
         try {
-            const res = await fetch(`${API_URL}/${numero}`, { method: 'DELETE' });
+            const res = await apiFetch(`/${numero}`, { method: 'DELETE' });
             if (res.ok) {
                 Swal.fire('Borrado', 'El módulo fue eliminado.', 'success');
                 document.getElementById('fichaModuloContainer').innerHTML = '';
@@ -280,7 +279,7 @@ async function borrarModulo(numero) {
 
 async function modificarModulo(numero) {
     try {
-        const res = await fetch(`${API_URL}/${numero}`);
+        const res = await apiFetch(`/${numero}`);
         const modulo = await res.json();
 
         if (!res.ok) throw new Error(modulo.error || 'No se pudo obtener el módulo');
@@ -407,7 +406,7 @@ async function modificarModulo(numero) {
 
         if (!formValues) return;
 
-        const resUpdate = await fetch(`${API_URL}/${numero}`, {
+        const resUpdate = await apiFetch(`/${numero}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(formValues)
@@ -432,7 +431,6 @@ async function modificarModulo(numero) {
 // ==========================
 // 🔐 Sesión, anti-back y helpers
 // ==========================
-const API = window.location.origin;
 const LOGIN = 'index.html';
 
 const goLogin = () => location.replace(LOGIN);

@@ -1,4 +1,3 @@
-const API = window.location.origin;
 const tablaBody = document.getElementById('tabla-areas');
 const sinInfo = document.querySelector('.sin-info');
 const btnRegistrar = document.getElementById('btnAgregar');
@@ -9,7 +8,7 @@ document.addEventListener('DOMContentLoaded', cargarAreas);
 // Cargar y renderizar áreas
 async function cargarAreas() {
   try {
-    const res = await fetch(API_URL);
+    const res = await apiFetch(");
     const areas = await res.json();
 
     tablaBody.innerHTML = '';
@@ -59,7 +58,7 @@ html: `
       }
 
       try {
-        const res = await fetch(API_URL, {
+        const res = await apiFetch(", {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ nombre, mail })
@@ -96,7 +95,7 @@ async function editarArea(id, nombreActual, mailActual) {
       }
 
       try {
-        await fetch(`${API_URL}/${id}`, {
+        await apiFetch(`/${id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ nombre, mail })
@@ -123,7 +122,7 @@ async function eliminarArea(id) {
 
   if (confirm.isConfirmed) {
     try {
-      await fetch(`${API_URL}/${id}`, {
+      await apiFetch(`/${id}`, {
         method: 'DELETE'
       });
       Swal.fire('¡Eliminado!', '', 'success');
@@ -139,7 +138,6 @@ async function eliminarArea(id) {
 // ==========================
 // 🔐 Sesión, anti-back y helpers
 // ==========================
-const API = window.location.origin;
 const LOGIN = 'index.html';
 
 const goLogin = () => location.replace(LOGIN);

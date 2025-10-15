@@ -1,7 +1,6 @@
 // ==========================
 // 🔐 Sesión, anti-back y helpers
 // ==========================
-const API = window.location.origin;
 const LOGIN = 'index.html';
 
 const goLogin = () => location.replace(LOGIN);
@@ -72,7 +71,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const userList = document.getElementById('user-list');
 
   // Mostrar usuarios existentes (con token)
-  fetchAuth(`${API}/api/usuarios`)
+  apiFetch(`/usuarios`)
     .then(res => res.json())
     .then(data => {
       if (!Array.isArray(data) || data.length === 0) {
@@ -128,7 +127,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
   // 1) Traer áreas
   let AREAS = [];
   try {
-    const res = await fetchAuth(`${API}/api/areas`, { method: "GET" });
+    const res = await apiFetch(`/areas`, { method: "GET" });
     if (!res.ok) throw new Error("No se pudo obtener áreas");
     const data = await res.json();
     AREAS = (Array.isArray(data) ? data : [])
@@ -422,7 +421,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
   }).then(async result => {
     if (!result.isConfirmed) return;
 
-    const url = modoEdicion ? `${API}/api/usuarios/${u._id}` : `${API}/api/usuarios`;
+    const url = modoEdicion ? `/usuarios/${u._id}` : `/usuarios`;
     const method = modoEdicion ? 'PUT' : 'POST';
 
     const archivos = (document.getElementById('documentos')?.files) || [];
@@ -467,7 +466,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
 // ✏️ Editar / 🗑️ Borrar
 // ==========================
 function editarUsuario(id) {
-  fetchAuth(`${API}/api/usuarios/${id}`)
+  apiFetch(`/usuarios/${id}`)
     .then(res => res.json())
     .then(u => mostrarFormularioUsuario(u, true))
     .catch(err => {
@@ -493,7 +492,7 @@ function borrarUsuario(id) {
   }).then(result => {
     if (!result.isConfirmed) return;
 
-    fetchAuth(`${API}/api/usuarios/${id}`, { method: 'DELETE' })
+    apiFetch(`/usuarios/${id}`, { method: 'DELETE' })
       .then(res => {
         if (!res.ok) throw new Error('Error al borrar');
         return res.text();
