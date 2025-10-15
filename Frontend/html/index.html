@@ -32,6 +32,30 @@
     </div>
   </div>
 
+  <!-- 🔹 Parche para reemplazar localhost por el dominio actual -->
+  <script>
+  (function () {
+    var ORIGIN = location.origin;
+    var _fetch = window.fetch;
+    window.fetch = function(input, init) {
+      var url = (typeof input === 'string') ? input : input.url;
+      if (url && url.indexOf('http://localhost:3000') === 0) {
+        url = ORIGIN + url.slice('http://localhost:3000'.length);
+        if (typeof input === 'string') input = url;
+        else input = new Request(url, input);
+      }
+      return _fetch(input, init);
+    };
+    var _open = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function(method, url) {
+      if (url && url.indexOf('http://localhost:3000') === 0) {
+        url = ORIGIN + url.slice('http://localhost:3000'.length);
+      }
+      return _open.apply(this, [method, url].concat([].slice.call(arguments, 2)));
+    };
+  })();
+  </script>
+
   <!-- ✅ JS de login -->
   <script src="/js/index.js"></script>
 </body>
