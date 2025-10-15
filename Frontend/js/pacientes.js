@@ -1,6 +1,8 @@
 // pacientes.js
 
-
+// ─────────────────────────────────────────────────────────────────────────────
+// BUSCADOR (usar apiFetch: devuelve JSON directo)
+// ─────────────────────────────────────────────────────────────────────────────
 document.getElementById("busquedaInput").addEventListener("input", async () => {
   const input = document.getElementById("busquedaInput").value.trim();
   const sugerencias = document.getElementById("sugerencias");
@@ -9,9 +11,7 @@ document.getElementById("busquedaInput").addEventListener("input", async () => {
   if (input.length < 2) return;
 
   try {
-    const res = await apiFetch(`/pacientes?nombre=${encodeURIComponent(input)}`);
-    const pacientes = await res.json();
-
+    const pacientes = await apiFetch(`/pacientes?nombre=${encodeURIComponent(input)}`);
     if (!Array.isArray(pacientes)) return;
 
     pacientes.forEach((p) => {
@@ -30,28 +30,25 @@ document.getElementById("busquedaInput").addEventListener("input", async () => {
 });
 
 
-// Render de la ficha con módulos
+// ─────────────────────────────────────────────────────────────────────────────
+// RENDER FICHA
+// ─────────────────────────────────────────────────────────────────────────────
 async function renderFichaPaciente(p) {
   const container = document.getElementById("fichaPacienteContainer");
 
-  // ---- cache simple de catálogos ----
+  // cache simple de catálogos
   if (!window.__catCache) window.__catCache = {};
   const cache = window.__catCache;
-
-  const getAuthHeaders = () => {
-    const token = window.AUTH_TOKEN || localStorage.getItem("token");
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  };
 
   async function loadCats() {
     if (!cache.modulos || !cache.areas || !cache.usersTried) {
       try {
-        const [rm, ra] = await Promise.all([
-          apiFetch(".replace("/pacientes", "/modulos")),
-          apiFetch(".replace("/pacientes", "/areas")),
+        const [modulos, areas] = await Promise.all([
+          apiFetch(`/modulos`),
+          apiFetch(`/areas`),
         ]);
-        cache.modulos = rm.ok ? await rm.json() : [];
-        cache.areas   = ra.ok ? await ra.json() : [];
+        cache.modulos = Array.isArray(modulos) ? modulos : [];
+        cache.areas   = Array.isArray(areas)   ? areas   : [];
       } catch {
         cache.modulos = [];
         cache.areas   = [];
@@ -59,10 +56,8 @@ async function renderFichaPaciente(p) {
 
       cache.users = [];
       try {
-        const ru = await fetch(
-          "/usuarios",
-          { headers: getAuthHeaders() }
-        );
+        // fetch normal (config.js mete Authorization y base si usás /api/)
+        const ru = await fetch(`/api/usuarios`);
         if (ru.ok) cache.users = await ru.json();
       } catch {}
       cache.usersTried = true;
@@ -74,7 +69,7 @@ async function renderFichaPaciente(p) {
   }
   await loadCats();
 
-  // ---- helpers ----
+  // helpers
   const cap = (s) => (typeof s === "string" && s ? s[0].toUpperCase() + s.slice(1) : s);
   const HEX24 = /^[a-f0-9]{24}$/i;
   const fmtDateTime = (d) => {
@@ -97,7 +92,7 @@ async function renderFichaPaciente(p) {
     return String(val);
   };
 
-  // ---- módulos con profesionales/áreas ----
+  // módulos
   const modulosHTML = Array.isArray(p.modulosAsignados) && p.modulosAsignados.length
     ? `<ul style="margin:5px 0; padding-left:20px;">
         ${p.modulosAsignados.map(m => {
@@ -110,7 +105,7 @@ async function renderFichaPaciente(p) {
                 ${m.profesionales.map(pr => {
                   const u = cache.userById.get(String(pr.profesionalId));
                   const profNom = u ? (u.nombreApellido || u.nombre || u.usuario) : "Profesional";
-                  const aVal = pr.areaId ?? pr.area;   // tolera areaId o area (legacy)
+                  const aVal = pr.areaId ?? pr.area;
                   const aNom = areaName(aVal);
                   return `<li>${profNom}${aNom ? ` — ${aNom}` : ""}</li>`;
                 }).join("")}
@@ -122,23 +117,13 @@ async function renderFichaPaciente(p) {
       </ul>`
     : "Sin módulos asignados";
 
-  // ---- mails cliqueables ----
+  // mails
   const clickableMail = (mail) =>
     mail
       ? `<a href="mailto:${mail}" style="color:#1a73e8; text-decoration:none;">${mail}</a>`
       : "sin datos";
 
-  // Tomar email por relación desde responsables (fallback legacy si existiera)
-  const getEmailByRel = (rel) => {
-    const r = (Array.isArray(p.responsables) ? p.responsables : [])
-      .find(x => String(x.relacion || "").toLowerCase() === rel);
-    return (r && r.email) ? r.email : "";
-  };
-  const mailTutorRel = getEmailByRel("tutor") || p.mailTutor || "";
-  const mailPadreRel = getEmailByRel("padre") || p.mailPadre || "";
-  const mailMadreRel = getEmailByRel("madre") || p.mailMadre || "";
-
-  // ---- responsables (con WhatsApp y Email cliqueables) ----
+  // responsables
   const responsablesHTML = (() => {
     if (Array.isArray(p.responsables) && p.responsables.length) {
       return `
@@ -149,42 +134,32 @@ async function renderFichaPaciente(p) {
             const wspHTML = r.whatsapp
               ? ` 📱 <a href="https://wa.me/${r.whatsapp}" target="_blank" style="color:#25d366; text-decoration:none;">${r.whatsapp}</a>`
               : "";
-            const mailHTML = r.email
-              ? ` ✉️ ${clickableMail(r.email)}`
-              : "";
+            const mailHTML = r.email ? ` ✉️ ${clickableMail(r.email)}` : "";
             return `<li><strong>${rel}:</strong> ${nom}${wspHTML}${mailHTML}</li>`;
           }).join("")}
         </ul>`;
     }
-    // fallback legacy si no hay responsables cargados
     const tutorLinea = (p.tutor?.nombre || p.tutor?.whatsapp)
       ? `<li><strong>Tutor/a:</strong> ${p.tutor?.nombre ?? "sin datos"}${
           p.tutor?.whatsapp
-            ? ` 📱 <a href="https://wa.me/${p.tutor.whatsapp}" target="_blank"
-                     style="color:#25d366; text-decoration:none;">
-                     ${p.tutor.whatsapp}
-                   </a>`
+            ? ` 📱 <a href="https://wa.me/${p.tutor.whatsapp}" target="_blank" style="color:#25d366; text-decoration:none;">${p.tutor.whatsapp}</a>`
             : ""}</li>`
       : "";
     const mpLinea = (p.madrePadre || p.whatsappMadrePadre)
       ? `<li><strong>Padre o Madre:</strong> ${p.madrePadre ?? "sin datos"}${
           p.whatsappMadrePadre
-            ? ` 📱 <a href="https://wa.me/${p.whatsappMadrePadre}" target="_blank"
-                     style="color:#25d366; text-decoration:none;">
-                     ${p.whatsappMadrePadre}
-                   </a>`
+            ? ` 📱 <a href="https://wa.me/${p.whatsappMadrePadre}" target="_blank" style="color:#25d366; text-decoration:none;">${p.whatsappMadrePadre}</a>`
             : ""}</li>`
       : "";
     if (!tutorLinea && !mpLinea) return "Sin responsables cargados";
     return `<ul style="margin:5px 0; padding-left:20px;">${mpLinea}${tutorLinea}</ul>`;
   })();
 
-  // ---- historial de estado (con usuario que hizo el cambio) ----
+  // historial
   const historialHTML = (() => {
     const hist = Array.isArray(p.estadoHistorial) ? p.estadoHistorial.slice() : [];
     if (!hist.length) return "<em>Sin movimientos</em>";
 
-    // Orden ascendente para derivar "de → a" si no viene
     hist.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
 
     let prevEstado = null;
@@ -193,7 +168,6 @@ async function renderFichaPaciente(p) {
       const to   = (h.estadoNuevo    ?? h.hasta ?? h.estado ?? "—");
       prevEstado = to;
 
-      // Actor (snapshot preferente)
       let actor = "";
       const cp = h.cambiadoPor || {};
       if (cp.nombre) actor = cp.nombre;
@@ -212,7 +186,6 @@ async function renderFichaPaciente(p) {
       return `<li><strong>${from}</strong> → <strong>${to}</strong>${fechaHTML}${actorHTML}${descHTML}</li>`;
     });
 
-    // más reciente primero
     items.reverse();
 
     return `
@@ -222,7 +195,7 @@ async function renderFichaPaciente(p) {
     `;
   })();
 
-  // ---- render ----
+  // render
   container.innerHTML = `
     <div class="ficha-paciente">
       <div class="ficha-header">
@@ -249,7 +222,6 @@ async function renderFichaPaciente(p) {
           <p><strong>Colegio:</strong> ${p.colegio ?? "sin datos"}</p>
           <p><strong>Mail del colegio:</strong> ${clickableMail(p.colegioMail)}</p>
           <p><strong>Curso / Nivel:</strong> ${p.curso ?? "sin datos"}</p>
-          <!-- (No mostramos mails de tutor/padre/madre aquí; van en "Responsables") -->
         </div>
       </div>
 
@@ -282,36 +254,31 @@ async function renderFichaPaciente(p) {
 }
 
 
-
-
-
-
-
+// ─────────────────────────────────────────────────────────────────────────────
+// MODIFICAR PACIENTE
+// ─────────────────────────────────────────────────────────────────────────────
 async function modificarPaciente(dni) {
   try {
-    const res = await apiFetch(`/${dni}`);
-    const p = await res.json();
+    const p = await apiFetch(`/pacientes/${dni}`);
 
-    // ---- Token (para /usuarios y para el PUT) ----
+    // Token (sólo para mensajes de error)
     const TOKEN =
       localStorage.getItem("token") ||
       sessionStorage.getItem("token") ||
       "";
 
-    // ---- Catálogos ----
+    // Catálogos
     let MODULOS = [], AREAS = [], USUARIOS = [];
     try {
-      const [resMod, resAreas, resUsers] = await Promise.all([
+      const [m, a, uRes] = await Promise.all([
         apiFetch(`/modulos`),
         apiFetch(`/areas`),
-        apiFetch(`/usuarios`, {
-          headers: TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {}
-        })
+        fetch(`/api/usuarios`)
       ]);
-      if (resMod.ok)   MODULOS  = await resMod.json();
-      if (resAreas.ok) AREAS    = await resAreas.json();
-      if (resUsers.ok) USUARIOS = await resUsers.json();
-      if (!resUsers.ok) console.warn("No se pudieron cargar usuarios:", resUsers.status);
+      MODULOS = Array.isArray(m) ? m : [];
+      AREAS   = Array.isArray(a) ? a : [];
+      if (uRes.ok) USUARIOS = await uRes.json();
+      else console.warn("No se pudieron cargar usuarios:", uRes.status);
     } catch (_) {}
 
     const MOD_OPTS = MODULOS.length
@@ -322,7 +289,7 @@ async function modificarPaciente(dni) {
       ? AREAS.map(a => `<option value="${a._id}">${a.nombre}</option>`).join("")
       : `<option value="">No disponible</option>`;
 
-    // ---- helpers para filtrar profesionales por área (incluye "Coordinador y profesional") ----
+    // helpers filtro profesionales
     const norm  = (s) => (s ?? "").toString().normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
     const HEX24 = /^[a-f0-9]{24}$/i;
     const AREA_ID_TO_NAME_NORM = new Map();
@@ -331,20 +298,17 @@ async function modificarPaciente(dni) {
 
     const profesionalesDeArea = (areaId) => {
       const targetNameNorm = AREA_ID_TO_NAME_NORM.get(String(areaId)) || "";
-      const lista = USUARIOS
+      const lista = (USUARIOS || [])
         .filter(u => ROLES_PROF.has(norm(u.rol || u.rolAsignado)))
         .filter(u => {
           if (!areaId) return true;
 
-          // 1) Nuevo: areasProfesional [{areaId/areaNombre, nivel}]
           if (Array.isArray(u.areasProfesional) && u.areasProfesional.length) {
             for (const ap of u.areasProfesional) {
               const nombre = ap?.areaNombre || "";
               if (norm(nombre) === targetNameNorm) return true;
             }
           }
-
-          // 2) Legacy: areas como strings/objetos
           const arr = Array.isArray(u.areas) ? u.areas : [];
           for (const it of arr) {
             const idCandidate   = typeof it === "object" ? it._id    : it;
@@ -363,7 +327,7 @@ async function modificarPaciente(dni) {
              lista.map(u => `<option value="${u._id}">${u.nombreApellido || u.nombre || u.usuario}</option>`).join("");
     };
 
-    // ---- template de módulo ----
+    // template módulo
     const renderModuloSelect = (index) => `
       <div class="modulo-row" data-index="${index}"
            style="margin-bottom:15px; padding:10px; border:1px solid #ddd; border-radius:6px;">
@@ -410,7 +374,7 @@ async function modificarPaciente(dni) {
       </div>
     `;
 
-    // ---- responsables iniciales (trae email si existe) ----
+    // responsables iniciales
     const responsablesIniciales = Array.isArray(p.responsables) && p.responsables.length
       ? p.responsables.slice(0,3).map(r => ({
           relacion: r.relacion, nombre: r.nombre, whatsapp: r.whatsapp, email: r.email || ""
@@ -431,7 +395,7 @@ async function modificarPaciente(dni) {
           return arr.slice(0,3);
         })();
 
-    // ---- modal ----
+    // modal
     const { isConfirmed, value: data } = await Swal.fire({
       title: '<h3 style="font-family: Montserrat; font-weight: 600;">Modificar datos del paciente:</h3>',
       html: `
@@ -506,7 +470,7 @@ async function modificarPaciente(dni) {
         </form>
       `,
       didOpen: () => {
-        // Toggle obra social
+        // obra social
         const condicionDePagoSelect = document.getElementById("condicionDePago");
         const obraSocialExtra = document.getElementById("obraSocialExtra");
         const toggleObraSocial = () => {
@@ -517,7 +481,7 @@ async function modificarPaciente(dni) {
         condicionDePagoSelect.addEventListener("change", toggleObraSocial);
         toggleObraSocial();
 
-        // descripción de estado sólo si cambia
+        // descripción de estado
         const estadoSel = document.getElementById("estado");
         const estadoDescWrap = document.getElementById("estadoDescWrap");
         const estadoInicial = p.estado || "En espera";
@@ -528,7 +492,7 @@ async function modificarPaciente(dni) {
         estadoSel.addEventListener("change", toggleDesc);
         toggleDesc();
 
-        // Responsables dinámicos (con email opcional por fila)
+        // responsables
         const cont = document.getElementById("responsablesContainer");
         const btnAdd = document.getElementById("btnAgregarResponsable");
         const relaciones = ['padre','madre','tutor'];
@@ -563,7 +527,7 @@ async function modificarPaciente(dni) {
         else addRespRow({ relacion:'tutor' });
         btnAdd.addEventListener('click', () => addRespRow());
 
-        // -------- MÓDULOS: precarga + wire --------
+        // módulos
         const modCont = document.getElementById("modulosContainer");
 
         const attachAgregarProfesional = (modRowEl) => {
@@ -595,7 +559,6 @@ async function modificarPaciente(dni) {
             wireFilter(container.lastElementChild);
           });
 
-          // primera fila ya existente en el bloque
           wireFilter(container.querySelector(".profesional-row"));
         };
 
@@ -607,10 +570,9 @@ async function modificarPaciente(dni) {
           return modRowEl;
         };
 
-        // Precargar módulos existentes
         const existentes = Array.isArray(p.modulosAsignados) ? p.modulosAsignados : [];
         if (existentes.length === 0) {
-          addModuloRow(); // uno vacío
+          addModuloRow();
         } else {
           existentes.forEach(m => {
             const row = addModuloRow();
@@ -677,7 +639,10 @@ async function modificarPaciente(dni) {
           Swal.showValidationMessage("⚠️ Completá los campos obligatorios (Nombre, Fecha).");
           return false;
         }
-        if (colegioMail && !mailRegex.test(colegioMail)) { Swal.showValidationMessage("⚠️ Mail del colegio inválido."); return false; }
+        if (colegioMail && !mailRegex.test(colegioMail)) {
+          Swal.showValidationMessage("⚠️ Mail del colegio inválido.");
+          return false;
+        }
 
         const filas = Array.from(document.querySelectorAll('#responsablesContainer .responsable-row'));
         if (filas.length < 1 || filas.length > 3) {
@@ -705,7 +670,7 @@ async function modificarPaciente(dni) {
           }
 
           const r = { relacion, nombre: nombreR, whatsapp };
-          if (emailR) r.email = emailR; // opcional
+          if (emailR) r.email = emailR;
           responsables.push(r);
         }
 
@@ -742,7 +707,7 @@ async function modificarPaciente(dni) {
           responsables,
           condicionDePago: condicionDePagoVal,
           estado,
-          descripcionEstado,          // -> el backend arma historial si cambió
+          descripcionEstado,
           prestador, credencial, tipo,
           planPaciente: planTexto,
           modulosAsignados
@@ -752,18 +717,10 @@ async function modificarPaciente(dni) {
 
     if (!isConfirmed) return;
 
-    // === PUT con token ===
-    if (!TOKEN) {
-      Swal.fire('Sesión requerida', 'Volvé a iniciar sesión para guardar cambios.', 'warning');
-      return;
-    }
-
-    const putRes = await apiFetch(`/${dni}`, {
+    // PUT (usar fetch normal para chequear ok; config.js ya mete Authorization y /api)
+    const putRes = await fetch(`/api/pacientes/${dni}`, {
       method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${TOKEN}`
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data)
     });
 
@@ -777,8 +734,11 @@ async function modificarPaciente(dni) {
     const actualizado = await putRes.json();
     Swal.fire("✅ Cambios guardados", "", "success");
     renderFichaPaciente(actualizado);
-    document.getElementById("fichaPacienteContainer").innerHTML = "";
-    document.getElementById("busquedaInput").value = "";
+
+    // ❌ No borramos la ficha ni el input acá.
+    // document.getElementById("fichaPacienteContainer").innerHTML = "";
+    // document.getElementById("busquedaInput").value = "";
+
   } catch (err) {
     console.error(err);
     Swal.fire("❌ Error al cargar/modificar paciente", err.message || "", "error");
@@ -786,13 +746,9 @@ async function modificarPaciente(dni) {
 }
 
 
-
-
-
-
-
-
-
+// ─────────────────────────────────────────────────────────────────────────────
+// NUEVO PACIENTE
+// ─────────────────────────────────────────────────────────────────────────────
 document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
   const getAuthHeaders = () => {
     const token =
@@ -812,19 +768,14 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
           <div class="columna">
             <label>Nombre y Apellido:</label>
             <input id="nombre" class="swal2-input">
-
             <label>DNI:</label>
             <input id="dni" class="swal2-input">
-
             <label>Fecha de nacimiento:</label>
             <input id="fecha" class="swal2-input" type="date">
-
             <label>Colegio:</label>
             <input id="colegio" class="swal2-input">
-
             <label>Mail del colegio:</label>
             <input id="colegioMail" class="swal2-input" type="email">
-
             <label>Curso / Nivel:</label>
             <input id="curso" class="swal2-input">
 
@@ -862,12 +813,12 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
           <div class="columna" style="margin-top: 20px;">
             <label style="font-weight:bold;">Área:</label>
             <select id="areaSeleccionada" class="swal2-select" style="margin-bottom: 10px;">
-              <option value="">-- Cargando áreas... --</option>
+              <option value="">-- Cargando áreas --</option>
             </select>
 
             <label style="font-weight:bold;">Profesional:</label>
             <select id="profesionalSeleccionado" class="swal2-select" style="margin-bottom: 10px;">
-              <option value="">-- Cargando profesionales... --</option>
+              <option value="">-- Cargando profesionales --</option>
             </select>
           </div>
         </div>
@@ -880,7 +831,7 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
     cancelButtonText: "Cancelar",
 
     didOpen: async () => {
-      // Toggle obra social
+      // obra social
       const condicionDePagoSelect = document.getElementById("condicionDePago");
       const obraSocialExtra = document.getElementById("obraSocialExtra");
       const toggleObraSocial = () => {
@@ -891,7 +842,7 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
       condicionDePagoSelect.addEventListener("change", toggleObraSocial);
       toggleObraSocial();
 
-      // Carga de áreas y profesionales
+      // áreas + profesionales
       const areaSel = document.getElementById("areaSeleccionada");
       const profSel = document.getElementById("profesionalSeleccionado");
 
@@ -908,19 +859,17 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
       let USUARIOS = [];
 
       try {
-        const authHeaders = getAuthHeaders();
-
         const [resAreas, resUsers] = await Promise.all([
           apiFetch(`/areas`),
-          apiFetch(`/usuarios`, { headers: authHeaders })
+          fetch(`/api/usuarios`)
         ]);
 
         if (!resUsers.ok) {
           console.warn("No se pudieron cargar usuarios:", resUsers.status, await resUsers.text());
         }
 
-        AREAS    = resAreas.ok ? await resAreas.json()   : [];
-        USUARIOS = resUsers.ok ? await resUsers.json()   : [];
+        AREAS    = Array.isArray(resAreas) ? resAreas : [];
+        USUARIOS = resUsers.ok ? await resUsers.json() : [];
 
         setOptions(areaSel, AREAS, (a) => `<option value="${a._id}">${a.nombre}</option>`, "No disponible");
 
@@ -973,7 +922,7 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
         profSel.innerHTML = `<option value="">No disponible</option>`;
       }
 
-      // Responsables dinámicos (ahora con EMAIL)
+      // responsables (con email)
       const cont = document.getElementById("responsablesContainer");
       const btnAdd = document.getElementById("btnAgregarResponsable");
 
@@ -1043,7 +992,6 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
         return false;
       }
 
-      // Responsables (1..3) con email opcional
       const filas = Array.from(document.querySelectorAll('#responsablesContainer .responsable-row'));
       if (filas.length < 1 || filas.length > 3) {
         Swal.showValidationMessage("⚠️ Debe haber entre 1 y 3 responsables.");
@@ -1081,7 +1029,7 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
         tipo       = gv("tipo");
       }
 
-      // (si no usás módulos acá)
+      // si no usás módulos acá:
       const modulosAsignados = [];
       const areasDerivadas = [];
 
@@ -1092,15 +1040,12 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
         colegio,
         colegioMail,
         curso,
-
         responsables,
-
         condicionDePago: condicionDePagoVal,
         estado,
         prestador,
         credencial,
         tipo,
-
         modulosAsignados,
         areas: areasDerivadas
       };
@@ -1109,14 +1054,13 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
     if (!result.isConfirmed) return;
 
     try {
-      const headers = {
-        "Content-Type": "application/json",
-        ...getAuthHeaders()
-      };
-
-      const response = await apiFetch(", {
+      // POST (fetch normal para chequear ok; config.js mete Authorization y /api)
+      const response = await fetch(`/api/pacientes`, {
         method: "POST",
-        headers,
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders()
+        },
         body: JSON.stringify(result.value)
       });
 
@@ -1133,47 +1077,40 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
 });
 
 
-
-
-
-
+// ─────────────────────────────────────────────────────────────────────────────
+// DOCUMENTOS / DIAGNÓSTICOS
+// ─────────────────────────────────────────────────────────────────────────────
 async function verDocumentos(dni) {
   try {
-    const res = await apiFetch(`/${dni}`);
-    const paciente = await res.json();
+    const paciente = await apiFetch(`/pacientes/${dni}`);
     const documentos = paciente.documentosPersonales ?? [];
 
     const htmlTabla = documentos.length
-      ? documentos
-        .map(
-          (doc, i) => `
+      ? documentos.map((doc, i) => `
         <tr>
           <td>${doc.fecha}</td>
           <td>${doc.tipo}</td>
           <td>${doc.observaciones ?? "-"}</td>
-          <td><a href="${doc.archivoURL
-            }" target="_blank" title="Ver archivo"><i class="fa fa-file-pdf"></i></a></td>
+          <td><a href="${doc.archivoURL}" target="_blank" title="Ver archivo"><i class="fa fa-file-pdf"></i></a></td>
           <td>
             <button onclick="editarDocumento('${dni}', ${i})"><i class="fa fa-pen"></i></button>
             <button onclick="eliminarDocumento('${dni}', ${i})"><i class="fa fa-trash"></i></button>
           </td>
         </tr>
-      `
-        )
-        .join("")
+      `).join("")
       : `<tr><td colspan="5" style="text-align:center;">No hay documentos cargados.</td></tr>`;
 
     await Swal.fire({
       title: `<h3 style="font-family:Montserrat;">Documentos personales - DNI ${dni}</h3>`,
       html: `
-  <button onclick="agregarDocumento('${dni}')" class="swal2-confirm" style="margin-bottom: 10px;">➕ Agregar documento</button>
-  <table style="width:100%; font-size: 14px; text-align: left;">
-    <thead>
-      <tr><th>Fecha</th><th>Tipo</th><th>Observaciones</th><th>Ver adjuntos</th><th>Modificar</th></tr>
-    </thead>
-    <tbody>${htmlTabla}</tbody>
-  </table>
-`,
+        <button onclick="agregarDocumento('${dni}')" class="swal2-confirm" style="margin-bottom: 10px;">➕ Agregar documento</button>
+        <table style="width:100%; font-size: 14px; text-align: left;">
+          <thead>
+            <tr><th>Fecha</th><th>Tipo</th><th>Observaciones</th><th>Ver adjuntos</th><th>Modificar</th></tr>
+          </thead>
+          <tbody>${htmlTabla}</tbody>
+        </table>
+      `,
       width: "70%",
       showCancelButton: true,
       showConfirmButton: false,
@@ -1192,13 +1129,10 @@ async function agregarDocumento(dni) {
       <div style="display: flex; flex-direction: column; gap: 10px;">
         <label>Fecha:</label>
         <input type="date" id="docFecha" class="swal2-input">
-
         <label>Tipo:</label>
         <input type="text" id="docTipo" class="swal2-input" placeholder="Ej: DNI, Autorización, Carnet OS...">
-
         <label>Observaciones:</label>
         <textarea id="docObs" class="swal2-textarea" placeholder="Opcional"></textarea>
-
         <label>Archivo adjunto (PDF o imagen):</label>
         <input type="file" id="docArchivo" class="swal2-file" accept=".pdf,image/*">
       </div>
@@ -1213,15 +1147,12 @@ async function agregarDocumento(dni) {
       const archivo = document.getElementById("docArchivo").files[0];
 
       if (!fecha || !tipo || !archivo) {
-        Swal.showValidationMessage(
-          "Todos los campos excepto observaciones son obligatorios"
-        );
+        Swal.showValidationMessage("Todos los campos excepto observaciones son obligatorios");
         return false;
       }
 
-      // Simulación de subida de archivo
+      // Simulación de subida de archivo (reemplazá por tu uploader real)
       const archivoURL = await simularSubidaArchivo(archivo);
-
       return { fecha, tipo, observaciones, archivoURL };
     },
   });
@@ -1229,9 +1160,7 @@ async function agregarDocumento(dni) {
   if (!isConfirmed || !formValues) return;
 
   try {
-    // Traer paciente actual
-    const res = await apiFetch(`/${dni}`);
-    const paciente = await res.json();
+    const paciente = await apiFetch(`/pacientes/${dni}`);
 
     const nuevoDoc = {
       fecha: formValues.fecha,
@@ -1241,20 +1170,19 @@ async function agregarDocumento(dni) {
     };
 
     const documentosActualizados = [
-      ...(Array.isArray(paciente.documentosPersonales)
-        ? paciente.documentosPersonales
-        : []),
+      ...(Array.isArray(paciente.documentosPersonales) ? paciente.documentosPersonales : []),
       nuevoDoc,
     ];
 
-    await apiFetch(`/${dni}`, {
+    const res = await fetch(`/api/pacientes/${dni}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ documentosPersonales: documentosActualizados }), // ✅ corregido
+      body: JSON.stringify({ documentosPersonales: documentosActualizados }),
     });
+    if (!res.ok) throw new Error("No se pudo actualizar documentos");
 
     Swal.fire("✅ Documento agregado", "", "success");
-    verDocumentos(dni); // Refrescar la vista
+    verDocumentos(dni);
   } catch (error) {
     console.error("Error al agregar documento:", error);
     Swal.fire("❌ Error al guardar documento", "", "error");
@@ -1263,28 +1191,22 @@ async function agregarDocumento(dni) {
 
 async function verDiagnosticos(dni) {
   try {
-    const res = await apiFetch(`/${dni}`);
-    const paciente = await res.json();
+    const paciente = await apiFetch(`/pacientes/${dni}`);
     const diagnosticos = paciente.diagnosticos ?? [];
 
     const htmlTabla = diagnosticos.length
-      ? diagnosticos
-        .map(
-          (d, i) => `
+      ? diagnosticos.map((d, i) => `
         <tr>
           <td>${d.fecha}</td>
           <td>${d.area}</td>
           <td>${d.observaciones ?? "-"}</td>
-          <td><a href="${d.archivoURL
-            }" target="_blank"><i class="fa fa-file-pdf"></i></a></td>
+          <td><a href="${d.archivoURL}" target="_blank"><i class="fa fa-file-pdf"></i></a></td>
           <td>
             <button onclick="editarDiagnostico('${dni}', ${i})"><i class="fa fa-pen"></i></button>
             <button onclick="eliminarDiagnostico('${dni}', ${i})"><i class="fa fa-trash"></i></button>
           </td>
         </tr>
-      `
-        )
-        .join("")
+      `).join("")
       : `<tr><td colspan="5" style="text-align:center;">No hay diagnósticos cargados.</td></tr>`;
 
     await Swal.fire({
@@ -1308,42 +1230,38 @@ async function verDiagnosticos(dni) {
     Swal.fire("❌ Error al cargar diagnósticos", "", "error");
   }
 }
-// ==========================
-// 🔐 Sesión, anti-back y helpers
-// ==========================
-const LOGIN = 'index.html';
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔐 Sesión, anti-back y helpers (ok con tu config.js, no hay conflicto)
+// ─────────────────────────────────────────────────────────────────────────────
+const LOGIN = 'index.html';
 const goLogin = () => location.replace(LOGIN);
 
-// Usuario y token
 let usuarioSesion = null;
 try { usuarioSesion = JSON.parse(localStorage.getItem('usuario') || 'null'); } catch { usuarioSesion = null; }
 const token = localStorage.getItem('token');
 
-// Guard inmediato
 if (!token) goLogin();
 
-// Anti-BFCache: si vuelven con atrás y la página se restaura desde caché
 window.addEventListener('pageshow', (e) => {
   const nav = performance.getEntriesByType('navigation')[0];
   const fromBF = e.persisted || nav?.type === 'back_forward';
   if (fromBF && !localStorage.getItem('token')) goLogin();
 });
 
-// Anti-atrás: si no hay token, mandá a login; si hay, re-inyectá el estado
 history.pushState(null, '', location.href);
 window.addEventListener('popstate', () => {
   if (!localStorage.getItem('token')) goLogin();
   else history.pushState(null, '', location.href);
 });
 
-// Pintar nombre en top bar (si existe id="userName")
 if (usuarioSesion?.nombreApellido) {
   const userNameEl = document.getElementById('userName');
   if (userNameEl) userNameEl.textContent = usuarioSesion.nombreApellido;
 }
 
-// Helper fetch con Authorization y manejo de 401
+// fetchAuth (lo podés seguir usando si te gusta; pero con config.js ya tenés fetch global con token)
 async function fetchAuth(url, options = {}) {
   const opts = {
     ...options,
@@ -1363,7 +1281,6 @@ async function fetchAuth(url, options = {}) {
   return res;
 }
 
-// 🔹 Logout
 const btnLogout = document.getElementById('btnLogout');
 if (btnLogout) {
   btnLogout.addEventListener('click', () => {
@@ -1371,4 +1288,3 @@ if (btnLogout) {
     goLogin();
   });
 }
-

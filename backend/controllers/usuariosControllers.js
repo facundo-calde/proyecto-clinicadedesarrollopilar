@@ -150,7 +150,6 @@ exports.login = async (req, res) => {
 
     const password = (req.body?.contrasena || req.body?.password || '').trim();
 
-    // Validar campos
     if (!loginUsuario || !password) {
       return res.status(400).json({ error: 'Faltan credenciales' });
     }
