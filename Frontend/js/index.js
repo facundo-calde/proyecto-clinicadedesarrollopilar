@@ -1,6 +1,6 @@
 document.addEventListener("DOMContentLoaded", () => {
   const form = document.getElementById("loginForm");
-  const API =
+  const API = window.location.origin;
     location.hostname.includes("localhost") || location.hostname.includes("127.0.0.1")
       ? ""
       : `${location.protocol}//${location.host}`;

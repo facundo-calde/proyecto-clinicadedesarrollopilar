@@ -1,4 +1,4 @@
-const API_URL = '/api/areas';
+const API = window.location.origin;
 const tablaBody = document.getElementById('tabla-areas');
 const sinInfo = document.querySelector('.sin-info');
 const btnRegistrar = document.getElementById('btnAgregar');
@@ -139,7 +139,7 @@ async function eliminarArea(id) {
 // ==========================
 // 🔐 Sesión, anti-back y helpers
 // ==========================
-const API   = 'http://localhost:3000';   // <-- ajustá si corresponde
+const API = window.location.origin;
 const LOGIN = 'index.html';
 
 const goLogin = () => location.replace(LOGIN);

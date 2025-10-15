@@ -1,7 +1,7 @@
 // ==========================
 // 🔐 Sesión, anti-back y helpers
 // ==========================
-const API   = 'http://localhost:3000';   // <-- ajustá si corresponde
+const API = window.location.origin;
 const LOGIN = 'index.html';
 
 const goLogin = () => location.replace(LOGIN);

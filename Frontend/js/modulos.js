@@ -1,4 +1,4 @@
-const API_URL = '/api/modulos';
+const API = window.location.origin;
 
 document.addEventListener('DOMContentLoaded', () => {
     const botonCargar = document.getElementById('btnCargarModulo');
@@ -432,7 +432,7 @@ async function modificarModulo(numero) {
 // ==========================
 // 🔐 Sesión, anti-back y helpers
 // ==========================
-const API   = 'http://localhost:3000';   // <-- ajustá si corresponde
+const API = window.location.origin;
 const LOGIN = 'index.html';
 
 const goLogin = () => location.replace(LOGIN);

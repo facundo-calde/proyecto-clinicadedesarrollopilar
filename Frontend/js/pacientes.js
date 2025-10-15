@@ -1,6 +1,6 @@
 // pacientes.js
 
-const API_URL = "/api/pacientes";
+const API = window.location.origin;
 
 document.getElementById("busquedaInput").addEventListener("input", async () => {
   const input = document.getElementById("busquedaInput").value.trim();
@@ -1312,7 +1312,7 @@ async function verDiagnosticos(dni) {
 // ==========================
 // 🔐 Sesión, anti-back y helpers
 // ==========================
-const API   = 'http://localhost:3000';   // <-- ajustá si corresponde
+const API = window.location.origin;
 const LOGIN = 'index.html';
 
 const goLogin = () => location.replace(LOGIN);
