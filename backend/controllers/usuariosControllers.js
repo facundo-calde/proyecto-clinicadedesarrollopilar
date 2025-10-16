@@ -5,9 +5,7 @@ const jwt = require('jsonwebtoken');
 // Usa un solo secreto SIEMPRE
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecreto';
 
-// ==================================================
-// Crear usuario
-// ==================================================
+// Crear usuario (seguroMalaPraxis OPCIONAL)
 exports.crearUsuario = async (req, res) => {
   try {
     const { body, files } = req;
@@ -22,14 +20,10 @@ exports.crearUsuario = async (req, res) => {
       }));
     }
 
-    // Validación de seguro para profesionales
-    if (body.rol === 'Profesional' && (!body.seguroMalaPraxis || body.seguroMalaPraxis.trim() === '')) {
-      return res.status(400).json({ error: 'El seguro de mala praxis es obligatorio para profesionales.' });
-    }
-
-    if (body.rol !== 'Profesional') {
-      delete body.seguroMalaPraxis;
-    }
+    // ⇩ opcional
+    const isProf = body.rol === 'Profesional' || body.rol === 'Coordinador y profesional';
+    const seguro = (body.seguroMalaPraxis ?? '').toString().trim();
+    body.seguroMalaPraxis = isProf ? (seguro || undefined) : undefined;
 
     let hashedPassword = body.contrasena;
     if (body.contrasena) {
@@ -45,11 +39,12 @@ exports.crearUsuario = async (req, res) => {
 
     await nuevo.save();
     nuevo.contrasena = undefined;
-    res.status(201).json(nuevo);
+    return res.status(201).json(nuevo);
   } catch (err) {
-    res.status(500).json({ error: 'Error al crear usuario', detalles: err.message });
+    return res.status(500).json({ error: 'Error al crear usuario', detalles: err.message });
   }
 };
+
 
 
 // ==================================================
@@ -76,14 +71,14 @@ exports.getUsuarioPorId = async (req, res) => {
     res.status(500).json({ error: 'Error al obtener usuario' });
   }
 };
-
 // ==================================================
-// Actualizar usuario
+// Actualizar usuario (seguroMalaPraxis OPCIONAL)
 // ==================================================
 exports.actualizarUsuario = async (req, res) => {
   try {
     const { body, files } = req;
 
+    // anexar documentos si vinieron
     let documentos = [];
     if (files && files.length > 0) {
       documentos = files.map(file => ({
@@ -97,6 +92,7 @@ exports.actualizarUsuario = async (req, res) => {
     const usuario = await Usuario.findById(req.params.id);
     if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
 
+    // hash de contraseña sólo si vino
     if (body.contrasena) {
       const salt = await bcrypt.genSalt(10);
       body.contrasena = await bcrypt.hash(body.contrasena, salt);
@@ -104,27 +100,35 @@ exports.actualizarUsuario = async (req, res) => {
       delete body.contrasena;
     }
 
+    // normalización de seguro (OPCIONAL)
+    // - si viene en el body: trim y dejar undefined si vacío
+    // - si NO viene: no tocar el valor actual
+    if (Object.prototype.hasOwnProperty.call(body, 'seguroMalaPraxis')) {
+      const seguro = (body.seguroMalaPraxis ?? '').toString().trim();
+      body.seguroMalaPraxis = seguro || undefined;
+    }
+
+    // si el rol final NO tiene parte profesional, limpiamos seguro
     const rolFinal = body.rol || usuario.rol;
-    if (rolFinal === 'Profesional') {
-      if (!body.seguroMalaPraxis && !usuario.seguroMalaPraxis) {
-        return res.status(400).json({ error: 'El seguro de mala praxis es obligatorio para profesionales.' });
-      }
-    } else {
+    const tieneParteProfesional = (rolFinal === 'Profesional' || rolFinal === 'Coordinador y profesional');
+    if (!tieneParteProfesional) {
       body.seguroMalaPraxis = undefined;
     }
 
+    // aplicar cambios
     usuario.set(body);
     if (documentos.length > 0) {
       usuario.documentos = usuario.documentos.concat(documentos);
     }
 
-    await usuario.save();
+    await usuario.save(); // corre validaciones del schema (áreas, niveles, etc.)
     usuario.contrasena = undefined;
-    res.json(usuario);
+    return res.json(usuario);
   } catch (err) {
-    res.status(500).json({ error: 'Error al actualizar usuario', detalles: err.message });
+    return res.status(500).json({ error: 'Error al actualizar usuario', detalles: err.message });
   }
 };
+
 
 
 // ==================================================
