@@ -48,6 +48,7 @@ async function fetchAuth(url, options = {}) {
     },
     cache: 'no-store',
   };
+
   const res = await fetch(url, opts);
   if (res.status === 401) {
     localStorage.removeItem('token');
@@ -57,6 +58,7 @@ async function fetchAuth(url, options = {}) {
   }
   return res;
 }
+
 
 
 // 🔹 Logout
