@@ -229,20 +229,20 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         <div class="form-container">
           <!-- Col 1 -->
           <div class="form-column">
-            <input class="swal2-input" id="nombreApellido" placeholder="Nombre y Apellido">
-            <input class="swal2-input" id="fechaNacimiento" type="date" placeholder="Fecha de Nacimiento">
-            <input class="swal2-input" id="domicilio" placeholder="Domicilio">
-            <input class="swal2-input" id="dni" placeholder="DNI/CUIL/CUIT">
-            <input class="swal2-input" id="matricula" placeholder="Matrícula">
-            <input class="swal2-input" id="jurisdiccion" placeholder="Jurisdicción">
-            <input class="swal2-input" id="whatsapp" placeholder="Whatsapp">
-            <input class="swal2-input" id="mail" placeholder="Mail">
-            <input class="swal2-input" id="salarioAcuerdo" placeholder="Salario acordado">
-            <input class="swal2-input" id="fijoAcuerdo" placeholder="Fijo acordado">
-            <input class="swal2-input" id="banco" placeholder="Banco">
-            <input class="swal2-input" id="cbu" placeholder="CBU">
-            <input class="swal2-input" id="alias" placeholder="Alias">
-            <input class="swal2-input" id="tipoCuenta" placeholder="Tipo de cuenta">
+            <input class="swal2-input" id="nombreApellido" placeholder="Nombre y Apellido" autocomplete="off">
+            <input class="swal2-input" id="fechaNacimiento" type="date" placeholder="Fecha de Nacimiento" autocomplete="off">
+            <input class="swal2-input" id="domicilio" placeholder="Domicilio" autocomplete="off">
+            <input class="swal2-input" id="dni" placeholder="DNI/CUIL/CUIT" autocomplete="off">
+            <input class="swal2-input" id="matricula" placeholder="Matrícula" autocomplete="off">
+            <input class="swal2-input" id="jurisdiccion" placeholder="Jurisdicción" autocomplete="off">
+            <input class="swal2-input" id="whatsapp" placeholder="Whatsapp" autocomplete="off">
+            <input class="swal2-input" id="mail" placeholder="Mail" autocomplete="off">
+            <input class="swal2-input" id="salarioAcuerdo" placeholder="Salario acordado" autocomplete="off">
+            <input class="swal2-input" id="fijoAcuerdo" placeholder="Fijo acordado" autocomplete="off">
+            <input class="swal2-input" id="banco" placeholder="Banco" autocomplete="off">
+            <input class="swal2-input" id="cbu" placeholder="CBU" autocomplete="off">
+            <input class="swal2-input" id="alias" placeholder="Alias" autocomplete="off">
+            <input class="swal2-input" id="tipoCuenta" placeholder="Tipo de cuenta" autocomplete="off">
           </div>
 
           <!-- Col 2 -->
@@ -272,17 +272,18 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
             </div>
 
             <label id="labelSeguro" style="display:none;margin-top:10px;"><strong>Seguro de mala praxis:</strong></label>
-            <input class="swal2-input" id="seguroMalaPraxis" placeholder="Número de póliza o compañía" style="display:none">
+            <input class="swal2-input" id="seguroMalaPraxis" placeholder="Número de póliza o compañía" style="display:none" autocomplete="off">
           </div>
 
           <!-- Col 3 -->
           <div class="form-column">
             <label><strong>Usuario y Contraseña:</strong></label>
-            <input class="swal2-input" id="usuario" placeholder="Usuario (email)">
+            <input class="swal2-input" id="usuario" placeholder="Usuario (email)"
+                   autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
 
             <div style="position:relative; display:flex; align-items:center;">
               <input class="swal2-input" id="contrasena" type="password" placeholder="Contraseña"
-                     style="flex:1; padding-right:44px;">
+                     style="flex:1; padding-right:44px;" autocomplete="new-password">
               <button type="button" id="togglePass"
                       style="position:absolute; right:10px; height:32px; width:32px; border:none; background:transparent; cursor:pointer;">
                 <i id="togglePassIcon" class="fa-solid fa-eye"></i>
@@ -317,8 +318,20 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         set('alias', u.alias);
         set('tipoCuenta', u.tipoCuenta);
         set('usuario', u.usuario);
-        set('contrasena', u.contrasena);
+        // ⚠️ No pre-cargar contraseñas en edición
+        // set('contrasena', u.contrasena);
         if (u.rol) document.getElementById('rol').value = u.rol;
+      } else {
+        // Creación: asegurar campos vacíos (evita autofill)
+        const usuarioEl = document.getElementById('usuario');
+        const passEl    = document.getElementById('contrasena');
+        if (usuarioEl) usuarioEl.value = '';
+        if (passEl)     passEl.value = '';
+        // En algunos navegadores ayuda forzar luego de un tick:
+        setTimeout(() => {
+          if (usuarioEl) usuarioEl.value = '';
+          if (passEl)    passEl.value = '';
+        }, 0);
       }
 
       const rolSelect    = document.getElementById('rol');
