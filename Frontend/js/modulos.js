@@ -3,10 +3,13 @@
 // ==========================
 
 document.addEventListener('DOMContentLoaded', () => {
-  const botonCargar      = document.getElementById('btnCargarModulo');
-  const inputBusqueda    = document.getElementById('busquedaModulo');
-  const sugerencias      = document.getElementById('sugerencias');
-  const contenedorFicha  = document.getElementById('fichaModuloContainer');
+  const botonCargar     = document.getElementById('btnCargarModulo');
+  const inputBusqueda   = document.getElementById('busquedaModulo');
+  const sugerencias     = document.getElementById('sugerencias');
+  const contenedorFicha = document.getElementById('fichaModuloContainer');
+  // Si tu HTML tiene un contenedor dedicado (p.ej. <div id="listaModulos"></div>)
+  // lo usamos; si no, reutilizamos el mismo contenedor de ficha.
+  const contenedorLista = document.getElementById('listaModulos') || contenedorFicha;
 
   // ---------- Helpers ----------
   const getNumberOrZero = (id) => {
@@ -32,34 +35,97 @@ document.addEventListener('DOMContentLoaded', () => {
     porcentajeInput.addEventListener('input', calcular);
   };
 
-  // ---------- Autocompletado / búsqueda ----------
-  inputBusqueda.addEventListener('input', async () => {
-    const valor = inputBusqueda.value.trim();
-    sugerencias.innerHTML = '';
-    contenedorFicha.innerHTML = '';
-
-    if (valor.length < 2) return;
-
+  // ---------- Listado completo ----------
+  async function cargarListadoModulos() {
     try {
-      const res = await apiFetch(`/modulos?numero=${encodeURIComponent(valor)}`);
-      const modulos = await res.json();
+      const res = await apiFetch(`/modulos`);
+      const mods = await res.json();
 
-      if (Array.isArray(modulos)) {
-        modulos.forEach(mod => {
-          const li = document.createElement('li');
-          li.textContent = `Módulo ${mod.numero}`;
-          li.addEventListener('click', () => {
-            inputBusqueda.value = mod.numero;
-            sugerencias.innerHTML = '';
-            mostrarFichaModulo(mod);
-          });
-          sugerencias.appendChild(li);
-        });
+      if (!Array.isArray(mods) || mods.length === 0) {
+        contenedorLista.innerHTML = `
+          <div class="table-container">
+            <div style="padding:12px;color:#666;font-style:italic;">No hay módulos cargados todavía.</div>
+          </div>`;
+        return;
       }
-    } catch (error) {
-      console.error('Error al buscar módulos:', error);
+
+      renderListado(mods);
+    } catch (e) {
+      console.error('Error listando módulos:', e);
+      contenedorLista.innerHTML = `
+        <div class="table-container">
+          <div style="padding:12px;color:#b91c1c;">Error al cargar el listado de módulos.</div>
+        </div>`;
     }
-  });
+  }
+
+  function renderListado(mods) {
+    const rows = mods.map(m => `
+      <tr>
+        <td>${m.numero}</td>
+        <td>01-2027</td>
+        <td>$${(m.valoresModulo?.paciente ?? 0).toLocaleString()}</td>
+        <td>$${(m.areasExternas?.profesional ?? 0).toLocaleString()}</td>
+        <td>$${(m.habilidadesSociales?.profesional ?? 0).toLocaleString()}</td>
+        <td>Activo</td>
+        <td>
+          <button class="btn-modificar" onclick="modificarModulo(${m.numero})">✏️</button>
+          <button class="btn-borrar"    onclick="borrarModulo(${m.numero})">🗑️</button>
+        </td>
+      </tr>
+    `).join('');
+
+    contenedorLista.innerHTML = `
+      <div class="table-container">
+        <table class="modulo-detalle">
+          <thead>
+            <tr>
+              <th>Módulo</th>
+              <th>Última modificación</th>
+              <th>Valor FONO-PSICO</th>
+              <th>Valor ÁREAS EXTERNAS</th>
+              <th>Valor HABILIDADES SOCIALES</th>
+              <th>Estado</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  // ---------- Autocompletado / búsqueda ----------
+  if (inputBusqueda) {
+    inputBusqueda.addEventListener('input', async () => {
+      const valor = inputBusqueda.value.trim();
+      if (sugerencias) sugerencias.innerHTML = '';
+      if (contenedorFicha) contenedorFicha.innerHTML = '';
+
+      if (valor.length < 2) return;
+
+      try {
+        const res = await apiFetch(`/modulos?numero=${encodeURIComponent(valor)}`);
+        const modulos = await res.json();
+
+        if (Array.isArray(modulos) && sugerencias) {
+          modulos.forEach(mod => {
+            const li = document.createElement('li');
+            li.textContent = `Módulo ${mod.numero}`;
+            li.style.cursor = 'pointer';
+            li.addEventListener('click', () => {
+              inputBusqueda.value = mod.numero;
+              sugerencias.innerHTML = '';
+              mostrarFichaModulo(mod);
+            });
+            sugerencias.appendChild(li);
+          });
+        }
+      } catch (error) {
+        console.error('Error al buscar módulos:', error);
+      }
+    });
+  }
 
   // ---------- Crear módulo ----------
   if (botonCargar) {
@@ -175,6 +241,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (res.ok) {
           Swal.fire('Éxito', 'Módulo guardado correctamente', 'success');
+          cargarListadoModulos(); // refrescar listado
         } else {
           Swal.fire('Error', data.error || 'No se pudo guardar', 'error');
         }
@@ -185,7 +252,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // ---------- Render ficha ----------
+  // ---------- Render ficha (detalle de un módulo) ----------
   function mostrarFichaModulo(modulo) {
     contenedorFicha.innerHTML = `
       <div class="table-container">
@@ -220,7 +287,7 @@ document.addEventListener('DOMContentLoaded', () => {
     `;
   }
 
-  // Exponer handlers globales porque se usan con onclick en la tabla
+  // ---------- Handlers globales (usados por onclick en la tabla) ----------
   window.borrarModulo = async (numero) => {
     const confirmacion = await Swal.fire({
       title: `¿Eliminar módulo ${numero}?`,
@@ -236,7 +303,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const res = await apiFetch(`/modulos/${numero}`, { method: 'DELETE' });
       if (res.ok) {
         Swal.fire('Borrado', 'El módulo fue eliminado.', 'success');
-        contenedorFicha.innerHTML = '';
+        if (contenedorFicha) contenedorFicha.innerHTML = '';
+        cargarListadoModulos(); // refrescar listado
       } else {
         const data = await res.json();
         Swal.fire('Error', data.error || 'No se pudo borrar el módulo.', 'error');
@@ -356,6 +424,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (resUpdate.ok) {
         Swal.fire('Éxito', 'Módulo actualizado correctamente', 'success');
+        cargarListadoModulos(); // refrescar listado
       } else {
         Swal.fire('Error', data.error || 'No se pudo actualizar el módulo', 'error');
       }
@@ -364,7 +433,11 @@ document.addEventListener('DOMContentLoaded', () => {
       Swal.fire('Error', 'Ocurrió un error al cargar el módulo.', 'error');
     }
   };
+
+  // 👉 Al entrar a la pantalla, cargamos el listado
+  cargarListadoModulos();
 });
+
 
 // ==========================
 // 🔐 Sesión, anti-back y helpers (igual que otras pantallas)
@@ -393,6 +466,7 @@ if (usuarioSesion?.nombreApellido) {
   if (userNameEl) userNameEl.textContent = usuarioSesion.nombreApellido;
 }
 
+// Si necesitás fetchAuth local (por si no usás apiFetch acá)
 async function fetchAuth(url, options = {}) {
   const opts = {
     ...options,
@@ -419,6 +493,7 @@ if (btnLogout) {
     goLogin();
   });
 }
+
 
 
 
