@@ -40,27 +40,36 @@ const usuarioSchema = new mongoose.Schema({
   fechaNacimiento: Date,
   domicilio: String,
   dni: String,
+  cuit: String,                              // ✅ nuevo
   matricula: String,
-  jurisdiccion: String,
+  jurisdiccion: {                            // ✅ ahora enum
+    type: String,
+    enum: ['Provincial', 'Nacional'],
+    default: undefined
+  },
+  registroNacionalDePrestadores: String,     // ✅ nuevo
   whatsapp: String,
   mail: String,
   salarioAcuerdo: String,
   fijoAcuerdo: String,
   banco: String,
   cbu: String,
+  numeroCuenta: String,                      // ✅ nuevo
+  numeroSucursal: String,                    // ✅ nuevo
   alias: String,
+  nombreFiguraExtracto: String,              // ✅ nuevo
   tipoCuenta: String,
 
-  // ✅ NUEVO: detalle por rol/área
+  // ✅ Detalle por rol/área
   areasProfesional: [areaProfesionalSchema], // {areaId/areaNombre, nivel: 'Junior'|'Senior'}
   areasCoordinadas: [areaCoordinadaSchema],  // {areaId/areaNombre}
 
-  // ⚠️ LEGACY: lista “chata” para compat con front viejo (se autollenará)
+  // ⚠️ LEGACY: lista “chata” (se autollenará)
   areas: [String],
 
   rol: { type: String, enum: ROLES, required: true },
 
-  // Solo para roles que incluyen parte profesional
+  // Solo para roles que incluyen parte profesional (no obligatorio)
   seguroMalaPraxis: String,
 
   usuario: {
@@ -88,7 +97,6 @@ usuarioSchema.pre('validate', function (next) {
     if (!Array.isArray(this.areasProfesional) || this.areasProfesional.length === 0) {
       this.invalidate('areasProfesional', 'Debe tener al menos un área como profesional');
     } else {
-      // cada entrada debe tener nivel
       for (const ap of this.areasProfesional) {
         if (!ap?.nivel) {
           this.invalidate('areasProfesional.nivel', 'Cada área profesional debe tener nivel (Junior/Senior)');
@@ -96,12 +104,8 @@ usuarioSchema.pre('validate', function (next) {
         }
       }
     }
-    // si querés obligar seguro, descomentá:
-    // if (!this.seguroMalaPraxis) {
-    //   this.invalidate('seguroMalaPraxis', 'El seguro de mala praxis es obligatorio para profesionales');
-    // }
+    // Seguro NO obligatorio
   } else {
-    // si no tiene parte profesional, limpiá detalle profesional
     this.areasProfesional = [];
     this.seguroMalaPraxis = undefined;
   }
@@ -119,16 +123,9 @@ usuarioSchema.pre('validate', function (next) {
 
 // ------------ Compat: autollenar `areas` (legacy) ------------
 usuarioSchema.pre('save', function (next) {
-  // Combina nombres de áreas de ambos bloques para no romper el front viejo
   const nombres = new Set();
-
-  (this.areasProfesional || []).forEach(a => {
-    if (a?.areaNombre) nombres.add(a.areaNombre);
-  });
-  (this.areasCoordinadas || []).forEach(a => {
-    if (a?.areaNombre) nombres.add(a.areaNombre);
-  });
-
+  (this.areasProfesional || []).forEach(a => { if (a?.areaNombre) nombres.add(a.areaNombre); });
+  (this.areasCoordinadas || []).forEach(a => { if (a?.areaNombre) nombres.add(a.areaNombre); });
   this.areas = Array.from(nombres);
   next();
 });

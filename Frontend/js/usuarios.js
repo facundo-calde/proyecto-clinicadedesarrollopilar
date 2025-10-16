@@ -188,7 +188,6 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
           max-width: 1600px;
         }
         .swal-body{ max-height:72vh; overflow-y:auto; overflow-x:auto; }
-
         .form-container{
           display:grid;
           grid-template-columns: minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);
@@ -196,7 +195,6 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         }
         .form-column{ display:flex; flex-direction:column; min-width:0; }
         .form-column label{ font-weight:600;font-size:14px;margin-top:8px;color:#333; }
-
         .swal2-input,.swal2-select{
           width:100%; min-width:0; max-width:100%;
           padding:10px; margin-top:6px; margin-bottom:10px;
@@ -208,19 +206,9 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
           border-radius:8px;border:1px solid #d32f2f;background:#e53935;color:#fff;cursor:pointer;padding:0;
         }
         .block{ border:1px solid #e5e7eb;border-radius:10px;padding:10px;background:#fafafa;margin-top:6px;min-width:0;width:100%; }
-
-        .pro-row{
-          display:grid;
-          grid-template-columns: minmax(0,1fr) 150px 36px;
-          gap:8px; align-items:center; margin:6px 0; min-width:0;
-        }
-        .coord-row{
-          display:grid;
-          grid-template-columns: minmax(0,1fr) 36px;
-          gap:8px; align-items:center; margin:6px 0; min-width:0;
-        }
+        .pro-row{ display:grid; grid-template-columns: minmax(0,1fr) 150px 36px; gap:8px; align-items:center; margin:6px 0; }
+        .coord-row{ display:grid; grid-template-columns: minmax(0,1fr) 36px; gap:8px; align-items:center; margin:6px 0; }
         input[type="file"].swal2-input{ width:100%; display:block; }
-
         .swal2-confirm{ background:#2f72c4 !important;color:#fff !important;font-weight:700;padding:8px 20px;border-radius:8px; }
         .swal2-cancel { background:#e53935 !important;color:#fff !important;font-weight:700;padding:8px 20px;border-radius:8px; }
       </style>
@@ -232,16 +220,28 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
             <input class="swal2-input" id="nombreApellido" placeholder="Nombre y Apellido" autocomplete="off">
             <input class="swal2-input" id="fechaNacimiento" type="date" placeholder="Fecha de Nacimiento" autocomplete="off">
             <input class="swal2-input" id="domicilio" placeholder="Domicilio" autocomplete="off">
-            <input class="swal2-input" id="dni" placeholder="DNI/CUIL/CUIT" autocomplete="off">
+            <input class="swal2-input" id="dni" placeholder="DNI" autocomplete="off">
+            <input class="swal2-input" id="cuit" placeholder="CUIT" autocomplete="off">
             <input class="swal2-input" id="matricula" placeholder="Matrícula" autocomplete="off">
-            <input class="swal2-input" id="jurisdiccion" placeholder="Jurisdicción" autocomplete="off">
+
+            <label><strong>Jurisdicción:</strong></label>
+            <select id="jurisdiccion" class="swal2-select">
+              <option value="">Seleccionar...</option>
+              <option value="Provincial">Provincial</option>
+              <option value="Nacional">Nacional</option>
+            </select>
+
+            <input class="swal2-input" id="registroNacionalDePrestadores" placeholder="Registro Nacional de Prestadores" autocomplete="off">
             <input class="swal2-input" id="whatsapp" placeholder="Whatsapp" autocomplete="off">
             <input class="swal2-input" id="mail" placeholder="Mail" autocomplete="off">
             <input class="swal2-input" id="salarioAcuerdo" placeholder="Salario acordado" autocomplete="off">
             <input class="swal2-input" id="fijoAcuerdo" placeholder="Fijo acordado" autocomplete="off">
             <input class="swal2-input" id="banco" placeholder="Banco" autocomplete="off">
             <input class="swal2-input" id="cbu" placeholder="CBU" autocomplete="off">
+            <input class="swal2-input" id="numeroCuenta" placeholder="Número de cuenta" autocomplete="off">
+            <input class="swal2-input" id="numeroSucursal" placeholder="Número de sucursal" autocomplete="off">
             <input class="swal2-input" id="alias" placeholder="Alias" autocomplete="off">
+            <input class="swal2-input" id="nombreFiguraExtracto" placeholder="Nombre como figura en extracto" autocomplete="off">
             <input class="swal2-input" id="tipoCuenta" placeholder="Tipo de cuenta" autocomplete="off">
           </div>
 
@@ -302,24 +302,28 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
     didOpen: () => {
       // Precarga si es edición
       if (modoEdicion) {
-        const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
+        const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = (val ?? ''); };
         set('nombreApellido', u.nombreApellido);
         set('fechaNacimiento', u.fechaNacimiento ? String(u.fechaNacimiento).split('T')[0] : '');
         set('domicilio', u.domicilio);
         set('dni', u.dni);
+        set('cuit', u.cuit);
         set('matricula', u.matricula);
-        set('jurisdiccion', u.jurisdiccion);
+        if (u.jurisdiccion) document.getElementById('jurisdiccion').value = u.jurisdiccion;
+        set('registroNacionalDePrestadores', u.registroNacionalDePrestadores);
         set('whatsapp', u.whatsapp);
         set('mail', u.mail);
         set('salarioAcuerdo', u.salarioAcuerdo);
         set('fijoAcuerdo', u.fijoAcuerdo);
         set('banco', u.banco);
         set('cbu', u.cbu);
+        set('numeroCuenta', u.numeroCuenta);
+        set('numeroSucursal', u.numeroSucursal);
         set('alias', u.alias);
+        set('nombreFiguraExtracto', u.nombreFiguraExtracto);
         set('tipoCuenta', u.tipoCuenta);
         set('usuario', u.usuario);
-        // ⚠️ No pre-cargar contraseñas en edición
-        // set('contrasena', u.contrasena);
+        // No precargar contraseña por seguridad
         if (u.rol) document.getElementById('rol').value = u.rol;
       } else {
         // Creación: asegurar campos vacíos (evita autofill)
@@ -327,7 +331,6 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         const passEl    = document.getElementById('contrasena');
         if (usuarioEl) usuarioEl.value = '';
         if (passEl)     passEl.value = '';
-        // En algunos navegadores ayuda forzar luego de un tick:
         setTimeout(() => {
           if (usuarioEl) usuarioEl.value = '';
           if (passEl)    passEl.value = '';
@@ -408,6 +411,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
     },
     preConfirm: () => {
       const get = id => document.getElementById(id)?.value?.trim();
+
       const rol = get('rol');
 
       const areasProfesional = Array.from(document.querySelectorAll('#proList .pro-row'))
@@ -436,27 +440,31 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         Swal.showValidationMessage('Agregá al menos un área para coordinación.');
         return false;
       }
-      // ⚠️ Ya NO se valida el seguro como obligatorio
 
       return {
         nombreApellido: get('nombreApellido'),
         fechaNacimiento: get('fechaNacimiento'),
         domicilio: get('domicilio'),
         dni: get('dni'),
+        cuit: get('cuit'),
         matricula: get('matricula'),
         jurisdiccion: get('jurisdiccion'),
+        registroNacionalDePrestadores: get('registroNacionalDePrestadores'),
         whatsapp: get('whatsapp'),
         mail: get('mail'),
         salarioAcuerdo: get('salarioAcuerdo'),
         fijoAcuerdo: get('fijoAcuerdo'),
         banco: get('banco'),
         cbu: get('cbu'),
+        numeroCuenta: get('numeroCuenta'),
+        numeroSucursal: get('numeroSucursal'),
         alias: get('alias'),
+        nombreFiguraExtracto: get('nombreFiguraExtracto'),
         tipoCuenta: get('tipoCuenta'),
         rol,
         usuario: get('usuario'),
         contrasena: get('contrasena'),
-        seguroMalaPraxis: get('seguroMalaPraxis') || undefined, // opcional
+        seguroMalaPraxis: get('seguroMalaPraxis') || undefined,
         areasProfesional,
         areasCoordinadas
       };
