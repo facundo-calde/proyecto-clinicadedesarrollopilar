@@ -3,6 +3,9 @@ const tablaBody    = document.getElementById('tabla-areas');
 const sinInfo      = document.querySelector('.sin-info');
 const btnRegistrar = document.getElementById('btnAgregar');
 
+const esc = (s) => encodeURIComponent(String(s ?? ''));
+const unesc = (s) => decodeURIComponent(String(s ?? ''));
+
 document.addEventListener('DOMContentLoaded', cargarAreas);
 
 // Cargar y renderizar áreas
@@ -21,10 +24,15 @@ async function cargarAreas() {
         <td>${area.nombre || ''}</td>
         <td>${area.mail || ''}</td>
         <td>
-          <i class="fas fa-pen" style="cursor:pointer;" 
-             onclick="editarArea('${area._id}', ${JSON.stringify(area.nombre || '')}, ${JSON.stringify(area.mail || '')})"></i>
-          <i class="fas fa-trash" style="cursor:pointer; margin-left:10px;" 
-             onclick="eliminarArea('${area._id}')"></i>
+          <i class="fas fa-pen btn-edit" 
+             style="cursor:pointer;"
+             data-id="${area._id}"
+             data-nombre="${esc(area.nombre)}"
+             data-mail="${esc(area.mail)}"></i>
+
+          <i class="fas fa-trash btn-del" 
+             style="cursor:pointer; margin-left:10px;"
+             data-id="${area._id}"></i>
         </td>
       `;
       tablaBody.appendChild(tr);
@@ -36,6 +44,22 @@ async function cargarAreas() {
   }
 }
 
+// Delegación de eventos para Editar / Eliminar
+tablaBody.addEventListener('click', (e) => {
+  const edit = e.target.closest('.btn-edit');
+  if (edit) {
+    const id  = edit.dataset.id;
+    const nom = unesc(edit.dataset.nombre);
+    const mail = unesc(edit.dataset.mail);
+    editarArea(id, nom, mail);
+    return;
+  }
+  const del = e.target.closest('.btn-del');
+  if (del) {
+    eliminarArea(del.dataset.id);
+  }
+});
+
 // Registrar nueva área
 if (btnRegistrar) {
   btnRegistrar.addEventListener('click', () => {
@@ -44,7 +68,7 @@ if (btnRegistrar) {
       html: `
         <label for="swal-nombre" style="display:block; margin-bottom:5px; font-weight:bold;">Nombre del área:</label>
         <input id="swal-nombre" class="swal2-input" placeholder="Ej: Psicopedagogía" style="width:100%; box-sizing:border-box;">
-        
+
         <label for="swal-mail" style="display:block; margin:15px 0 5px; font-weight:bold;">Mail:</label>
         <input id="swal-mail" class="swal2-input" placeholder="ejemplo@mail.com" style="width:100%; box-sizing:border-box;">
       `,
@@ -83,11 +107,12 @@ if (btnRegistrar) {
 async function editarArea(id, nombreActual, mailActual) {
   Swal.fire({
     title: 'Editar área',
-    html:
-      `<label>Nombre del área:</label>
-       <input id="swal-nombre" class="swal2-input" value="${(nombreActual || '').replace(/"/g, '&quot;')}">` +
-      `<label>Mail:</label>
-       <input id="swal-mail" class="swal2-input" value="${(mailActual || '').replace(/"/g, '&quot;')}">`,
+    html: `
+      <label>Nombre del área:</label>
+      <input id="swal-nombre" class="swal2-input" value="${(nombreActual || '').replace(/"/g, '&quot;')}">
+      <label>Mail:</label>
+      <input id="swal-mail" class="swal2-input" value="${(mailActual || '').replace(/"/g, '&quot;')}">
+    `,
     confirmButtonText: 'Actualizar',
     cancelButtonText: 'Cancelar',
     showCancelButton: true,
@@ -101,11 +126,12 @@ async function editarArea(id, nombreActual, mailActual) {
       }
 
       try {
-        await apiFetch(`/areas/${id}`, {
+        const res = await apiFetch(`/areas/${id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ nombre, mail })
         });
+        if (!res.ok) throw new Error('Error al actualizar');
         Swal.fire('¡Actualizado!', '', 'success');
         cargarAreas();
       } catch (err) {
@@ -129,7 +155,8 @@ async function eliminarArea(id) {
 
   if (confirm.isConfirmed) {
     try {
-      await apiFetch(`/areas/${id}`, { method: 'DELETE' });
+      const res = await apiFetch(`/areas/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Error al eliminar');
       Swal.fire('¡Eliminado!', '', 'success');
       cargarAreas();
     } catch (err) {
@@ -153,14 +180,14 @@ const token = localStorage.getItem('token');
 // Guard inmediato
 if (!token) goLogin();
 
-// Anti-BFCache: si vuelven con atrás y la página se restaura desde caché
+// Anti-BFCache
 window.addEventListener('pageshow', (e) => {
   const nav = performance.getEntriesByType('navigation')[0];
   const fromBF = e.persisted || nav?.type === 'back_forward';
   if (fromBF && !localStorage.getItem('token')) goLogin();
 });
 
-// Anti-atrás: si no hay token, mandá a login; si hay, re-inyectá el estado
+// Anti-atrás
 history.pushState(null, '', location.href);
 window.addEventListener('popstate', () => {
   if (!localStorage.getItem('token')) goLogin();
