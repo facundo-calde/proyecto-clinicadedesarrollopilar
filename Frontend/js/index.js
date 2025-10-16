@@ -1,8 +1,7 @@
+// /js/index.js
 document.addEventListener("DOMContentLoaded", () => {
   const form = document.getElementById("loginForm");
-    location.hostname.includes("localhost") || location.hostname.includes("127.0.0.1")
-      ? ""
-      : `${location.protocol}//${location.host}`;
+  if (!form) return;
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -11,23 +10,30 @@ document.addEventListener("DOMContentLoaded", () => {
     const contrasena = document.getElementById("clave").value.trim();
 
     try {
+      // apiFetch devuelve un Response crudo (según config.js corregido)
       const res = await apiFetch(`/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ usuario, contrasena }),
       });
 
-      const data = await res.json();
-      if (!res.ok) {
+      // Detectamos el tipo de respuesta
+      const ct = res.headers.get("content-type") || "";
+      const data = ct.includes("application/json")
+        ? await res.json()
+        : { error: await res.text() };
+
+      if (!res.ok || data.error) {
         alert(data.error || "Error en el login");
         return;
       }
 
+      // Guardar sesión en localStorage
       localStorage.clear();
       localStorage.setItem("token", data.token);
       localStorage.setItem("usuario", JSON.stringify(data.user));
 
-      // 👇 redirección correcta
+      // Redirección al dashboard
       window.location.assign("/html/dashboard.html");
     } catch (err) {
       console.error("Error en login:", err);
