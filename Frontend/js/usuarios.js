@@ -429,7 +429,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
   }).then(async result => {
     if (!result.isConfirmed) return;
 
-    const url = modoEdicion ? `/usuarios/${u._id}` : `/usuarios`;
+    const url = modoEdicion ? `/api/usuarios/${u._id}` : `/api/usuarios`;
     const method = modoEdicion ? 'PUT' : 'POST';
 
     const archivos = (document.getElementById('documentos')?.files) || [];
