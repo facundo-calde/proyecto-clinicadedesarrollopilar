@@ -1,8 +1,7 @@
+// /js/index.js
 document.addEventListener("DOMContentLoaded", () => {
   const form = document.getElementById("loginForm");
-    location.hostname.includes("localhost") || location.hostname.includes("127.0.0.1")
-      ? ""
-      : `${location.protocol}//${location.host}`;
+  if (!form) return;
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -11,23 +10,28 @@ document.addEventListener("DOMContentLoaded", () => {
     const contrasena = document.getElementById("clave").value.trim();
 
     try {
-      const res = await apiFetch(`/login`, {
+      // apiFetch (en este commit) YA devuelve el cuerpo parseado (objeto JSON o string)
+      const data = await apiFetch(`/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ usuario, contrasena }),
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        alert(data.error || "Error en el login");
+      // Si viniera texto por algún motivo, intento parsearlo
+      let payload = data;
+      if (typeof payload === "string" && payload) {
+        try { payload = JSON.parse(payload); } catch { /* dejamos string */ }
+      }
+
+      if (!payload || payload.error) {
+        alert((payload && payload.error) || "Faltan credenciales");
         return;
       }
 
       localStorage.clear();
-      localStorage.setItem("token", data.token);
-      localStorage.setItem("usuario", JSON.stringify(data.user));
+      localStorage.setItem("token", payload.token);
+      localStorage.setItem("usuario", JSON.stringify(payload.user));
 
-      // 👇 redirección correcta
       window.location.assign("/html/dashboard.html");
     } catch (err) {
       console.error("Error en login:", err);
