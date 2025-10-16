@@ -131,6 +131,7 @@ function buildAreasCheckboxes(areas = [], seleccionadas = new Set()) {
     .join("");
 }
 
+
 async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
   // 1) Traer áreas
   let AREAS = [];
@@ -278,7 +279,16 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
           <div class="form-column">
             <label><strong>Usuario y Contraseña:</strong></label>
             <input class="swal2-input" id="usuario" placeholder="Usuario (email)">
-            <input class="swal2-input" id="contrasena" type="password" placeholder="Contraseña">
+
+            <div style="position:relative; display:flex; align-items:center;">
+              <input class="swal2-input" id="contrasena" type="password" placeholder="Contraseña"
+                     style="flex:1; padding-right:44px;">
+              <button type="button" id="togglePass"
+                      style="position:absolute; right:10px; height:32px; width:32px; border:none; background:transparent; cursor:pointer;">
+                <i id="togglePassIcon" class="fa-solid fa-eye"></i>
+              </button>
+            </div>
+
             <label><strong>Documentos:</strong></label>
             <input type="file" id="documentos" class="swal2-input" multiple>
           </div>
@@ -370,6 +380,18 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
       }
 
       rolSelect.addEventListener('change', syncVisibility);
+
+      // 👁️ Toggle mostrar/ocultar contraseña
+      const passInput  = document.getElementById('contrasena');
+      const toggleBtn  = document.getElementById('togglePass');
+      const toggleIcon = document.getElementById('togglePassIcon');
+      if (toggleBtn && passInput && toggleIcon) {
+        toggleBtn.addEventListener('click', () => {
+          const show = passInput.type === 'password';
+          passInput.type = show ? 'text' : 'password';
+          toggleIcon.className = show ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye';
+        });
+      }
     },
     preConfirm: () => {
       const get = id => document.getElementById(id)?.value?.trim();
@@ -469,6 +491,9 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
     Swal.fire('Error', 'No se pudo guardar el usuario', 'error');
   });
 }
+
+
+
 
 // ==========================
 // ✏️ Editar / 🗑️ Borrar
