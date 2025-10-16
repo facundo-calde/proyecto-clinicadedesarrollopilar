@@ -33,8 +33,13 @@ if (usuarioSesion?.nombreApellido) {
   if (userNameEl) userNameEl.textContent = usuarioSesion.nombreApellido;
 }
 
-// Helper fetch con Authorization y manejo de 401
 async function fetchAuth(url, options = {}) {
+  if (typeof url === 'string') {
+    url = url.startsWith('/api/')
+      ? url
+      : (url.startsWith('/') ? `/api${url}` : `/api/${url}`);
+  }
+
   const opts = {
     ...options,
     headers: {
@@ -52,6 +57,7 @@ async function fetchAuth(url, options = {}) {
   }
   return res;
 }
+
 
 // 🔹 Logout
 const btnLogout = document.getElementById('btnLogout');
