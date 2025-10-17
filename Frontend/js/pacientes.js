@@ -11,7 +11,7 @@ document.getElementById("busquedaInput").addEventListener("input", async () => {
   if (input.length < 2) return;
 
   try {
-    const pacientes = await apiFetch(`/pacientes?nombre=${encodeURIComponent(input)}`);
+    const pacientes = await apiFetchJson(`/pacientes?nombre=${encodeURIComponent(input)}`);
     if (!Array.isArray(pacientes)) return;
 
     pacientes.forEach((p) => {
@@ -44,8 +44,8 @@ async function renderFichaPaciente(p) {
     if (!cache.modulos || !cache.areas || !cache.usersTried) {
       try {
         const [modulos, areas] = await Promise.all([
-          apiFetch(`/modulos`),
-          apiFetch(`/areas`),
+          apiFetchJson(`/modulos`),
+          apiFetchJson(`/areas`),
         ]);
         cache.modulos = Array.isArray(modulos) ? modulos : [];
         cache.areas   = Array.isArray(areas)   ? areas   : [];
@@ -56,10 +56,11 @@ async function renderFichaPaciente(p) {
 
       cache.users = [];
       try {
-        // fetch normal (config.js mete Authorization y base si usás /api/)
-        const ru = await fetch(`/api/usuarios`);
-        if (ru.ok) cache.users = await ru.json();
-      } catch {}
+        // usar apiFetchJson para unificar manejo y token
+        cache.users = await apiFetchJson(`/usuarios`);
+      } catch {
+        cache.users = [];
+      }
       cache.usersTried = true;
 
       cache.modById  = new Map(cache.modulos.map(m => [String(m._id), m]));
@@ -254,32 +255,29 @@ async function renderFichaPaciente(p) {
 }
 
 
+
 // ─────────────────────────────────────────────────────────────────────────────
 // MODIFICAR PACIENTE
 // ─────────────────────────────────────────────────────────────────────────────
 async function modificarPaciente(dni) {
   try {
-    const p = await apiFetch(`/pacientes/${dni}`);
-
-    // Token (sólo para mensajes de error)
-    const TOKEN =
-      localStorage.getItem("token") ||
-      sessionStorage.getItem("token") ||
-      "";
+    // ← antes: apiFetch(...) devolvía Response
+    const p = await apiFetchJson(`/pacientes/${dni}`);
 
     // Catálogos
     let MODULOS = [], AREAS = [], USUARIOS = [];
     try {
-      const [m, a, uRes] = await Promise.all([
-        apiFetch(`/modulos`),
-        apiFetch(`/areas`),
-        fetch(`/api/usuarios`)
+      const [m, a, u] = await Promise.all([
+        apiFetchJson(`/modulos`),   // ← antes: apiFetch
+        apiFetchJson(`/areas`),     // ← antes: apiFetch
+        apiFetchJson(`/usuarios`),  // ← antes: fetch('/api/usuarios')
       ]);
       MODULOS = Array.isArray(m) ? m : [];
       AREAS   = Array.isArray(a) ? a : [];
-      if (uRes.ok) USUARIOS = await uRes.json();
-      else console.warn("No se pudieron cargar usuarios:", uRes.status);
-    } catch (_) {}
+      USUARIOS = Array.isArray(u) ? u : [];
+    } catch (_) {
+      // deja arrays vacíos si algo falla
+    }
 
     const MOD_OPTS = MODULOS.length
       ? MODULOS.map(m => `<option value="${m._id}">Módulo ${m.numero}</option>`).join("")
@@ -717,7 +715,7 @@ async function modificarPaciente(dni) {
 
     if (!isConfirmed) return;
 
-    // PUT (usar fetch normal para chequear ok; config.js ya mete Authorization y /api)
+    // PUT (config.js mete Authorization y reescribe /api)
     const putRes = await fetch(`/api/pacientes/${dni}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -735,15 +733,12 @@ async function modificarPaciente(dni) {
     Swal.fire("✅ Cambios guardados", "", "success");
     renderFichaPaciente(actualizado);
 
-    // ❌ No borramos la ficha ni el input acá.
-    // document.getElementById("fichaPacienteContainer").innerHTML = "";
-    // document.getElementById("busquedaInput").value = "";
-
   } catch (err) {
     console.error(err);
     Swal.fire("❌ Error al cargar/modificar paciente", err.message || "", "error");
   }
 }
+
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -859,17 +854,13 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
       let USUARIOS = [];
 
       try {
-        const [resAreas, resUsers] = await Promise.all([
-          apiFetch(`/areas`),
-          fetch(`/api/usuarios`)
+        const [areas, usuarios] = await Promise.all([
+          apiFetchJson(`/areas`),
+          apiFetchJson(`/usuarios`)
         ]);
 
-        if (!resUsers.ok) {
-          console.warn("No se pudieron cargar usuarios:", resUsers.status, await resUsers.text());
-        }
-
-        AREAS    = Array.isArray(resAreas) ? resAreas : [];
-        USUARIOS = resUsers.ok ? await resUsers.json() : [];
+        AREAS    = Array.isArray(areas) ? areas : [];
+        USUARIOS = Array.isArray(usuarios) ? usuarios : [];
 
         setOptions(areaSel, AREAS, (a) => `<option value="${a._id}">${a.nombre}</option>`, "No disponible");
 
@@ -1054,7 +1045,7 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
     if (!result.isConfirmed) return;
 
     try {
-      // POST (fetch normal para chequear ok; config.js mete Authorization y /api)
+      // POST (config.js mete Authorization y reescribe /api)
       const response = await fetch(`/api/pacientes`, {
         method: "POST",
         headers: {
@@ -1077,21 +1068,28 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
 });
 
 
-// ─────────────────────────────────────────────────────────────────────────────
+
+/// ─────────────────────────────────────────────────────────────────────────────
 // DOCUMENTOS / DIAGNÓSTICOS
 // ─────────────────────────────────────────────────────────────────────────────
 async function verDocumentos(dni) {
   try {
-    const paciente = await apiFetch(`/pacientes/${dni}`);
-    const documentos = paciente.documentosPersonales ?? [];
+    const paciente = await apiFetchJson(`/pacientes/${dni}`);
+    const documentos = Array.isArray(paciente.documentosPersonales)
+      ? paciente.documentosPersonales
+      : [];
 
     const htmlTabla = documentos.length
       ? documentos.map((doc, i) => `
         <tr>
-          <td>${doc.fecha}</td>
-          <td>${doc.tipo}</td>
+          <td>${doc.fecha ?? "-"}</td>
+          <td>${doc.tipo ?? "-"}</td>
           <td>${doc.observaciones ?? "-"}</td>
-          <td><a href="${doc.archivoURL}" target="_blank" title="Ver archivo"><i class="fa fa-file-pdf"></i></a></td>
+          <td>
+            <a href="${doc.archivoURL}" target="_blank" rel="noopener" title="Ver archivo">
+              <i class="fa fa-file-pdf"></i>
+            </a>
+          </td>
           <td>
             <button onclick="editarDocumento('${dni}', ${i})"><i class="fa fa-pen"></i></button>
             <button onclick="eliminarDocumento('${dni}', ${i})"><i class="fa fa-trash"></i></button>
@@ -1103,7 +1101,9 @@ async function verDocumentos(dni) {
     await Swal.fire({
       title: `<h3 style="font-family:Montserrat;">Documentos personales - DNI ${dni}</h3>`,
       html: `
-        <button onclick="agregarDocumento('${dni}')" class="swal2-confirm" style="margin-bottom: 10px;">➕ Agregar documento</button>
+        <button onclick="agregarDocumento('${dni}')" class="swal2-confirm" style="margin-bottom: 10px;">
+          ➕ Agregar documento
+        </button>
         <table style="width:100%; font-size: 14px; text-align: left;">
           <thead>
             <tr><th>Fecha</th><th>Tipo</th><th>Observaciones</th><th>Ver adjuntos</th><th>Modificar</th></tr>
@@ -1123,7 +1123,7 @@ async function verDocumentos(dni) {
 }
 
 async function agregarDocumento(dni) {
-  const { value: formValues, isConfirmed } = await Swal.fire({
+  const { isConfirmed } = await Swal.fire({
     title: "Agregar nuevo documento",
     html: `
       <div style="display: flex; flex-direction: column; gap: 10px;">
@@ -1140,10 +1140,12 @@ async function agregarDocumento(dni) {
     showCancelButton: true,
     confirmButtonText: "Guardar",
     cancelButtonText: "Cancelar",
+
+    // Subimos DIRECTO al backend (que a su vez sube a R2)
     preConfirm: async () => {
       const fecha = document.getElementById("docFecha").value;
-      const tipo = document.getElementById("docTipo").value;
-      const observaciones = document.getElementById("docObs").value;
+      const tipo = document.getElementById("docTipo").value.trim();
+      const observaciones = document.getElementById("docObs").value.trim();
       const archivo = document.getElementById("docArchivo").files[0];
 
       if (!fecha || !tipo || !archivo) {
@@ -1151,43 +1153,36 @@ async function agregarDocumento(dni) {
         return false;
       }
 
-      // Simulación de subida de archivo (reemplazá por tu uploader real)
-      const archivoURL = await simularSubidaArchivo(archivo);
-      return { fecha, tipo, observaciones, archivoURL };
+      const fd = new FormData();
+      fd.append("archivo", archivo);         // ← nombre debe coincidir con multer.single("archivo")
+      fd.append("fecha", fecha);
+      fd.append("tipo", tipo);
+      fd.append("observaciones", observaciones);
+
+      const res = await fetch(`/api/documentos/${dni}`, {
+        method: "POST",
+        body: fd
+      });
+
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(txt || "No se pudo subir el documento");
+      }
+
+      // opcional: podrías usar lo que devuelve (lista actualizada)
+      // const documentos = await res.json();
+      return true;
     },
   });
 
-  if (!isConfirmed || !formValues) return;
+  if (!isConfirmed) return;
 
-  try {
-    const paciente = await apiFetch(`/pacientes/${dni}`);
-
-    const nuevoDoc = {
-      fecha: formValues.fecha,
-      tipo: formValues.tipo,
-      observaciones: formValues.observaciones,
-      archivoURL: formValues.archivoURL,
-    };
-
-    const documentosActualizados = [
-      ...(Array.isArray(paciente.documentosPersonales) ? paciente.documentosPersonales : []),
-      nuevoDoc,
-    ];
-
-    const res = await fetch(`/api/pacientes/${dni}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ documentosPersonales: documentosActualizados }),
-    });
-    if (!res.ok) throw new Error("No se pudo actualizar documentos");
-
-    Swal.fire("✅ Documento agregado", "", "success");
-    verDocumentos(dni);
-  } catch (error) {
-    console.error("Error al agregar documento:", error);
-    Swal.fire("❌ Error al guardar documento", "", "error");
-  }
+  Swal.fire("✅ Documento agregado", "", "success");
+  // recargá la tabla del modal
+  verDocumentos(dni);
 }
+
+
 
 async function verDiagnosticos(dni) {
   try {

@@ -5,6 +5,7 @@ const express  = require('express');
 const cors     = require('cors');
 const mongoose = require('mongoose');
 const path     = require('path');
+const fs       = require('fs');
 
 if (!process.env.MONGODB_URI) {
   console.error('❌ Falta MONGODB_URI en .env');
@@ -27,7 +28,9 @@ app.use(cors({
   credentials: true,
 }));
 app.options('*', cors());
+
 app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true })); // <- agregado
 
 /* ============ RUTAS API ============ */
 const pacientesRoutes  = require('./routes/pacienteroutes');
@@ -43,12 +46,14 @@ app.use('/api/areas',      areasRoutes);
 app.use('/api',            usuariosRoutes);
 
 /* ============ STATIC ============ */
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
-// 👉 Forzado a 'Frontend' (F mayúscula)
-const FRONT_DIR  = path.join(__dirname, '../Frontend');
+const FRONT_DIR_CANDIDATES = [
+  path.join(__dirname, '../frontend'),
+  path.join(__dirname, '../Frontend'),
+];
+const FRONT_DIR = FRONT_DIR_CANDIDATES.find(p => fs.existsSync(p)) || FRONT_DIR_CANDIDATES[0];
 const INDEX_HTML = path.join(FRONT_DIR, 'html/index.html');
 
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use(express.static(FRONT_DIR));
 
 /* ============ Health ============ */
