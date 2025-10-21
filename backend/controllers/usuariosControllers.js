@@ -1,58 +1,49 @@
+// backend/controllers/usuariosControllers.js
 const Usuario = require('../models/usuarios');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const { PutObjectCommand } = require('@aws-sdk/client-s3');
-const s3 = require('../lib/r2Client');
 
-// Usa un solo secreto SIEMPRE
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecreto';
 
-// Helpers
-function parseMaybeJSON(val) {
-  if (val == null) return val;
-  if (typeof val !== 'string') return val;
-  try { return JSON.parse(val); } catch { return val; }
+// Helper: intenta parsear JSON si es string
+function parseMaybeJSON(v) {
+  if (v == null) return v;
+  if (typeof v !== 'string') return v;
+  try { return JSON.parse(v); } catch { return v; }
 }
 
-async function subirArchivosR2(prefix, files = []) {
-  const out = [];
-  for (const f of files) {
-    const safeName = (f.originalname || 'archivo').replace(/[^\w.\- ]+/g, '_');
-    const key = `${prefix}/${Date.now()}_${safeName}`;
-
-    await s3.send(new PutObjectCommand({
-      Bucket: process.env.R2_BUCKET,
-      Key: key,
-      Body: f.buffer,
-      ContentType: f.mimetype
-    }));
-
-    out.push({
-      tipo: 'general',
-      nombre: f.originalname,
-      mime: f.mimetype,
-      size: f.size,
-      url: `${process.env.R2_ENDPOINT}/${process.env.R2_BUCKET}/${key}`,
-      fechaSubida: new Date()
-    });
-  }
-  return out;
+// Normaliza campos que pueden venir como JSON string en multipart
+function normalizeMultipartBody(body) {
+  body.areasProfesional  = parseMaybeJSON(body.areasProfesional);
+  body.areasCoordinadas  = parseMaybeJSON(body.areasCoordinadas);
+  // si vinieron strings vacíos, dejarlos como arrays vacíos
+  if (body.areasProfesional  == null || body.areasProfesional === '')  body.areasProfesional = [];
+  if (body.areasCoordinadas  == null || body.areasCoordinadas === '')  body.areasCoordinadas = [];
+  return body;
 }
 
-// Crear usuario (seguroMalaPraxis OPCIONAL)
+// --------------------------------------------------
+// Crear usuario
+// --------------------------------------------------
 exports.crearUsuario = async (req, res) => {
   try {
-    const { body, files } = req;
+    const { body } = req;
 
-    // Normalizar campos que pueden venir como string por multipart
-    body.areasProfesional  = parseMaybeJSON(body.areasProfesional)  || [];
-    body.areasCoordinadas  = parseMaybeJSON(body.areasCoordinadas)  || [];
+    // si viene multipart, normalizamos posibles arrays
+    normalizeMultipartBody(body);
 
-    // Subir adjuntos (si vienen)
-    const dniPrefix = (body.dni && String(body.dni).trim()) || 'sin-dni';
-    const documentos = await subirArchivosR2(`usuarios/${dniPrefix}`, files || []);
+    // documentos subidos (guardados por Multer en /uploads/usuarios)
+    let documentos = [];
+    if (req.files && req.files.length > 0) {
+      documentos = req.files.map(file => ({
+        tipo: 'general',
+        nombre: file.originalname,
+        url: `/uploads/usuarios/${file.filename}`,
+        fechaSubida: new Date()
+      }));
+    }
 
-    // seguro mala praxis opcional segun rol
+    // seguro (opcional solo si es profesional)
     const isProf = body.rol === 'Profesional' || body.rol === 'Coordinador y profesional';
     const seguro = (body.seguroMalaPraxis ?? '').toString().trim();
     body.seguroMalaPraxis = isProf ? (seguro || undefined) : undefined;
@@ -71,18 +62,17 @@ exports.crearUsuario = async (req, res) => {
     });
 
     await nuevo.save();
-
-    // ocultar hash
     nuevo.contrasena = undefined;
     return res.status(201).json(nuevo);
   } catch (err) {
+    console.error('crearUsuario error:', err);
     return res.status(500).json({ error: 'Error al crear usuario', detalles: err.message });
   }
 };
 
-// ==================================================
-// Obtener todos los usuarios
-// ==================================================
+// --------------------------------------------------
+// Obtener todos
+// --------------------------------------------------
 exports.obtenerUsuarios = async (_req, res) => {
   try {
     const lista = await Usuario.find().select('-contrasena');
@@ -92,9 +82,9 @@ exports.obtenerUsuarios = async (_req, res) => {
   }
 };
 
-// ==================================================
-// Obtener usuario por ID
-// ==================================================
+// --------------------------------------------------
+// Obtener por ID
+// --------------------------------------------------
 exports.getUsuarioPorId = async (req, res) => {
   try {
     const usuario = await Usuario.findById(req.params.id).select('-contrasena');
@@ -105,16 +95,26 @@ exports.getUsuarioPorId = async (req, res) => {
   }
 };
 
-// ==================================================
-// Actualizar usuario (seguroMalaPraxis OPCIONAL)
-// ==================================================
+// --------------------------------------------------
+// Actualizar usuario
+// --------------------------------------------------
 exports.actualizarUsuario = async (req, res) => {
   try {
-    const { body, files } = req;
+    const { body } = req;
 
-    // Normalizar campos (multipart → string)
-    body.areasProfesional = parseMaybeJSON(body.areasProfesional) || [];
-    body.areasCoordinadas = parseMaybeJSON(body.areasCoordinadas) || [];
+    // si viene multipart, normalizamos posibles arrays
+    normalizeMultipartBody(body);
+
+    // anexar documentos si vinieron
+    let documentos = [];
+    if (req.files && req.files.length > 0) {
+      documentos = req.files.map(file => ({
+        tipo: 'general',
+        nombre: file.originalname,
+        url: `/uploads/usuarios/${file.filename}`,
+        fechaSubida: new Date()
+      }));
+    }
 
     const usuario = await Usuario.findById(req.params.id);
     if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
@@ -127,46 +127,38 @@ exports.actualizarUsuario = async (req, res) => {
       delete body.contrasena;
     }
 
-    // normalización de seguro (si viene)
+    // normalización de seguro (OPCIONAL)
     if (Object.prototype.hasOwnProperty.call(body, 'seguroMalaPraxis')) {
       const seguro = (body.seguroMalaPraxis ?? '').toString().trim();
       body.seguroMalaPraxis = seguro || undefined;
     }
 
-    // si el rol final NO es profesional ni "coordinador y profesional", limpiar seguro
+    // si el rol final NO es profesional, limpiar seguro
     const rolFinal = body.rol || usuario.rol;
     const tieneParteProfesional = (rolFinal === 'Profesional' || rolFinal === 'Coordinador y profesional');
     if (!tieneParteProfesional) {
       body.seguroMalaPraxis = undefined;
     }
 
-    // Subir nuevos adjuntos (si vienen)
-    const dniPrefix = (usuario.dni && String(usuario.dni).trim())
-      || (body.dni && String(body.dni).trim())
-      || 'sin-dni';
-
-    const nuevosDocs = await subirArchivosR2(`usuarios/${dniPrefix}`, files || []);
-
     // aplicar cambios
     usuario.set(body);
 
-    if (nuevosDocs.length) {
-      usuario.documentos = Array.isArray(usuario.documentos)
-        ? usuario.documentos.concat(nuevosDocs)
-        : nuevosDocs;
+    if (documentos.length > 0) {
+      usuario.documentos = (usuario.documentos || []).concat(documentos);
     }
 
     await usuario.save();
     usuario.contrasena = undefined;
     return res.json(usuario);
   } catch (err) {
+    console.error('actualizarUsuario error:', err);
     return res.status(500).json({ error: 'Error al actualizar usuario', detalles: err.message });
   }
 };
 
-// ==================================================
-// Eliminar usuario
-// ==================================================
+// --------------------------------------------------
+// Eliminar
+// --------------------------------------------------
 exports.eliminarUsuario = async (req, res) => {
   try {
     await Usuario.findByIdAndDelete(req.params.id);
@@ -176,17 +168,16 @@ exports.eliminarUsuario = async (req, res) => {
   }
 };
 
-// ==================================================
-// Login con JWT
-// ==================================================
+// --------------------------------------------------
+// Login
+// --------------------------------------------------
 exports.login = async (req, res) => {
   try {
     const usuarioBody = (req.body?.usuario || '').toLowerCase().trim();
-    const emailBody   = (req.body?.email || '').toLowerCase().trim();
+    const emailBody   = (req.body?.email   || '').toLowerCase().trim();
     const loginUsuario = usuarioBody || emailBody;
 
     const password = (req.body?.contrasena || req.body?.password || '').trim();
-
     if (!loginUsuario || !password) {
       return res.status(400).json({ error: 'Faltan credenciales' });
     }
@@ -197,9 +188,7 @@ exports.login = async (req, res) => {
     if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
     const hash = user.contrasena || user.passwordHash || user.clave;
-    if (!hash) {
-      return res.status(500).json({ error: 'Usuario sin contraseña configurada' });
-    }
+    if (!hash) return res.status(500).json({ error: 'Usuario sin contraseña configurada' });
 
     const validPassword = await bcrypt.compare(password, hash);
     if (!validPassword) return res.status(401).json({ error: 'Contraseña incorrecta' });
@@ -222,24 +211,21 @@ exports.login = async (req, res) => {
   }
 };
 
-// ==================================================
-// Middleware de autenticación con JWT
-// ==================================================
+// --------------------------------------------------
+// Auth middleware
+// --------------------------------------------------
 exports.authMiddleware = (req, res, next) => {
   const authHeader = req.headers.authorization || req.headers['x-access-token'];
   if (!authHeader) return res.status(401).json({ error: 'Token requerido' });
 
-  const token = authHeader.startsWith('Bearer ')
-    ? authHeader.split(' ')[1]
-    : authHeader;
-
+  const token = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : authHeader;
   if (!token) return res.status(401).json({ error: 'Token inválido' });
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     req.user = decoded;
     next();
-  } catch (err) {
+  } catch {
     return res.status(401).json({ error: 'Token no válido o expirado' });
   }
 };
