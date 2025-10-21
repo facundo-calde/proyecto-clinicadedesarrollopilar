@@ -131,7 +131,6 @@ function buildAreasCheckboxes(areas = [], seleccionadas = new Set()) {
     .join("");
 }
 
-
 async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
   // 1) Traer áreas
   let AREAS = [];
@@ -209,6 +208,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         .pro-row{ display:grid; grid-template-columns: minmax(0,1fr) 150px 36px; gap:8px; align-items:center; margin:6px 0; }
         .coord-row{ display:grid; grid-template-columns: minmax(0,1fr) 36px; gap:8px; align-items:center; margin:6px 0; }
         input[type="file"].swal2-input{ width:100%; display:block; }
+        .two-col { display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
         .swal2-confirm{ background:#2f72c4 !important;color:#fff !important;font-weight:700;padding:8px 20px;border-radius:8px; }
         .swal2-cancel { background:#e53935 !important;color:#fff !important;font-weight:700;padding:8px 20px;border-radius:8px; }
       </style>
@@ -234,8 +234,18 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
             <input class="swal2-input" id="registroNacionalDePrestadores" placeholder="Registro Nacional de Prestadores" autocomplete="off">
             <input class="swal2-input" id="whatsapp" placeholder="Whatsapp" autocomplete="off">
             <input class="swal2-input" id="mail" placeholder="Mail" autocomplete="off">
-            <input class="swal2-input" id="salarioAcuerdo" placeholder="Salario acordado" autocomplete="off">
-            <input class="swal2-input" id="fijoAcuerdo" placeholder="Fijo acordado" autocomplete="off">
+
+            <div class="two-col">
+              <div>
+                <input class="swal2-input" id="salarioAcuerdo" placeholder="Salario acordado" autocomplete="off">
+                <input class="swal2-input" id="salarioAcuerdoObs" placeholder="Obs. salario (opcional)" autocomplete="off">
+              </div>
+              <div>
+                <input class="swal2-input" id="fijoAcuerdo" placeholder="Fijo acordado" autocomplete="off">
+                <input class="swal2-input" id="fijoAcuerdoObs" placeholder="Obs. fijo (opcional)" autocomplete="off">
+              </div>
+            </div>
+
             <input class="swal2-input" id="banco" placeholder="Banco" autocomplete="off">
             <input class="swal2-input" id="cbu" placeholder="CBU" autocomplete="off">
             <input class="swal2-input" id="numeroCuenta" placeholder="Número de cuenta" autocomplete="off">
@@ -255,9 +265,19 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
               <option value="Coordinador y profesional">Coordinador y profesional</option>
               <option value="Coordinador de área">Coordinador de área</option>
               <option value="Profesional">Profesional</option>
+              <option value="Pasante">Pasante</option>
               <option value="Administrativo">Administrativo</option>
               <option value="Recepcionista">Recepcionista</option>
             </select>
+
+            <div id="pasanteSection" class="block" style="display:none;">
+              <label><strong>Nivel de pasante:</strong></label>
+              <select id="pasanteNivel" class="swal2-select">
+                <option value="">Seleccionar...</option>
+                <option value="Junior">Junior</option>
+                <option value="Senior">Senior</option>
+              </select>
+            </div>
 
             <div id="proSection" class="block" style="display:none;">
               <label><strong>Áreas como profesional (con nivel):</strong></label>
@@ -314,7 +334,9 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         set('whatsapp', u.whatsapp);
         set('mail', u.mail);
         set('salarioAcuerdo', u.salarioAcuerdo);
+        set('salarioAcuerdoObs', u.salarioAcuerdoObs);
         set('fijoAcuerdo', u.fijoAcuerdo);
+        set('fijoAcuerdoObs', u.fijoAcuerdoObs);
         set('banco', u.banco);
         set('cbu', u.cbu);
         set('numeroCuenta', u.numeroCuenta);
@@ -323,10 +345,10 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         set('nombreFiguraExtracto', u.nombreFiguraExtracto);
         set('tipoCuenta', u.tipoCuenta);
         set('usuario', u.usuario);
-        // No precargar contraseña por seguridad
         if (u.rol) document.getElementById('rol').value = u.rol;
+        if (u.pasanteNivel) document.getElementById('pasanteNivel').value = u.pasanteNivel;
       } else {
-        // Creación: asegurar campos vacíos (evita autofill)
+        // Campos en blanco (evita autofill del navegador)
         const usuarioEl = document.getElementById('usuario');
         const passEl    = document.getElementById('contrasena');
         if (usuarioEl) usuarioEl.value = '';
@@ -337,15 +359,16 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         }, 0);
       }
 
-      const rolSelect    = document.getElementById('rol');
-      const proSection   = document.getElementById('proSection');
-      const coordSection = document.getElementById('coordSection');
-      const proList      = document.getElementById('proList');
-      const coordList    = document.getElementById('coordList');
-      const btnAddPro    = document.getElementById('btnAddPro');
-      const btnAddCoord  = document.getElementById('btnAddCoord');
-      const labelSeguro  = document.getElementById('labelSeguro');
-      const inputSeguro  = document.getElementById('seguroMalaPraxis');
+      const rolSelect      = document.getElementById('rol');
+      const proSection     = document.getElementById('proSection');
+      const coordSection   = document.getElementById('coordSection');
+      const pasanteSection = document.getElementById('pasanteSection');
+      const proList        = document.getElementById('proList');
+      const coordList      = document.getElementById('coordList');
+      const btnAddPro      = document.getElementById('btnAddPro');
+      const btnAddCoord    = document.getElementById('btnAddCoord');
+      const labelSeguro    = document.getElementById('labelSeguro');
+      const inputSeguro    = document.getElementById('seguroMalaPraxis');
 
       function addProRow(areaNombre = "", nivel = "") {
         proList.insertAdjacentHTML('beforeend', buildProRow(areaNombre, nivel));
@@ -368,6 +391,8 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
 
       function syncVisibility() {
         const rol = rolSelect.value;
+
+        // Profesional / Coordinador
         proSection.style.display   = ROLES_PROF.has(rol)  ? 'block' : 'none';
         coordSection.style.display = ROLES_COORD.has(rol) ? 'block' : 'none';
 
@@ -377,6 +402,9 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
 
         if (proSection.style.display !== 'none' && !proList.querySelector('.pro-row')) addProRow();
         if (coordSection.style.display !== 'none' && !coordList.querySelector('.coord-row')) addCoordRow();
+
+        // Pasante
+        pasanteSection.style.display = (rol === 'Pasante') ? 'block' : 'none';
       }
       syncVisibility();
 
@@ -453,7 +481,9 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         whatsapp: get('whatsapp'),
         mail: get('mail'),
         salarioAcuerdo: get('salarioAcuerdo'),
+        salarioAcuerdoObs: get('salarioAcuerdoObs'),
         fijoAcuerdo: get('fijoAcuerdo'),
+        fijoAcuerdoObs: get('fijoAcuerdoObs'),
         banco: get('banco'),
         cbu: get('cbu'),
         numeroCuenta: get('numeroCuenta'),
@@ -462,6 +492,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         nombreFiguraExtracto: get('nombreFiguraExtracto'),
         tipoCuenta: get('tipoCuenta'),
         rol,
+        pasanteNivel: get('pasanteNivel'),
         usuario: get('usuario'),
         contrasena: get('contrasena'),
         seguroMalaPraxis: get('seguroMalaPraxis') || undefined,
@@ -512,6 +543,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
     Swal.fire('Error', 'No se pudo guardar el usuario', 'error');
   });
 }
+
 
 
 

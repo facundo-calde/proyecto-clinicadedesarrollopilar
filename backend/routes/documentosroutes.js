@@ -1,22 +1,19 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const multer = require('multer');
-const upload = multer({ storage: multer.memoryStorage() }); // archivos en memoria (buffer)
+const multer = require("multer");
+const upload = multer({ storage: multer.memoryStorage() });
 
 const {
   agregarDocumento,
   obtenerDocumentos,
   eliminarDocumento
-} = require('../controllers/documentoscontrollers');
+} = require("../controllers/documentoscontrollers");
 
-// Agregar documento con archivo
-// Se espera: req.file (archivo) + req.body (fecha, tipo, observaciones)
-router.post('/:dni', upload.single("archivo"), agregarDocumento);
+// tipo = "pacientes" o "usuarios"
+// id = dni (pacientes) o _id (usuarios)
 
-// Obtener documentos
-router.get('/:dni', obtenerDocumentos);
-
-// Eliminar documento por índice
-router.delete('/:dni/:index', eliminarDocumento);
+router.get("/:tipo/:id", obtenerDocumentos);
+router.post("/:tipo/:id", upload.single("archivo"), agregarDocumento);
+router.delete("/:tipo/:id/:index", eliminarDocumento);
 
 module.exports = router;

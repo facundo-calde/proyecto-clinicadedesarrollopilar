@@ -1,192 +1,218 @@
-const Paciente = require('../models/pacientes');
+// controllers/pacientescontrollers.js
+const Paciente = require("../models/pacientes");
+
+// --- Validaciones básicas ---
+const WSP_RE  = /^\d{10,15}$/;                // solo dígitos, 10–15
+const DNI_RE  = /^\d{7,8}$/;                  // 7–8 dígitos
+const MAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/; // formato simple
+const CP_OK   = new Set(["Obra Social", "Particular", "Obra Social + Particular"]);
+const ESTADOS = new Set(["Alta", "Baja", "En espera"]);
 
 // --- Helpers ---
-const WSP_RE  = /^\d{10,15}$/;
-const DNI_RE  = /^\d{7,8}$/;
-const MAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const CP_OK   = new Set(['Obra Social', 'Particular', 'Obra Social + Particular']);
-const ESTADOS = new Set(['Alta', 'Baja', 'En espera']);
+function toStr(x) {
+  return (x ?? "").toString();
+}
 
-// Permite relaciones repetidas y limita a 3 (agregado: email opcional)
+// Permite repetidos y limita a 3. E-mail opcional y validado.
 function sanitizeResponsables(responsables) {
   if (!Array.isArray(responsables)) return [];
   const out = [];
-  for (const r0 of responsables) {
-    const r = {
-      relacion: String(r0.relacion || '').toLowerCase().trim(),
-      nombre:   (r0.nombre || '').trim(),
-      whatsapp: (r0.whatsapp || '').trim(),
-    };
 
-    // email opcional dentro de responsable
-    const emailRaw = (r0.email || '').toString().trim().toLowerCase();
+  for (const r0 of responsables) {
+    const relacion  = toStr(r0.relacion).trim().toLowerCase(); // padre | madre | tutor
+    const nombre    = toStr(r0.nombre).trim();
+    const whatsapp  = toStr(r0.whatsapp).trim();
+    const emailRaw  = toStr(r0.email).trim().toLowerCase();
+
+    if (!["padre", "madre", "tutor"].includes(relacion)) continue;
+    if (!nombre) continue;
+    if (!WSP_RE.test(whatsapp)) continue;
+
+    const r = { relacion, nombre, whatsapp };
     if (emailRaw) {
-      if (!MAIL_RE.test(emailRaw)) continue; // si viene email inválido, descartamos ese responsable
+      if (!MAIL_RE.test(emailRaw)) continue; // si el mail viene mal, descartamos ese responsable
       r.email = emailRaw;
     }
 
-    if (!['padre','madre','tutor'].includes(r.relacion)) continue;
-    if (!r.nombre) continue;
-    if (!WSP_RE.test(r.whatsapp)) continue;
-
     out.push(r);
-    if (out.length >= 3) break; // máx. 3
+    if (out.length >= 3) break;
   }
   return out;
 }
 
-// Construye el payload final (sin legacy de mails sueltos)
+// Construye payload permitido; ignora campos no soportados.
 function buildPacienteData(body, existing = null) {
   const data = {};
 
-  // Campos soportados por el schema
+  // Campos simples (se asignan tal cual si vienen definidos)
   const simples = [
-    'nombre','fechaNacimiento','colegio','curso',
-    'colegioMail',
-    'condicionDePago','estado',
-    'areas','planPaciente','fechaBaja','motivoBaja',
-    'prestador','credencial','tipo'
+    "nombre", "fechaNacimiento", "colegio", "curso",
+    "colegioMail",
+    "condicionDePago", "estado",
+    "areas", "planPaciente", "fechaBaja", "motivoBaja",
+    "prestador", "credencial", "tipo"
   ];
   for (const k of simples) {
     if (body[k] !== undefined && body[k] !== null) data[k] = body[k];
   }
 
   // DNI solo al crear
-  if (!existing && body.dni !== undefined) data.dni = String(body.dni).trim();
-
-  // Validaciones suaves
-  if (data.dni && !DNI_RE.test(data.dni)) delete data.dni;
-  if (data.condicionDePago && !CP_OK.has(data.condicionDePago)) delete data.condicionDePago;
-
-  // Normalizar/validar mail del colegio (opcional)
-  if (data.colegioMail !== undefined) {
-    data.colegioMail = String(data.colegioMail).trim().toLowerCase();
-    if (data.colegioMail && !MAIL_RE.test(data.colegioMail)) delete data.colegioMail;
+  if (!existing && body.dni !== undefined) {
+    const dni = toStr(body.dni).trim();
+    if (DNI_RE.test(dni)) data.dni = dni;
   }
 
-  // Responsables (1..3, permite repetidos, con email opcional)
+  // Condición de pago válida
+  if (data.condicionDePago && !CP_OK.has(data.condicionDePago)) {
+    delete data.condicionDePago;
+  }
+
+  // Normalizar mail de colegio (opcional)
+  if (data.colegioMail !== undefined) {
+    const m = toStr(data.colegioMail).trim().toLowerCase();
+    data.colegioMail = m && MAIL_RE.test(m) ? m : undefined;
+    if (data.colegioMail === undefined) delete data.colegioMail;
+  }
+
+  // Responsables (1..3, con validaciones)
   if (body.responsables !== undefined) {
     const resp = sanitizeResponsables(body.responsables);
-    if (resp.length > 0) data.responsables = resp;
+    if (resp.length) data.responsables = resp;
   }
 
-  // Módulos (se valida por Mongoose)
-  if (Array.isArray(body.modulosAsignados)) data.modulosAsignados = body.modulosAsignados;
+  // Módulos (valida mongoose)
+  if (Array.isArray(body.modulosAsignados)) {
+    data.modulosAsignados = body.modulosAsignados;
+  }
+
+  // Limpieza de strings
+  for (const [k, v] of Object.entries(data)) {
+    if (typeof v === "string") data[k] = v.trim();
+  }
 
   return data;
 }
 
-// --- Controllers ---
+// ========================= Controllers =========================
 
-// Buscar por nombre parcial o DNI
+// GET /api/pacientes/buscar?nombre=...
+// Busca por nombre parcial o DNI (case-insensitive)
 const buscarPaciente = async (req, res) => {
   try {
-    const { nombre } = req.query;
-    if (!nombre) return res.status(400).json({ error: 'Falta el nombre o DNI' });
+    const q = toStr(req.query.nombre).trim();
+    if (!q) return res.status(400).json({ error: "Falta el nombre o DNI" });
 
-    const nombreLimpio = String(nombre).replace(/\./g, '');
-    const regex = new RegExp(nombreLimpio, 'i');
+    const limpio = q.replace(/\./g, "");
+    const regex = new RegExp(limpio, "i");
 
     const pacientes = await Paciente.find({
       $or: [{ nombre: regex }, { dni: regex }]
-    });
+    }).lean();
 
     res.json(pacientes);
-  } catch (error) {
-    console.error('❌ Error al buscar paciente:', error);
-    res.status(500).json({ error: 'Error al buscar paciente' });
+  } catch (err) {
+    console.error("❌ Error al buscar paciente:", err);
+    res.status(500).json({ error: "Error al buscar paciente" });
   }
 };
 
-// Obtener por DNI
+// GET /api/pacientes/:dni
 const obtenerPorDNI = async (req, res) => {
   try {
-    const { dni } = req.params;
-    const paciente = await Paciente.findOne({ dni });
-    if (!paciente) return res.status(404).json({ error: 'No encontrado' });
+    const dni = toStr(req.params.dni).trim();
+    const paciente = await Paciente.findOne({ dni }).lean();
+    if (!paciente) return res.status(404).json({ error: "No encontrado" });
     res.json(paciente);
-  } catch (error) {
-    console.error('❌ Error al obtener por DNI:', error);
-    res.status(500).json({ error: 'Error interno' });
+  } catch (err) {
+    console.error("❌ Error al obtener por DNI:", err);
+    res.status(500).json({ error: "Error interno" });
   }
 };
 
-// Crear nuevo
+// POST /api/pacientes
 const crearPaciente = async (req, res) => {
   try {
     const data = buildPacienteData(req.body, null);
 
+    if (!data.dni) {
+      return res.status(400).json({ error: "DNI inválido o faltante" });
+    }
     if (!data.responsables || data.responsables.length === 0) {
-      return res.status(400).json({ error: 'Debe incluir al menos un responsable (padre/madre/tutor).' });
+      return res.status(400).json({ error: "Debe incluir al menos un responsable (padre/madre/tutor)" });
     }
 
     const nuevo = new Paciente(data);
     await nuevo.save();
     res.status(201).json(nuevo);
-  } catch (error) {
-    console.error('❌ Error al crear paciente:', error);
-    if (error?.code === 11000 && error?.keyPattern?.dni) {
-      const existente = await Paciente.findOne({ dni: req.body.dni }).lean();
-      return res.status(409).json({ error: 'El DNI ya existe', dni: req.body.dni, existente });
+  } catch (err) {
+    console.error("❌ Error al crear paciente:", err);
+
+    if (err?.code === 11000 && err?.keyPattern?.dni) {
+      const existente = await Paciente.findOne({ dni: toStr(req.body.dni).trim() }).lean();
+      return res.status(409).json({ error: "El DNI ya existe", dni: req.body.dni, existente });
     }
-    if (error?.name === 'ValidationError') {
-      const detalles = Object.values(error.errors).map(e => e.message);
-      return res.status(400).json({ error: 'Validación fallida', detalles });
+
+    if (err?.name === "ValidationError") {
+      const detalles = Object.values(err.errors).map(e => e.message);
+      return res.status(400).json({ error: "Validación fallida", detalles });
     }
-    res.status(500).json({ error: 'No se pudo crear paciente' });
+
+    res.status(500).json({ error: "No se pudo crear paciente" });
   }
 };
 
-// Actualizar
+// PUT /api/pacientes/:dni
 const actualizarPaciente = async (req, res) => {
   try {
-    const { dni } = req.params;
+    const dni = toStr(req.params.dni).trim();
     const paciente = await Paciente.findOne({ dni });
-    if (!paciente) return res.status(404).json({ error: 'No encontrado' });
+    if (!paciente) return res.status(404).json({ error: "No encontrado" });
 
     const data = buildPacienteData(req.body, paciente);
 
-    // ===== AUDITORÍA: datos del usuario que modifica (del token) =====
+    // Auditoría básica del usuario (token)
     const actor = {
       usuarioId: req.user?.id || null,
       usuario: req.user?.usuario || null,
       nombre: req.user?.nombreApellido || null
     };
-    // =================================================================
 
-    // Si cambia el estado, agregamos entrada al historial (se guardan solo campos definidos en el schema)
+    // Cambio de estado → agregar a historial
     const nuevoEstado = req.body.estado;
-    const descripcionEstado = req.body.descripcionEstado || req.body.estadoDescripcion || '';
+    const descripcionEstado = toStr(req.body.descripcionEstado || req.body.estadoDescripcion).trim();
+
     if (
       nuevoEstado !== undefined &&
       ESTADOS.has(String(nuevoEstado)) &&
-      String(nuevoEstado) !== String(paciente.estado || '')
+      String(nuevoEstado) !== String(paciente.estado || "")
     ) {
       paciente.estado = String(nuevoEstado);
       if (!Array.isArray(paciente.estadoHistorial)) paciente.estadoHistorial = [];
       paciente.estadoHistorial.push({
         estado: String(nuevoEstado),
         fecha: new Date(),
-        descripcion: descripcionEstado,
+        descripcion: descripcionEstado || undefined,
         cambiadoPor: actor
       });
     }
 
-    // Asignar el resto de campos (ignorar cambio de DNI y estado: ya se manejó)
+    // Asignar resto (dni y estado ya tratados)
     for (const [k, v] of Object.entries(data)) {
-      if (k === 'dni' || k === 'estado') continue;
-      paciente[k] = (typeof v === 'string') ? v.trim() : v;
+      if (k === "dni" || k === "estado") continue;
+      paciente[k] = typeof v === "string" ? v.trim() : v;
     }
 
     await paciente.save();
     res.json(paciente);
-  } catch (error) {
-    console.error('❌ Error al actualizar:', error);
-    if (error?.name === 'ValidationError') {
-      const detalles = Object.values(error.errors).map(e => e.message);
-      return res.status(400).json({ error: 'Validación fallida', detalles });
+  } catch (err) {
+    console.error("❌ Error al actualizar:", err);
+
+    if (err?.name === "ValidationError") {
+      const detalles = Object.values(err.errors).map(e => e.message);
+      return res.status(400).json({ error: "Validación fallida", detalles });
     }
-    res.status(500).json({ error: 'Error al actualizar' });
+
+    res.status(500).json({ error: "Error al actualizar" });
   }
 };
 
@@ -196,4 +222,3 @@ module.exports = {
   crearPaciente,
   actualizarPaciente
 };
-

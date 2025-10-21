@@ -1,20 +1,34 @@
-const Paciente = require('../models/pacientes');
-const { PutObjectCommand, DeleteObjectCommand } = require("@aws-sdk/client-s3");
-const s3 = require("../lib/r2Client");
+// backend/controllers/documentoscontrollers.js
+const Paciente = require("../models/pacientes");
+const Usuario  = require("../models/usuarios");
+const { uploadBuffer, deleteKey, buckets } = require("../lib/storageR2");
+
+// Helpers
+function getModelAndBucket(tipo) {
+  if (tipo === "pacientes") {
+    return { Model: Paciente, bucket: buckets.pacientes, field: "documentosPersonales" };
+  }
+  if (tipo === "usuarios") {
+    return { Model: Usuario, bucket: buckets.usuarios, field: "documentos" };
+  }
+  throw new Error("Tipo no soportado");
+}
 
 // =============================
-// GET documentos de un paciente
+// GET documentos
 // =============================
 const obtenerDocumentos = async (req, res) => {
   try {
-    const { dni } = req.params;
-    const paciente = await Paciente.findOne({ dni });
-    if (!paciente) return res.status(404).json({ error: 'Paciente no encontrado' });
+    const { tipo, id } = req.params;
+    const { Model, field } = getModelAndBucket(tipo);
 
-    res.json(paciente.documentosPersonales || []);
+    const entidad = await Model.findOne(tipo === "pacientes" ? { dni: id } : { _id: id });
+    if (!entidad) return res.status(404).json({ error: `${tipo} no encontrado` });
+
+    res.json(entidad[field] || []);
   } catch (err) {
     console.error("Error al obtener documentos:", err);
-    res.status(500).json({ error: 'Error al obtener documentos' });
+    res.status(500).json({ error: "Error al obtener documentos" });
   }
 };
 
@@ -23,44 +37,32 @@ const obtenerDocumentos = async (req, res) => {
 // =============================
 const agregarDocumento = async (req, res) => {
   try {
-    const { dni } = req.params;
-    const { fecha, tipo, observaciones } = req.body;
-    const file = req.file; // viene de multer
+    const { tipo, id } = req.params;
+    const { fecha, tipo: tipoDoc, observaciones } = req.body;
+    const file = req.file;
 
     if (!file) return res.status(400).json({ error: "Archivo requerido" });
 
-    // Buscar paciente
-    const paciente = await Paciente.findOne({ dni });
-    if (!paciente) return res.status(404).json({ error: 'Paciente no encontrado' });
+    const { Model, bucket, field } = getModelAndBucket(tipo);
+    const entidad = await Model.findOne(tipo === "pacientes" ? { dni: id } : { _id: id });
+    if (!entidad) return res.status(404).json({ error: `${tipo} no encontrado` });
 
-    // Generar nombre único en el bucket
-    const key = `${dni}/${Date.now()}_${file.originalname}`;
-
-    // Subir a R2
-    await s3.send(new PutObjectCommand({
-      Bucket: process.env.R2_BUCKET,
-      Key: key,
-      Body: file.buffer,
-      ContentType: file.mimetype,
-    }));
-
-    // URL pública/privada del archivo en R2
-    const archivoURL = `${process.env.R2_ENDPOINT}/${process.env.R2_BUCKET}/${key}`;
-
-    // Guardar en MongoDB
-    paciente.documentosPersonales = paciente.documentosPersonales || [];
-    paciente.documentosPersonales.push({
-      fecha,
-      tipo,
-      observaciones,
-      archivoURL
+    const key = `${id}/${Date.now()}_${file.originalname}`;
+    const archivoURL = await uploadBuffer({
+      bucket,
+      key,
+      buffer: file.buffer,
+      contentType: file.mimetype
     });
-    await paciente.save();
 
-    res.status(201).json(paciente.documentosPersonales);
+    entidad[field] = entidad[field] || [];
+    entidad[field].push({ fecha, tipo: tipoDoc, observaciones, archivoURL });
+    await entidad.save();
+
+    res.status(201).json(entidad[field]);
   } catch (err) {
     console.error("Error al agregar documento:", err);
-    res.status(500).json({ error: 'Error al agregar documento' });
+    res.status(500).json({ error: "Error al agregar documento" });
   }
 };
 
@@ -69,40 +71,39 @@ const agregarDocumento = async (req, res) => {
 // =============================
 const eliminarDocumento = async (req, res) => {
   try {
-    const { dni, index } = req.params;
-    const paciente = await Paciente.findOne({ dni });
-    if (!paciente) return res.status(404).json({ error: 'Paciente no encontrado' });
+    const { tipo, id, index } = req.params;
+    const { Model, bucket, field } = getModelAndBucket(tipo);
 
-    if (paciente.documentosPersonales && paciente.documentosPersonales[index]) {
-      const doc = paciente.documentosPersonales[index];
+    const entidad = await Model.findOne(tipo === "pacientes" ? { dni: id } : { _id: id });
+    if (!entidad) return res.status(404).json({ error: `${tipo} no encontrado` });
 
-      // Borrar de R2 si hay archivo
-      if (doc.archivoURL) {
-        const key = doc.archivoURL.split(`/${process.env.R2_BUCKET}/`)[1];
-        if (key) {
-          await s3.send(new DeleteObjectCommand({
-            Bucket: process.env.R2_BUCKET,
-            Key: key,
-          }));
-        }
+    const i = Number(index);
+    const lista = entidad[field] || [];
+    const doc = lista[i];
+    if (!doc) return res.status(404).json({ error: "Documento no encontrado" });
+
+    if (doc.archivoURL) {
+      const pivot = `/${bucket}/`;
+      const pos = doc.archivoURL.indexOf(pivot);
+      if (pos !== -1) {
+        const key = doc.archivoURL.slice(pos + pivot.length);
+        if (key) await deleteKey({ bucket, key });
       }
-
-      // Borrar de Mongo
-      paciente.documentosPersonales.splice(index, 1);
-      await paciente.save();
-
-      res.json({ ok: true });
-    } else {
-      res.status(404).json({ error: 'Documento no encontrado' });
     }
+
+    lista.splice(i, 1);
+    entidad[field] = lista;
+    await entidad.save();
+
+    res.json({ ok: true });
   } catch (err) {
     console.error("Error al eliminar documento:", err);
-    res.status(500).json({ error: 'Error al eliminar documento' });
+    res.status(500).json({ error: "Error al eliminar documento" });
   }
 };
 
 module.exports = {
-  agregarDocumento,
   obtenerDocumentos,
+  agregarDocumento,
   eliminarDocumento
 };
