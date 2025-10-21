@@ -2,44 +2,54 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-
 const usuariosCtrl = require('../controllers/usuariosControllers');
 
-// Multer en MEMORIA (no escribe a /uploads)
+// Multer en MEMORIA
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 20 * 1024 * 1024 }, // 20MB por archivo (ajustá si querés)
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
   fileFilter: (req, file, cb) => {
     const ok =
       file.mimetype === 'application/pdf' ||
-      file.mimetype.startsWith('image/'); // png, jpg, etc.
+      file.mimetype.startsWith('image/');
     if (!ok) return cb(new Error('Tipo de archivo no permitido'), false);
     cb(null, true);
   }
 });
 
-// 🔑 Login (público) → /api/login
+// ✅ SOLO usa multer si es multipart/form-data
+const maybeUpload = (req, res, next) => {
+  if (req.is('multipart/form-data')) {
+    return upload.any()(req, res, next); // acepta "documentos" o "archivo"
+  }
+  return next();
+};
+
+// 🔑 Login (público)
 router.post('/login', usuariosCtrl.login);
 
-// ✅ CRUD Usuarios (protegido con JWT) → /api/usuarios...
+// ✅ CRUD Usuarios (con JWT)
 router.get('/usuarios', usuariosCtrl.authMiddleware, usuariosCtrl.obtenerUsuarios);
 router.get('/usuarios/:id', usuariosCtrl.authMiddleware, usuariosCtrl.getUsuarioPorId);
 
-// Crear/Actualizar aceptan múltiples adjuntos en el campo "documentos"
-router.post(
-  '/usuarios',
-  usuariosCtrl.authMiddleware,
-  upload.array('documentos', 10),
-  usuariosCtrl.crearUsuario
-);
-
-router.put(
-  '/usuarios/:id',
-  usuariosCtrl.authMiddleware,
-  upload.array('documentos', 10),
-  usuariosCtrl.actualizarUsuario
-);
+// Crear/Actualizar: si viene JSON -> NO pasa por multer; si viene FormData -> SÍ
+router.post('/usuarios', usuariosCtrl.authMiddleware, maybeUpload, usuariosCtrl.crearUsuario);
+router.put('/usuarios/:id', usuariosCtrl.authMiddleware, maybeUpload, usuariosCtrl.actualizarUsuario);
 
 router.delete('/usuarios/:id', usuariosCtrl.authMiddleware, usuariosCtrl.eliminarUsuario);
+
+// Handler claro para errores de subida
+router.use((err, req, res, next) => {
+  if (err && err.message === 'Tipo de archivo no permitido') {
+    return res.status(400).json({ error: 'Tipo de archivo no permitido (solo PDF o imagen).' });
+  }
+  if (err?.code === 'LIMIT_FILE_SIZE') {
+    return res.status(400).json({ error: 'Archivo demasiado grande (máx 20MB).' });
+  }
+  if (err?.name === 'MulterError') {
+    return res.status(400).json({ error: `Error de carga: ${err.code}` });
+  }
+  next(err);
+});
 
 module.exports = router;
