@@ -15,6 +15,36 @@ function parseMaybeJSON(v) {
   try { return JSON.parse(v); } catch { return v; }
 }
 
+// Junta archivos sin importar si vino req.file, req.files[], "documentos", "archivo", etc.
+function collectFilesFromReq(req) {
+  const files = [];
+  if (req.file) files.push(req.file);
+  if (Array.isArray(req.files)) files.push(...req.files);
+  // Si algún middleware setea req.body.documentos como FileList serializada (raro), se ignora.
+  return files;
+}
+
+// Sube archivos a R2 y devuelve objetos {tipo, nombre, url, fechaSubida}
+async function uploadUserDocsR2(files, ownerId) {
+  const out = [];
+  for (const file of files) {
+    const key = `${ownerId}/${Date.now()}_${file.originalname}`;
+    const url = await uploadBuffer({
+      bucket: buckets.usuarios,
+      key,
+      buffer: file.buffer,
+      contentType: file.mimetype
+    });
+    out.push({
+      tipo: "general",
+      nombre: file.originalname,
+      url,
+      fechaSubida: new Date()
+    });
+  }
+  return out;
+}
+
 // Normaliza body cuando viene por multipart/form-data o JSON
 function normalizeBody(body) {
   // Arrays que pueden venir como JSON string
@@ -23,7 +53,7 @@ function normalizeBody(body) {
   if (body.areasProfesional == null || body.areasProfesional === "") body.areasProfesional = [];
   if (body.areasCoordinadas == null || body.areasCoordinadas === "") body.areasCoordinadas = [];
 
-  // Trims + vacíos a undefined para campos opcionales
+  // Trims + vacíos -> undefined
   [
     "jurisdiccion",
     "registroNacionalDePrestadores",
@@ -42,23 +72,20 @@ function normalizeBody(body) {
     }
   });
 
-  // normalizar algunos campos
   if (body.usuario) body.usuario = body.usuario.toLowerCase();
   if (body.mail)    body.mail    = body.mail.toLowerCase();
 
   return body;
 }
 
-// Aplica reglas según rol (profesional, coordinador, pasante)
+// Reglas por rol
 function applyRoleCleaning(rol, body, currentDoc = null) {
   const esProfesional = rol === "Profesional" || rol === "Coordinador y profesional";
   const esCoordinador = rol === "Coordinador de área" || rol === "Coordinador y profesional";
   const esPasante     = rol === "Pasante";
 
-  // Seguro sólo para roles con parte profesional
   if (!esProfesional) body.seguroMalaPraxis = undefined;
 
-  // Pasante no usa áreas
   if (esPasante) {
     body.areasProfesional = [];
     body.areasCoordinadas = [];
@@ -67,10 +94,9 @@ function applyRoleCleaning(rol, body, currentDoc = null) {
     if (!esCoordinador) body.areasCoordinadas = [];
   }
 
-  // pasanteNivel sólo aplica a Pasante
   if (!esPasante) body.pasanteNivel = undefined;
 
-  // En update: si no llegaron arrays y hay doc actual, conservar
+  // En update, si no llegan arrays conservar los actuales
   if (currentDoc) {
     if (!Array.isArray(body.areasProfesional) && currentDoc.areasProfesional) {
       body.areasProfesional = currentDoc.areasProfesional;
@@ -81,10 +107,9 @@ function applyRoleCleaning(rol, body, currentDoc = null) {
   }
 }
 
-// Extraer key de un URL de R2 (si es del bucket de usuarios)
+// Extrae key de URL R2 (bucket usuarios)
 function extractUsuariosKeyFromUrl(url) {
   try {
-    // Busca el segmento "/<BUCKET_USUARIOS>/"
     const pivot = `/${buckets.usuarios}/`;
     const idx = url.indexOf(pivot);
     if (idx === -1) return null;
@@ -111,43 +136,27 @@ exports.crearUsuario = async (req, res) => {
     const rolFinal = body.rol;
     applyRoleCleaning(rolFinal, body);
 
-    // Crear doc base (aún sin documentos)
+    // Crear doc base
     const nuevo = new Usuario({
-      ...body, // incluye salarioAcuerdoObs, fijoAcuerdoObs, pasanteNivel, etc.
+      ...body,
       contrasena: hashedPassword,
       documentos: []
     });
 
-    // Guardamos primero para tener _id disponible para la key del archivo
-    await nuevo.save();
+    await nuevo.save(); // necesitamos _id
 
-    // Subir documentos a R2 (si vinieron) -> bucket de usuarios
-    if (req.files && req.files.length > 0) {
-      const uploaded = [];
-      for (const file of req.files) {
-        const key = `${nuevo._id}/${Date.now()}_${file.originalname}`;
-        const url = await uploadBuffer({
-          bucket: buckets.usuarios,
-          key,
-          buffer: file.buffer,
-          contentType: file.mimetype
-        });
-        uploaded.push({
-          tipo: "general",
-          nombre: file.originalname,
-          url,
-          fechaSubida: new Date()
-        });
-      }
+    // Subir adjuntos si hay
+    const files = collectFilesFromReq(req);
+    if (files.length > 0) {
+      const uploaded = await uploadUserDocsR2(files, nuevo._id);
       nuevo.documentos = uploaded;
       await nuevo.save();
     }
 
-    // Ocultar hash
     nuevo.contrasena = undefined;
     return res.status(201).json(nuevo);
   } catch (err) {
-    console.error("crearUsuario error:", err);
+    console.error("crearUsuario error:", err?.stack || err);
     return res.status(500).json({ error: "Error al crear usuario", detalles: err.message });
   }
 };
@@ -182,7 +191,7 @@ exports.actualizarUsuario = async (req, res) => {
     const usuario = await Usuario.findById(req.params.id);
     if (!usuario) return res.status(404).json({ error: "Usuario no encontrado" });
 
-    // Hash sólo si se envía nueva contraseña
+    // Hash sólo si llega nueva contraseña
     if (body.contrasena) {
       const salt = await bcrypt.genSalt(10);
       body.contrasena = await bcrypt.hash(body.contrasena, salt);
@@ -190,37 +199,23 @@ exports.actualizarUsuario = async (req, res) => {
       delete body.contrasena;
     }
 
-    // Si mandan seguro, normalizar vacío->undefined
+    // Normalizar seguro
     if (Object.prototype.hasOwnProperty.call(body, "seguroMalaPraxis")) {
-      const seguro = (body.seguroMalaPraxis ?? "").toString().trim();
-      body.seguroMalaPraxis = seguro || undefined;
+      const v = (body.seguroMalaPraxis ?? "").toString().trim();
+      body.seguroMalaPraxis = v || undefined;
     }
 
-    // Limpieza por rol (usar body.rol o el actual)
+    // Reglas por rol
     const rolFinal = body.rol || usuario.rol;
     applyRoleCleaning(rolFinal, body, usuario);
 
-    // Aplicar cambios de campos
+    // Set de campos
     usuario.set(body);
 
-    // Subir nuevos documentos (si hay) y concatenar
-    if (req.files && req.files.length > 0) {
-      const nuevosDocs = [];
-      for (const file of req.files) {
-        const key = `${usuario._id}/${Date.now()}_${file.originalname}`;
-        const url = await uploadBuffer({
-          bucket: buckets.usuarios,
-          key,
-          buffer: file.buffer,
-          contentType: file.mimetype
-        });
-        nuevosDocs.push({
-          tipo: "general",
-          nombre: file.originalname,
-          url,
-          fechaSubida: new Date()
-        });
-      }
+    // Adjuntar nuevos documentos si hay
+    const files = collectFilesFromReq(req);
+    if (files.length > 0) {
+      const nuevosDocs = await uploadUserDocsR2(files, usuario._id);
       usuario.documentos = (usuario.documentos || []).concat(nuevosDocs);
     }
 
@@ -228,7 +223,7 @@ exports.actualizarUsuario = async (req, res) => {
     usuario.contrasena = undefined;
     return res.json(usuario);
   } catch (err) {
-    console.error("actualizarUsuario error:", err);
+    console.error("actualizarUsuario error:", err?.stack || err);
     return res.status(500).json({ error: "Error al actualizar usuario", detalles: err.message });
   }
 };
@@ -239,17 +234,13 @@ exports.eliminarUsuario = async (req, res) => {
     const usuario = await Usuario.findById(req.params.id);
     if (!usuario) return res.status(404).json({ error: "Usuario no encontrado" });
 
-    // Intentar borrar documentos del bucket de usuarios (best-effort)
+    // Borrado best-effort en R2
     if (Array.isArray(usuario.documentos) && usuario.documentos.length > 0) {
       const jobs = [];
       for (const doc of usuario.documentos) {
         if (doc?.url) {
           const key = extractUsuariosKeyFromUrl(doc.url);
-          if (key) {
-            jobs.push(
-              deleteKey({ bucket: buckets.usuarios, key }).catch(() => null)
-            );
-          }
+          if (key) jobs.push(deleteKey({ bucket: buckets.usuarios, key }).catch(() => null));
         }
       }
       await Promise.all(jobs);
@@ -298,7 +289,7 @@ exports.login = async (req, res) => {
 
     res.json({ mensaje: "Login exitoso", user: userData, token });
   } catch (err) {
-    console.error("Error en login:", err);
+    console.error("Error en login:", err?.stack || err);
     res.status(500).json({ error: "Error en login", detalles: err.message });
   }
 };
@@ -319,4 +310,5 @@ exports.authMiddleware = (req, res, next) => {
     return res.status(401).json({ error: "Token no válido o expirado" });
   }
 };
+
 

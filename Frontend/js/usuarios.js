@@ -135,7 +135,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
   // 1) Traer áreas
   let AREAS = [];
   try {
-    const res = await apiFetch(`/areas`, { method: "GET" });
+    const res = await apiFetch("/areas", { method: "GET" });
     if (!res.ok) throw new Error("No se pudo obtener áreas");
     const data = await res.json();
     AREAS = (Array.isArray(data) ? data : [])
@@ -174,39 +174,28 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
     </div>`;
 
   Swal.fire({
-    title: modoEdicion ? 'Editar usuario' : 'Registrar nuevo usuario',
-    width: '90%',
+    title: modoEdicion ? "Editar usuario" : "Registrar nuevo usuario",
+    width: "90%",
     html: `
       <style>
         .swal2-popup * { box-sizing: border-box; }
         .swal2-popup.swal2-modal{
-          padding:18px 22px;
-          font-family:'Montserrat','Segoe UI',sans-serif;
+          padding:18px 22px;font-family:'Montserrat','Segoe UI',sans-serif;
           background:#fff;border:1px solid #ccc;border-radius:10px;
-          box-shadow:0 3px 12px rgba(0,0,0,.2);
-          max-width: 1600px;
+          box-shadow:0 3px 12px rgba(0,0,0,.2);max-width:1600px;
         }
         .swal-body{ max-height:72vh; overflow-y:auto; overflow-x:auto; }
-        .form-container{
-          display:grid;
-          grid-template-columns: minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);
-          gap:24px; min-width:0; width:100%;
-        }
-        .form-column{ display:flex; flex-direction:column; min-width:0; }
+        .form-container{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:24px; }
+        .form-column{ display:flex; flex-direction:column; }
         .form-column label{ font-weight:600;font-size:14px;margin-top:8px;color:#333; }
-        .swal2-input,.swal2-select{
-          width:100%; min-width:0; max-width:100%;
-          padding:10px; margin-top:6px; margin-bottom:10px;
-          border:1px solid #ccc;border-radius:8px;background:#f9f9f9;font-size:14px;
-        }
+        .swal2-input,.swal2-select{ width:100%; padding:10px; margin-top:6px; margin-bottom:10px;
+          border:1px solid #ccc;border-radius:8px;background:#f9f9f9;font-size:14px; }
         .mini-btn{ padding:6px 10px;border:1px solid #ccc;border-radius:8px;background:#eee;cursor:pointer;font-size:12px; }
-        .icon-btn{
-          width:36px;height:36px;min-width:36px; display:flex;align-items:center;justify-content:center;
-          border-radius:8px;border:1px solid #d32f2f;background:#e53935;color:#fff;cursor:pointer;padding:0;
-        }
-        .block{ border:1px solid #e5e7eb;border-radius:10px;padding:10px;background:#fafafa;margin-top:6px;min-width:0;width:100%; }
-        .pro-row{ display:grid; grid-template-columns: minmax(0,1fr) 150px 36px; gap:8px; align-items:center; margin:6px 0; }
-        .coord-row{ display:grid; grid-template-columns: minmax(0,1fr) 36px; gap:8px; align-items:center; margin:6px 0; }
+        .icon-btn{ width:36px;height:36px;display:flex;align-items:center;justify-content:center;
+          border-radius:8px;border:1px solid #d32f2f;background:#e53935;color:#fff;cursor:pointer;padding:0; }
+        .block{ border:1px solid #e5e7eb;border-radius:10px;padding:10px;background:#fafafa;margin-top:6px;width:100%; }
+        .pro-row{ display:grid; grid-template-columns:1fr 150px 36px; gap:8px; align-items:center; margin:6px 0; }
+        .coord-row{ display:grid; grid-template-columns:1fr 36px; gap:8px; align-items:center; margin:6px 0; }
         input[type="file"].swal2-input{ width:100%; display:block; }
         .two-col { display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
         .swal2-confirm{ background:#2f72c4 !important;color:#fff !important;font-weight:700;padding:8px 20px;border-radius:8px; }
@@ -316,186 +305,183 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         </div>
       </div>
     `,
-    confirmButtonText: modoEdicion ? 'Actualizar' : 'Guardar',
+    confirmButtonText: modoEdicion ? "Actualizar" : "Guardar",
     showCancelButton: true,
-    cancelButtonText: 'Cancelar',
+    cancelButtonText: "Cancelar",
     didOpen: () => {
       // Precarga si es edición
+      const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = (val ?? ""); };
+
       if (modoEdicion) {
-        const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = (val ?? ''); };
-        set('nombreApellido', u.nombreApellido);
-        set('fechaNacimiento', u.fechaNacimiento ? String(u.fechaNacimiento).split('T')[0] : '');
-        set('domicilio', u.domicilio);
-        set('dni', u.dni);
-        set('cuit', u.cuit);
-        set('matricula', u.matricula);
-        if (u.jurisdiccion) document.getElementById('jurisdiccion').value = u.jurisdiccion;
-        set('registroNacionalDePrestadores', u.registroNacionalDePrestadores);
-        set('whatsapp', u.whatsapp);
-        set('mail', u.mail);
-        set('salarioAcuerdo', u.salarioAcuerdo);
-        set('salarioAcuerdoObs', u.salarioAcuerdoObs);
-        set('fijoAcuerdo', u.fijoAcuerdo);
-        set('fijoAcuerdoObs', u.fijoAcuerdoObs);
-        set('banco', u.banco);
-        set('cbu', u.cbu);
-        set('numeroCuenta', u.numeroCuenta);
-        set('numeroSucursal', u.numeroSucursal);
-        set('alias', u.alias);
-        set('nombreFiguraExtracto', u.nombreFiguraExtracto);
-        set('tipoCuenta', u.tipoCuenta);
-        set('usuario', u.usuario);
-        if (u.rol) document.getElementById('rol').value = u.rol;
-        if (u.pasanteNivel) document.getElementById('pasanteNivel').value = u.pasanteNivel;
+        set("nombreApellido", u.nombreApellido);
+        set("fechaNacimiento", u.fechaNacimiento ? String(u.fechaNacimiento).split("T")[0] : "");
+        set("domicilio", u.domicilio);
+        set("dni", u.dni);
+        set("cuit", u.cuit);
+        set("matricula", u.matricula);
+        if (u.jurisdiccion) document.getElementById("jurisdiccion").value = u.jurisdiccion;
+        set("registroNacionalDePrestadores", u.registroNacionalDePrestadores);
+        set("whatsapp", u.whatsapp);
+        set("mail", u.mail);
+        set("salarioAcuerdo", u.salarioAcuerdo);
+        set("salarioAcuerdoObs", u.salarioAcuerdoObs);
+        set("fijoAcuerdo", u.fijoAcuerdo);
+        set("fijoAcuerdoObs", u.fijoAcuerdoObs);
+        set("banco", u.banco);
+        set("cbu", u.cbu);
+        set("numeroCuenta", u.numeroCuenta);
+        set("numeroSucursal", u.numeroSucursal);
+        set("alias", u.alias);
+        set("nombreFiguraExtracto", u.nombreFiguraExtracto);
+        set("tipoCuenta", u.tipoCuenta);
+        set("usuario", u.usuario);
+        if (u.rol) document.getElementById("rol").value = u.rol;
+        if (u.pasanteNivel) document.getElementById("pasanteNivel").value = u.pasanteNivel;
       } else {
-        // Campos en blanco (evita autofill del navegador)
-        const usuarioEl = document.getElementById('usuario');
-        const passEl    = document.getElementById('contrasena');
-        if (usuarioEl) usuarioEl.value = '';
-        if (passEl)     passEl.value = '';
+        const usuarioEl = document.getElementById("usuario");
+        const passEl    = document.getElementById("contrasena");
+        if (usuarioEl) usuarioEl.value = "";
+        if (passEl)     passEl.value = "";
         setTimeout(() => {
-          if (usuarioEl) usuarioEl.value = '';
-          if (passEl)    passEl.value = '';
+          if (usuarioEl) usuarioEl.value = "";
+          if (passEl)    passEl.value = "";
         }, 0);
       }
 
-      const rolSelect      = document.getElementById('rol');
-      const proSection     = document.getElementById('proSection');
-      const coordSection   = document.getElementById('coordSection');
-      const pasanteSection = document.getElementById('pasanteSection');
-      const proList        = document.getElementById('proList');
-      const coordList      = document.getElementById('coordList');
-      const btnAddPro      = document.getElementById('btnAddPro');
-      const btnAddCoord    = document.getElementById('btnAddCoord');
-      const labelSeguro    = document.getElementById('labelSeguro');
-      const inputSeguro    = document.getElementById('seguroMalaPraxis');
+      const rolSelect      = document.getElementById("rol");
+      const proSection     = document.getElementById("proSection");
+      const coordSection   = document.getElementById("coordSection");
+      const pasanteSection = document.getElementById("pasanteSection");
+      const proList        = document.getElementById("proList");
+      const coordList      = document.getElementById("coordList");
+      const btnAddPro      = document.getElementById("btnAddPro");
+      const btnAddCoord    = document.getElementById("btnAddCoord");
+      const labelSeguro    = document.getElementById("labelSeguro");
+      const inputSeguro    = document.getElementById("seguroMalaPraxis");
 
       function addProRow(areaNombre = "", nivel = "") {
-        proList.insertAdjacentHTML('beforeend', buildProRow(areaNombre, nivel));
+        proList.insertAdjacentHTML("beforeend", buildProRow(areaNombre, nivel));
         const row = proList.lastElementChild;
-        if (areaNombre) row.querySelector('.pro-area').value = areaNombre;
-        if (nivel)      row.querySelector('.pro-nivel').value = nivel;
-        row.querySelector('.btn-del-pro').addEventListener('click', () => row.remove());
+        if (areaNombre) row.querySelector(".pro-area").value = areaNombre;
+        if (nivel)      row.querySelector(".pro-nivel").value = nivel;
+        row.querySelector(".btn-del-pro").addEventListener("click", () => row.remove());
       }
       function addCoordRow(areaNombre = "") {
-        coordList.insertAdjacentHTML('beforeend', buildCoordRow(areaNombre));
+        coordList.insertAdjacentHTML("beforeend", buildCoordRow(areaNombre));
         const row = coordList.lastElementChild;
-        if (areaNombre) row.querySelector('.coord-area').value = areaNombre;
-        row.querySelector('.btn-del-coord').addEventListener('click', () => row.remove());
+        if (areaNombre) row.querySelector(".coord-area").value = areaNombre;
+        row.querySelector(".btn-del-coord").addEventListener("click", () => row.remove());
       }
-      btnAddPro.addEventListener('click', () => addProRow());
-      btnAddCoord.addEventListener('click', () => addCoordRow());
+      btnAddPro.addEventListener("click", () => addProRow());
+      btnAddCoord.addEventListener("click", () => addCoordRow());
 
-      const ROLES_PROF  = new Set(['Profesional', 'Coordinador y profesional']);
-      const ROLES_COORD = new Set(['Coordinador de área', 'Coordinador y profesional']);
+      const ROLES_PROF  = new Set(["Profesional", "Coordinador y profesional"]);
+      const ROLES_COORD = new Set(["Coordinador de área", "Coordinador y profesional"]);
 
       function syncVisibility() {
         const rol = rolSelect.value;
 
-        // Profesional / Coordinador
-        proSection.style.display   = ROLES_PROF.has(rol)  ? 'block' : 'none';
-        coordSection.style.display = ROLES_COORD.has(rol) ? 'block' : 'none';
+        proSection.style.display   = ROLES_PROF.has(rol)  ? "block" : "none";
+        coordSection.style.display = ROLES_COORD.has(rol) ? "block" : "none";
 
         const showSeguro = ROLES_PROF.has(rol);
-        labelSeguro.style.display = showSeguro ? 'block' : 'none';
-        inputSeguro.style.display = showSeguro ? 'block' : 'none';
+        labelSeguro.style.display = showSeguro ? "block" : "none";
+        inputSeguro.style.display = showSeguro ? "block" : "none";
 
-        if (proSection.style.display !== 'none' && !proList.querySelector('.pro-row')) addProRow();
-        if (coordSection.style.display !== 'none' && !coordList.querySelector('.coord-row')) addCoordRow();
+        if (proSection.style.display !== "none" && !proList.querySelector(".pro-row")) addProRow();
+        if (coordSection.style.display !== "none" && !coordList.querySelector(".coord-row")) addCoordRow();
 
-        // Pasante
-        pasanteSection.style.display = (rol === 'Pasante') ? 'block' : 'none';
+        pasanteSection.style.display = (rol === "Pasante") ? "block" : "none";
       }
       syncVisibility();
 
-      // Precarga arrays edición (si existen)
       if (modoEdicion) {
         if (Array.isArray(u.areasProfesional) && u.areasProfesional.length) {
-          proList.innerHTML = '';
-          u.areasProfesional.forEach(ap => addProRow(ap.areaNombre || '', ap.nivel || ''));
+          proList.innerHTML = "";
+          u.areasProfesional.forEach(ap => addProRow(ap.areaNombre || "", ap.nivel || ""));
         }
         if (Array.isArray(u.areasCoordinadas) && u.areasCoordinadas.length) {
-          coordList.innerHTML = '';
-          u.areasCoordinadas.forEach(ac => addCoordRow(ac.areaNombre || ''));
+          coordList.innerHTML = "";
+          u.areasCoordinadas.forEach(ac => addCoordRow(ac.areaNombre || ""));
         }
-        if (u.seguroMalaPraxis && (u.rol === 'Profesional' || u.rol === 'Coordinador y profesional')) {
+        if (u.seguroMalaPraxis && (u.rol === "Profesional" || u.rol === "Coordinador y profesional")) {
           inputSeguro.value = u.seguroMalaPraxis;
         }
       }
 
-      rolSelect.addEventListener('change', syncVisibility);
+      rolSelect.addEventListener("change", syncVisibility);
 
-      // 👁️ Toggle mostrar/ocultar contraseña
-      const passInput  = document.getElementById('contrasena');
-      const toggleBtn  = document.getElementById('togglePass');
-      const toggleIcon = document.getElementById('togglePassIcon');
+      // toggle password
+      const passInput  = document.getElementById("contrasena");
+      const toggleBtn  = document.getElementById("togglePass");
+      const toggleIcon = document.getElementById("togglePassIcon");
       if (toggleBtn && passInput && toggleIcon) {
-        toggleBtn.addEventListener('click', () => {
-          const show = passInput.type === 'password';
-          passInput.type = show ? 'text' : 'password';
-          toggleIcon.className = show ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye';
+        toggleBtn.addEventListener("click", () => {
+          const show = passInput.type === "password";
+          passInput.type = show ? "text" : "password";
+          toggleIcon.className = show ? "fa-solid fa-eye-slash" : "fa-solid fa-eye";
         });
       }
     },
     preConfirm: () => {
       const get = id => document.getElementById(id)?.value?.trim();
 
-      const rol = get('rol');
+      const rol = get("rol");
 
-      const areasProfesional = Array.from(document.querySelectorAll('#proList .pro-row'))
+      const areasProfesional = Array.from(document.querySelectorAll("#proList .pro-row"))
         .map(row => {
-          const areaNombre = row.querySelector('.pro-area')?.value?.trim() || "";
-          const nivel      = row.querySelector('.pro-nivel')?.value?.trim() || "";
+          const areaNombre = row.querySelector(".pro-area")?.value?.trim() || "";
+          const nivel      = row.querySelector(".pro-nivel")?.value?.trim() || "";
           if (!areaNombre || !nivel) return null;
           return { areaNombre, nivel };
         }).filter(Boolean);
 
-      const areasCoordinadas = Array.from(document.querySelectorAll('#coordList .coord-row'))
+      const areasCoordinadas = Array.from(document.querySelectorAll("#coordList .coord-row"))
         .map(row => {
-          const areaNombre = row.querySelector('.coord-area')?.value?.trim() || "";
+          const areaNombre = row.querySelector(".coord-area")?.value?.trim() || "";
           if (!areaNombre) return null;
           return { areaNombre };
         }).filter(Boolean);
 
-      const ROLES_PROF  = new Set(['Profesional', 'Coordinador y profesional']);
-      const ROLES_COORD = new Set(['Coordinador de área', 'Coordinador y profesional']);
+      const ROLES_PROF  = new Set(["Profesional", "Coordinador y profesional"]);
+      const ROLES_COORD = new Set(["Coordinador de área", "Coordinador y profesional"]);
 
       if (ROLES_PROF.has(rol) && areasProfesional.length === 0) {
-        Swal.showValidationMessage('Agregá al menos un área con nivel para el rol profesional.');
+        Swal.showValidationMessage("Agregá al menos un área con nivel para el rol profesional.");
         return false;
       }
       if (ROLES_COORD.has(rol) && areasCoordinadas.length === 0) {
-        Swal.showValidationMessage('Agregá al menos un área para coordinación.');
+        Swal.showValidationMessage("Agregá al menos un área para coordinación.");
         return false;
       }
 
       return {
-        nombreApellido: get('nombreApellido'),
-        fechaNacimiento: get('fechaNacimiento'),
-        domicilio: get('domicilio'),
-        dni: get('dni'),
-        cuit: get('cuit'),
-        matricula: get('matricula'),
-        jurisdiccion: get('jurisdiccion'),
-        registroNacionalDePrestadores: get('registroNacionalDePrestadores'),
-        whatsapp: get('whatsapp'),
-        mail: get('mail'),
-        salarioAcuerdo: get('salarioAcuerdo'),
-        salarioAcuerdoObs: get('salarioAcuerdoObs'),
-        fijoAcuerdo: get('fijoAcuerdo'),
-        fijoAcuerdoObs: get('fijoAcuerdoObs'),
-        banco: get('banco'),
-        cbu: get('cbu'),
-        numeroCuenta: get('numeroCuenta'),
-        numeroSucursal: get('numeroSucursal'),
-        alias: get('alias'),
-        nombreFiguraExtracto: get('nombreFiguraExtracto'),
-        tipoCuenta: get('tipoCuenta'),
+        nombreApellido: get("nombreApellido"),
+        fechaNacimiento: get("fechaNacimiento"),
+        domicilio: get("domicilio"),
+        dni: get("dni"),
+        cuit: get("cuit"),
+        matricula: get("matricula"),
+        jurisdiccion: get("jurisdiccion"),
+        registroNacionalDePrestadores: get("registroNacionalDePrestadores"),
+        whatsapp: get("whatsapp"),
+        mail: get("mail"),
+        salarioAcuerdo: get("salarioAcuerdo"),
+        salarioAcuerdoObs: get("salarioAcuerdoObs"),
+        fijoAcuerdo: get("fijoAcuerdo"),
+        fijoAcuerdoObs: get("fijoAcuerdoObs"),
+        banco: get("banco"),
+        cbu: get("cbu"),
+        numeroCuenta: get("numeroCuenta"),
+        numeroSucursal: get("numeroSucursal"),
+        alias: get("alias"),
+        nombreFiguraExtracto: get("nombreFiguraExtracto"),
+        tipoCuenta: get("tipoCuenta"),
         rol,
-        pasanteNivel: get('pasanteNivel'),
-        usuario: get('usuario'),
-        contrasena: get('contrasena'),
-        seguroMalaPraxis: get('seguroMalaPraxis') || undefined,
+        pasanteNivel: get("pasanteNivel"),
+        usuario: get("usuario"),
+        contrasena: get("contrasena"),
+        seguroMalaPraxis: get("seguroMalaPraxis") || undefined,
         areasProfesional,
         areasCoordinadas
       };
@@ -503,44 +489,47 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
   }).then(async result => {
     if (!result.isConfirmed) return;
 
-    const url = modoEdicion ? `/api/usuarios/${u._id}` : `/api/usuarios`;
-    const method = modoEdicion ? 'PUT' : 'POST';
+    const path = modoEdicion ? `/usuarios/${u._id}` : `/usuarios`;
+    const method = modoEdicion ? "PUT" : "POST";
 
-    const archivos = (document.getElementById('documentos')?.files) || [];
-    let response;
+    const archivos = (document.getElementById("documentos")?.files) || [];
+    let res;
 
     if (!archivos.length) {
-      response = await fetchAuth(url, {
+      // JSON: deja que apiFetch ponga Content-Type
+      res = await apiFetch(path, {
         method,
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(result.value)
       });
     } else {
-      const formData = new FormData();
+      // FormData: NO setear headers
+      const fd = new FormData();
       for (const [key, val] of Object.entries(result.value)) {
         if (val == null) continue;
-        if (key === 'areasProfesional' || key === 'areasCoordinadas') {
-          formData.append(key, JSON.stringify(val));
+        if (key === "areasProfesional" || key === "areasCoordinadas") {
+          fd.append(key, JSON.stringify(val));
         } else {
-          formData.append(key, val);
+          fd.append(key, val);
         }
       }
-      for (let i = 0; i < archivos.length; i++) formData.append('documentos', archivos[i]);
-      response = await fetchAuth(url, { method, body: formData });
+      for (let i = 0; i < archivos.length; i++) {
+        fd.append("documentos", archivos[i]); // nombre del campo que espera la ruta
+      }
+      res = await apiFetch(path, { method, body: fd });
     }
 
-    if (!response.ok) {
-      let msg = 'Error al guardar';
-      try { const j = await response.json(); msg = j?.error || msg; } catch {}
+    if (!res.ok) {
+      let msg = "Error al guardar";
+      try { const j = await res.json(); msg = j?.error || msg; } catch {}
       throw new Error(msg);
     }
 
-    await response.json();
-    Swal.fire('Éxito', modoEdicion ? 'Usuario actualizado correctamente' : 'Usuario creado correctamente', 'success')
+    await res.json();
+    Swal.fire("Éxito", modoEdicion ? "Usuario actualizado correctamente" : "Usuario creado correctamente", "success")
       .then(() => location.reload());
   }).catch(err => {
     console.error(err);
-    Swal.fire('Error', 'No se pudo guardar el usuario', 'error');
+    Swal.fire("Error", "No se pudo guardar el usuario", "error");
   });
 }
 
@@ -551,15 +540,16 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
 // ==========================
 // ✏️ Editar / 🗑️ Borrar
 // ==========================
-function editarUsuario(id) {
-  apiFetch(`/usuarios/${id}`)
-    .then(res => res.json())
-    .then(u => mostrarFormularioUsuario(u, true))
-    .catch(err => {
-      console.error(err);
-      Swal.fire('Error', 'No se pudo cargar el usuario', 'error');
-    });
+async function editarUsuario(id) {
+  try {
+    const u = await apiFetchJson(`/usuarios/${id}`); // maneja 4xx/5xx y parsea JSON
+    await mostrarFormularioUsuario(u, true);
+  } catch (err) {
+    console.error(err);
+    Swal.fire('Error', err.message || 'No se pudo cargar el usuario', 'error');
+  }
 }
+
 
 function borrarUsuario(id) {
   Swal.fire({
