@@ -5,34 +5,51 @@ const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecreto';
 
-// Helper: intenta parsear JSON si es string
+// --- Helpers -------------------------------------------------
+
 function parseMaybeJSON(v) {
   if (v == null) return v;
   if (typeof v !== 'string') return v;
   try { return JSON.parse(v); } catch { return v; }
 }
 
-// Normaliza campos que pueden venir como JSON string en multipart
+/**
+ * Normaliza body cuando viene por multipart/form-data:
+ * - Arrays que podrían venir como JSON string
+ * - Campos opcionales que no deben forzar validaciones (p.ej. jurisdiccion)
+ */
 function normalizeMultipartBody(body) {
-  body.areasProfesional  = parseMaybeJSON(body.areasProfesional);
-  body.areasCoordinadas  = parseMaybeJSON(body.areasCoordinadas);
-  // si vinieron strings vacíos, dejarlos como arrays vacíos
-  if (body.areasProfesional  == null || body.areasProfesional === '')  body.areasProfesional = [];
-  if (body.areasCoordinadas  == null || body.areasCoordinadas === '')  body.areasCoordinadas = [];
+  body.areasProfesional = parseMaybeJSON(body.areasProfesional);
+  body.areasCoordinadas = parseMaybeJSON(body.areasCoordinadas);
+
+  if (body.areasProfesional == null || body.areasProfesional === '') body.areasProfesional = [];
+  if (body.areasCoordinadas == null || body.areasCoordinadas === '') body.areasCoordinadas = [];
+
+  // ✅ Jurisdicción opcional: si viene vacía, no la enviamos al modelo
+  if (typeof body.jurisdiccion === 'string' && body.jurisdiccion.trim() === '') {
+    delete body.jurisdiccion; // en create queda undefined; en update no sobreescribe
+  }
+
   return body;
 }
 
-// --------------------------------------------------
-// Crear usuario
-// --------------------------------------------------
+// Aplica la misma idea para requests JSON o cualquier otro flujo
+function normalizeOptionalFields(body) {
+  if (typeof body.jurisdiccion === 'string' && body.jurisdiccion.trim() === '') {
+    delete body.jurisdiccion;
+  }
+  return body;
+}
+
+// --- Crear usuario ------------------------------------------
 exports.crearUsuario = async (req, res) => {
   try {
     const { body } = req;
 
-    // si viene multipart, normalizamos posibles arrays
     normalizeMultipartBody(body);
+    normalizeOptionalFields(body);
 
-    // documentos subidos (guardados por Multer en /uploads/usuarios)
+    // documentos subidos por Multer (/uploads/usuarios)
     let documentos = [];
     if (req.files && req.files.length > 0) {
       documentos = req.files.map(file => ({
@@ -43,7 +60,7 @@ exports.crearUsuario = async (req, res) => {
       }));
     }
 
-    // seguro (opcional solo si es profesional)
+    // seguro (opcional si es profesional)
     const isProf = body.rol === 'Profesional' || body.rol === 'Coordinador y profesional';
     const seguro = (body.seguroMalaPraxis ?? '').toString().trim();
     body.seguroMalaPraxis = isProf ? (seguro || undefined) : undefined;
@@ -70,9 +87,7 @@ exports.crearUsuario = async (req, res) => {
   }
 };
 
-// --------------------------------------------------
-// Obtener todos
-// --------------------------------------------------
+// --- Obtener todos ------------------------------------------
 exports.obtenerUsuarios = async (_req, res) => {
   try {
     const lista = await Usuario.find().select('-contrasena');
@@ -82,9 +97,7 @@ exports.obtenerUsuarios = async (_req, res) => {
   }
 };
 
-// --------------------------------------------------
-// Obtener por ID
-// --------------------------------------------------
+// --- Obtener por ID -----------------------------------------
 exports.getUsuarioPorId = async (req, res) => {
   try {
     const usuario = await Usuario.findById(req.params.id).select('-contrasena');
@@ -95,15 +108,13 @@ exports.getUsuarioPorId = async (req, res) => {
   }
 };
 
-// --------------------------------------------------
-// Actualizar usuario
-// --------------------------------------------------
+// --- Actualizar usuario -------------------------------------
 exports.actualizarUsuario = async (req, res) => {
   try {
     const { body } = req;
 
-    // si viene multipart, normalizamos posibles arrays
     normalizeMultipartBody(body);
+    normalizeOptionalFields(body);
 
     // anexar documentos si vinieron
     let documentos = [];
@@ -156,9 +167,7 @@ exports.actualizarUsuario = async (req, res) => {
   }
 };
 
-// --------------------------------------------------
-// Eliminar
-// --------------------------------------------------
+// --- Eliminar ------------------------------------------------
 exports.eliminarUsuario = async (req, res) => {
   try {
     await Usuario.findByIdAndDelete(req.params.id);
@@ -168,9 +177,7 @@ exports.eliminarUsuario = async (req, res) => {
   }
 };
 
-// --------------------------------------------------
-// Login
-// --------------------------------------------------
+// --- Login ---------------------------------------------------
 exports.login = async (req, res) => {
   try {
     const usuarioBody = (req.body?.usuario || '').toLowerCase().trim();
@@ -211,9 +218,7 @@ exports.login = async (req, res) => {
   }
 };
 
-// --------------------------------------------------
-// Auth middleware
-// --------------------------------------------------
+// --- Auth middleware ----------------------------------------
 exports.authMiddleware = (req, res, next) => {
   const authHeader = req.headers.authorization || req.headers['x-access-token'];
   if (!authHeader) return res.status(401).json({ error: 'Token requerido' });
