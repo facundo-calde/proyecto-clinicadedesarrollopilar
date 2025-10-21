@@ -1,30 +1,63 @@
 const Usuario = require('../models/usuarios');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const { PutObjectCommand } = require('@aws-sdk/client-s3');
+const s3 = require('../lib/r2Client');
 
 // Usa un solo secreto SIEMPRE
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecreto';
+
+// Helpers
+function parseMaybeJSON(val) {
+  if (val == null) return val;
+  if (typeof val !== 'string') return val;
+  try { return JSON.parse(val); } catch { return val; }
+}
+
+async function subirArchivosR2(prefix, files = []) {
+  const out = [];
+  for (const f of files) {
+    const safeName = (f.originalname || 'archivo').replace(/[^\w.\- ]+/g, '_');
+    const key = `${prefix}/${Date.now()}_${safeName}`;
+
+    await s3.send(new PutObjectCommand({
+      Bucket: process.env.R2_BUCKET,
+      Key: key,
+      Body: f.buffer,
+      ContentType: f.mimetype
+    }));
+
+    out.push({
+      tipo: 'general',
+      nombre: f.originalname,
+      mime: f.mimetype,
+      size: f.size,
+      url: `${process.env.R2_ENDPOINT}/${process.env.R2_BUCKET}/${key}`,
+      fechaSubida: new Date()
+    });
+  }
+  return out;
+}
 
 // Crear usuario (seguroMalaPraxis OPCIONAL)
 exports.crearUsuario = async (req, res) => {
   try {
     const { body, files } = req;
 
-    let documentos = [];
-    if (files && files.length > 0) {
-      documentos = files.map(file => ({
-        tipo: 'general',
-        nombre: file.originalname,
-        url: `/uploads/usuarios/${file.filename}`,
-        fechaSubida: new Date()
-      }));
-    }
+    // Normalizar campos que pueden venir como string por multipart
+    body.areasProfesional  = parseMaybeJSON(body.areasProfesional)  || [];
+    body.areasCoordinadas  = parseMaybeJSON(body.areasCoordinadas)  || [];
 
-    // ⇩ opcional
+    // Subir adjuntos (si vienen)
+    const dniPrefix = (body.dni && String(body.dni).trim()) || 'sin-dni';
+    const documentos = await subirArchivosR2(`usuarios/${dniPrefix}`, files || []);
+
+    // seguro mala praxis opcional segun rol
     const isProf = body.rol === 'Profesional' || body.rol === 'Coordinador y profesional';
     const seguro = (body.seguroMalaPraxis ?? '').toString().trim();
     body.seguroMalaPraxis = isProf ? (seguro || undefined) : undefined;
 
+    // hash de contraseña si vino
     let hashedPassword = body.contrasena;
     if (body.contrasena) {
       const salt = await bcrypt.genSalt(10);
@@ -38,6 +71,8 @@ exports.crearUsuario = async (req, res) => {
     });
 
     await nuevo.save();
+
+    // ocultar hash
     nuevo.contrasena = undefined;
     return res.status(201).json(nuevo);
   } catch (err) {
@@ -45,12 +80,10 @@ exports.crearUsuario = async (req, res) => {
   }
 };
 
-
-
 // ==================================================
 // Obtener todos los usuarios
 // ==================================================
-exports.obtenerUsuarios = async (req, res) => {
+exports.obtenerUsuarios = async (_req, res) => {
   try {
     const lista = await Usuario.find().select('-contrasena');
     res.status(200).json(lista);
@@ -71,6 +104,7 @@ exports.getUsuarioPorId = async (req, res) => {
     res.status(500).json({ error: 'Error al obtener usuario' });
   }
 };
+
 // ==================================================
 // Actualizar usuario (seguroMalaPraxis OPCIONAL)
 // ==================================================
@@ -78,16 +112,9 @@ exports.actualizarUsuario = async (req, res) => {
   try {
     const { body, files } = req;
 
-    // anexar documentos si vinieron
-    let documentos = [];
-    if (files && files.length > 0) {
-      documentos = files.map(file => ({
-        tipo: 'general',
-        nombre: file.originalname,
-        url: `/uploads/usuarios/${file.filename}`,
-        fechaSubida: new Date()
-      }));
-    }
+    // Normalizar campos (multipart → string)
+    body.areasProfesional = parseMaybeJSON(body.areasProfesional) || [];
+    body.areasCoordinadas = parseMaybeJSON(body.areasCoordinadas) || [];
 
     const usuario = await Usuario.findById(req.params.id);
     if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
@@ -100,36 +127,42 @@ exports.actualizarUsuario = async (req, res) => {
       delete body.contrasena;
     }
 
-    // normalización de seguro (OPCIONAL)
-    // - si viene en el body: trim y dejar undefined si vacío
-    // - si NO viene: no tocar el valor actual
+    // normalización de seguro (si viene)
     if (Object.prototype.hasOwnProperty.call(body, 'seguroMalaPraxis')) {
       const seguro = (body.seguroMalaPraxis ?? '').toString().trim();
       body.seguroMalaPraxis = seguro || undefined;
     }
 
-    // si el rol final NO tiene parte profesional, limpiamos seguro
+    // si el rol final NO es profesional ni "coordinador y profesional", limpiar seguro
     const rolFinal = body.rol || usuario.rol;
     const tieneParteProfesional = (rolFinal === 'Profesional' || rolFinal === 'Coordinador y profesional');
     if (!tieneParteProfesional) {
       body.seguroMalaPraxis = undefined;
     }
 
+    // Subir nuevos adjuntos (si vienen)
+    const dniPrefix = (usuario.dni && String(usuario.dni).trim())
+      || (body.dni && String(body.dni).trim())
+      || 'sin-dni';
+
+    const nuevosDocs = await subirArchivosR2(`usuarios/${dniPrefix}`, files || []);
+
     // aplicar cambios
     usuario.set(body);
-    if (documentos.length > 0) {
-      usuario.documentos = usuario.documentos.concat(documentos);
+
+    if (nuevosDocs.length) {
+      usuario.documentos = Array.isArray(usuario.documentos)
+        ? usuario.documentos.concat(nuevosDocs)
+        : nuevosDocs;
     }
 
-    await usuario.save(); // corre validaciones del schema (áreas, niveles, etc.)
+    await usuario.save();
     usuario.contrasena = undefined;
     return res.json(usuario);
   } catch (err) {
     return res.status(500).json({ error: 'Error al actualizar usuario', detalles: err.message });
   }
 };
-
-
 
 // ==================================================
 // Eliminar usuario
@@ -189,7 +222,6 @@ exports.login = async (req, res) => {
   }
 };
 
-
 // ==================================================
 // Middleware de autenticación con JWT
 // ==================================================
@@ -211,7 +243,3 @@ exports.authMiddleware = (req, res, next) => {
     return res.status(401).json({ error: 'Token no válido o expirado' });
   }
 };
-
-
-
-
