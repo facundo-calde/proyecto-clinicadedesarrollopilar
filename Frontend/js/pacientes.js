@@ -1184,6 +1184,7 @@ async function agregarDocumento(dni) {
 
 
 
+
 async function verDiagnosticos(dni) {
   try {
     const paciente = await apiFetch(`/pacientes/${dni}`);
