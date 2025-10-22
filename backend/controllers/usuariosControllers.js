@@ -20,28 +20,15 @@ function collectFilesFromReq(req) {
   const files = [];
   if (req.file) files.push(req.file);
   if (Array.isArray(req.files)) files.push(...req.files);
-  // Si algún middleware setea req.body.documentos como FileList serializada (raro), se ignora.
   return files;
 }
 
-// Convierte URLs internas a URLs de vista (Worker) SOLO para responder al front
-function mapDocsForView(docs) {
-  if (!Array.isArray(docs)) return [];
-  return docs.map(d => ({
-    ...d,
-    url: toWorkerViewUrl(d?.url || "")
-  }));
-}
-
-// Sube archivos a R2 y devuelve objetos {tipo, nombre, url, fechaSubida}
+// Sube archivos a R2 y devuelve objetos {tipo, nombre, url, publicUrl, fechaSubida}
 async function uploadUserDocsR2(files, ownerId) {
   const out = [];
   for (const file of files) {
-    const safeName = String(file.originalname || "archivo")
-      .replace(/[/\\]+/g, "_")
-      .replace(/\s+/g, "_");
-    const key = `${ownerId}/${Date.now()}_${safeName}`;
-    const url = await uploadBuffer({
+    const key = `${ownerId}/${Date.now()}_${file.originalname}`;
+    const internalUrl = await uploadBuffer({
       bucket: buckets.usuarios,
       key,
       buffer: file.buffer,
@@ -50,7 +37,8 @@ async function uploadUserDocsR2(files, ownerId) {
     out.push({
       tipo: "general",
       nombre: file.originalname,
-      url,                   // interna: https://r2.internal/<bucket>/<key>
+      url: internalUrl,                  // interno
+      publicUrl: toWorkerViewUrl(internalUrl), // público para frontend
       fechaSubida: new Date()
     });
   }
@@ -59,16 +47,13 @@ async function uploadUserDocsR2(files, ownerId) {
 
 // Normaliza body cuando viene por multipart/form-data o JSON
 function normalizeBody(body) {
-  // Arrays que pueden venir como JSON string
   body.areasProfesional = parseMaybeJSON(body.areasProfesional);
   body.areasCoordinadas = parseMaybeJSON(body.areasCoordinadas);
   if (body.areasProfesional == null || body.areasProfesional === "") body.areasProfesional = [];
   if (body.areasCoordinadas == null || body.areasCoordinadas === "") body.areasCoordinadas = [];
 
-  // Trims + vacíos -> undefined
   [
-    "jurisdiccion",
-    "registroNacionalDePrestadores",
+    "jurisdiccion","registroNacionalDePrestadores",
     "salarioAcuerdo","salarioAcuerdoObs",
     "fijoAcuerdo","fijoAcuerdoObs",
     "banco","cbu","numeroCuenta","numeroSucursal",
@@ -108,7 +93,6 @@ function applyRoleCleaning(rol, body, currentDoc = null) {
 
   if (!esPasante) body.pasanteNivel = undefined;
 
-  // En update, si no llegan arrays conservar los actuales
   if (currentDoc) {
     if (!Array.isArray(body.areasProfesional) && currentDoc.areasProfesional) {
       body.areasProfesional = currentDoc.areasProfesional;
@@ -119,22 +103,24 @@ function applyRoleCleaning(rol, body, currentDoc = null) {
   }
 }
 
-// Extrae key del URL interno: https://r2.internal/<bucket>/<key>
-// (para borrar en R2 cuando eliminás el usuario)
-function extractKeyFromInternalUrl(url, expectedBucket) {
+// Extrae key de URL R2 (bucket usuarios)
+function extractUsuariosKeyFromUrl(url) {
   try {
-    const prefix = "https://r2.internal/";
-    if (!url?.startsWith(prefix)) return null;
-    const rest = url.slice(prefix.length);
-    const slash = rest.indexOf("/");
-    if (slash === -1) return null;
-    const bucket = rest.slice(0, slash);
-    const key    = rest.slice(slash + 1);
-    if (expectedBucket && bucket !== expectedBucket) return null;
-    return key;
+    const pivot = `/${buckets.usuarios}/`;
+    const idx = url.indexOf(pivot);
+    if (idx === -1) return null;
+    return url.substring(idx + pivot.length);
   } catch {
     return null;
   }
+}
+
+// Mapear documentos para que siempre expongan publicUrl
+function mapDocsForView(docs) {
+  return (docs || []).map(d => ({
+    ...d,
+    publicUrl: d.publicUrl || toWorkerViewUrl(d.url)
+  }));
 }
 
 /* ------------------------ Crear ------------------------ */
@@ -143,27 +129,23 @@ exports.crearUsuario = async (req, res) => {
     const { body } = req;
     normalizeBody(body);
 
-    // Hash de contraseña si vino
     let hashedPassword = body.contrasena;
     if (body.contrasena) {
       const salt = await bcrypt.genSalt(10);
       hashedPassword = await bcrypt.hash(body.contrasena, salt);
     }
 
-    // Limpieza por rol
     const rolFinal = body.rol;
     applyRoleCleaning(rolFinal, body);
 
-    // Crear doc base
     const nuevo = new Usuario({
       ...body,
       contrasena: hashedPassword,
       documentos: []
     });
 
-    await nuevo.save(); // necesitamos _id
+    await nuevo.save();
 
-    // Subir adjuntos si hay
     const files = collectFilesFromReq(req);
     if (files.length > 0) {
       const uploaded = await uploadUserDocsR2(files, nuevo._id);
@@ -171,12 +153,10 @@ exports.crearUsuario = async (req, res) => {
       await nuevo.save();
     }
 
-    // Preparar respuesta (sin hash y con URLs visibles)
-    const resp = nuevo.toObject();
-    delete resp.contrasena;
-    resp.documentos = mapDocsForView(resp.documentos);
+    nuevo.contrasena = undefined;
+    nuevo.documentos = mapDocsForView(nuevo.documentos);
 
-    return res.status(201).json(resp);
+    return res.status(201).json(nuevo);
   } catch (err) {
     console.error("crearUsuario error:", err?.stack || err);
     return res.status(500).json({ error: "Error al crear usuario", detalles: err.message });
@@ -187,12 +167,10 @@ exports.crearUsuario = async (req, res) => {
 exports.obtenerUsuarios = async (_req, res) => {
   try {
     const lista = await Usuario.find().select("-contrasena");
-    const resp = lista.map(u => {
-      const obj = u.toObject();
-      obj.documentos = mapDocsForView(obj.documentos);
-      return obj;
-    });
-    res.status(200).json(resp);
+    res.status(200).json(lista.map(u => ({
+      ...u.toObject(),
+      documentos: mapDocsForView(u.documentos)
+    })));
   } catch (err) {
     res.status(500).json({ error: "Error al obtener usuarios" });
   }
@@ -203,9 +181,10 @@ exports.getUsuarioPorId = async (req, res) => {
   try {
     const usuario = await Usuario.findById(req.params.id).select("-contrasena");
     if (!usuario) return res.status(404).json({ error: "No encontrado" });
-    const obj = usuario.toObject();
-    obj.documentos = mapDocsForView(obj.documentos);
-    res.json(obj);
+    res.json({
+      ...usuario.toObject(),
+      documentos: mapDocsForView(usuario.documentos)
+    });
   } catch (err) {
     res.status(500).json({ error: "Error al obtener usuario" });
   }
@@ -220,7 +199,6 @@ exports.actualizarUsuario = async (req, res) => {
     const usuario = await Usuario.findById(req.params.id);
     if (!usuario) return res.status(404).json({ error: "Usuario no encontrado" });
 
-    // Hash sólo si llega nueva contraseña
     if (body.contrasena) {
       const salt = await bcrypt.genSalt(10);
       body.contrasena = await bcrypt.hash(body.contrasena, salt);
@@ -228,20 +206,16 @@ exports.actualizarUsuario = async (req, res) => {
       delete body.contrasena;
     }
 
-    // Normalizar seguro
     if (Object.prototype.hasOwnProperty.call(body, "seguroMalaPraxis")) {
       const v = (body.seguroMalaPraxis ?? "").toString().trim();
       body.seguroMalaPraxis = v || undefined;
     }
 
-    // Reglas por rol
     const rolFinal = body.rol || usuario.rol;
     applyRoleCleaning(rolFinal, body, usuario);
 
-    // Set de campos
     usuario.set(body);
 
-    // Adjuntar nuevos documentos si hay
     const files = collectFilesFromReq(req);
     if (files.length > 0) {
       const nuevosDocs = await uploadUserDocsR2(files, usuario._id);
@@ -249,12 +223,12 @@ exports.actualizarUsuario = async (req, res) => {
     }
 
     await usuario.save();
+    usuario.contrasena = undefined;
 
-    const resp = usuario.toObject();
-    delete resp.contrasena;
-    resp.documentos = mapDocsForView(resp.documentos);
-
-    return res.json(resp);
+    return res.json({
+      ...usuario.toObject(),
+      documentos: mapDocsForView(usuario.documentos)
+    });
   } catch (err) {
     console.error("actualizarUsuario error:", err?.stack || err);
     return res.status(500).json({ error: "Error al actualizar usuario", detalles: err.message });
@@ -267,12 +241,13 @@ exports.eliminarUsuario = async (req, res) => {
     const usuario = await Usuario.findById(req.params.id);
     if (!usuario) return res.status(404).json({ error: "Usuario no encontrado" });
 
-    // Borrado best-effort en R2
     if (Array.isArray(usuario.documentos) && usuario.documentos.length > 0) {
       const jobs = [];
       for (const doc of usuario.documentos) {
-        const key = extractKeyFromInternalUrl(doc?.url, buckets.usuarios);
-        if (key) jobs.push(deleteKey({ bucket: buckets.usuarios, key }).catch(() => null));
+        if (doc?.url) {
+          const key = extractUsuariosKeyFromUrl(doc.url);
+          if (key) jobs.push(deleteKey({ bucket: buckets.usuarios, key }).catch(() => null));
+        }
       }
       await Promise.all(jobs);
     }
@@ -318,9 +293,6 @@ exports.login = async (req, res) => {
     delete userData.passwordHash;
     delete userData.clave;
 
-    // también mapeo URLs por si devolvés documentos en el perfil
-    userData.documentos = mapDocsForView(userData.documentos);
-
     res.json({ mensaje: "Login exitoso", user: userData, token });
   } catch (err) {
     console.error("Error en login:", err?.stack || err);
@@ -344,3 +316,4 @@ exports.authMiddleware = (req, res, next) => {
     return res.status(401).json({ error: "Token no válido o expirado" });
   }
 };
+
