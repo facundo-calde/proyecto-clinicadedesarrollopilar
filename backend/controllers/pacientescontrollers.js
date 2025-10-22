@@ -216,7 +216,49 @@ const actualizarPaciente = async (req, res) => {
   }
 };
 
+
+// GET /api/pacientes?limit=20&sort=nombre|created
+const listarPacientes = async (req, res) => {
+  try {
+    const { nombre, dni, limit = 20, sort } = req.query;
+    const LIM = Math.min(parseInt(limit, 10) || 20, 100);
+
+    // si vienen filtros, delego a la búsqueda parcial
+    if (nombre || dni) {
+      const qNombre = (nombre || '').toString().trim();
+      const qDni    = (dni || '').toString().trim();
+      const regex   = qNombre ? new RegExp(qNombre.replace(/\./g, ''), 'i') : null;
+
+      const where = [];
+      if (qNombre) where.push({ nombre: regex });
+      if (qDni)    where.push({ dni: new RegExp(qDni, 'i') });
+
+      const pacientes = await Paciente.find(where.length ? { $or: where } : {})
+        .select('nombre dni estado condicionDePago') // proyección liviana
+        .sort(sort === 'created' ? { createdAt: -1 } : { nombre: 1 })
+        .limit(LIM)
+        .lean();
+
+      return res.json(pacientes);
+    }
+
+    // sin filtros → listado inicial
+    const pacientes = await Paciente.find({})
+      .select('nombre dni estado condicionDePago')
+      .sort(sort === 'created' ? { createdAt: -1 } : { nombre: 1 })
+      .limit(LIM)
+      .lean();
+
+    res.json(pacientes);
+  } catch (err) {
+    console.error('❌ Error al listar pacientes:', err);
+    res.status(500).json({ error: 'Error al listar pacientes' });
+  }
+};
+
+
 module.exports = {
+  listarPacientes,
   buscarPaciente,
   obtenerPorDNI,
   crearPaciente,

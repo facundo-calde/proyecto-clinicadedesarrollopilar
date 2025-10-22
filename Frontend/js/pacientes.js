@@ -1370,22 +1370,22 @@ function renderListadoPacientes(items) {
 
 async function cargarListadoInicial() {
   try {
-    // Intento con limit en el server; si no soporta, recorto en cliente.
-    let data = await apiFetchJson(`/pacientes?limit=20`);
-    if (Array.isArray(data)) {
-      renderListadoPacientes(data.slice(0, 20));
-    } else if (data && Array.isArray(data.items)) {
-      renderListadoPacientes(data.items.slice(0, 20));
-    } else {
-      // Fallback sin paginación
-      data = await apiFetchJson(`/pacientes`);
-      renderListadoPacientes(Array.isArray(data) ? data.slice(0, 20) : []);
-    }
+    // filtro neutro: nombre='.' y limit=20
+    const url = `/pacientes?nombre=${encodeURIComponent('.')} &limit=20`;
+    let data = await apiFetchJson(url);
+
+    // normalizo por si el backend devuelve {items:[]}
+    const items = Array.isArray(data) ? data.slice(0, 20)
+                 : Array.isArray(data?.items) ? data.items.slice(0, 20)
+                 : [];
+
+    renderListadoPacientes(items);
   } catch (e) {
     console.error('No se pudo cargar el listado inicial', e);
     renderListadoPacientes([]);
   }
 }
+
 
 // Cargar al entrar a pacientes.html
 document.addEventListener('DOMContentLoaded', cargarListadoInicial);
