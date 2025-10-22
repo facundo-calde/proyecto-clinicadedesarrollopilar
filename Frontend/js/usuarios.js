@@ -200,6 +200,12 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         .two-col { display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
         .swal2-confirm{ background:#2f72c4 !important;color:#fff !important;font-weight:700;padding:8px 20px;border-radius:8px; }
         .swal2-cancel { background:#e53935 !important;color:#fff !important;font-weight:700;padding:8px 20px; }
+        .prefix-wrapper{ position:relative; }
+        .prefix-wrapper > .peso-prefix{
+          position:absolute; left:10px; top:50%; transform:translateY(-50%);
+          color:#333; font-weight:600;
+        }
+        .prefix-wrapper > input{ padding-left:28px; }
       </style>
 
       <div class="swal-body">
@@ -226,11 +232,17 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
 
             <div class="two-col">
               <div>
-                <input class="swal2-input" id="salarioAcuerdo" placeholder="Salario acordado" autocomplete="off">
+                <div class="prefix-wrapper">
+                  <span class="peso-prefix">$</span>
+                  <input class="swal2-input" id="salarioAcuerdo" placeholder="Salario acordado" autocomplete="off" inputmode="numeric">
+                </div>
                 <input class="swal2-input" id="salarioAcuerdoObs" placeholder="Obs. salario (opcional)" autocomplete="off">
               </div>
               <div>
-                <input class="swal2-input" id="fijoAcuerdo" placeholder="Fijo acordado" autocomplete="off">
+                <div class="prefix-wrapper">
+                  <span class="peso-prefix">$</span>
+                  <input class="swal2-input" id="fijoAcuerdo" placeholder="Fijo acordado" autocomplete="off" inputmode="numeric">
+                </div>
                 <input class="swal2-input" id="fijoAcuerdoObs" placeholder="Obs. fijo (opcional)" autocomplete="off">
               </div>
             </div>
@@ -303,7 +315,6 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
             <label><strong>Documentos:</strong></label>
             <input type="file" id="documentos" class="swal2-input" multiple accept=".pdf,image/*,.doc,.docx,.txt">
 
-            <!-- NUEVO: listado de documentos existentes -->
             <div id="docsExistentes" class="block" style="display:none; margin-top:8px;">
               <label><strong>Documentos existentes:</strong></label>
               <ul id="docsList" style="margin:6px 0; padding-left:18px;"></ul>
@@ -316,6 +327,25 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
     showCancelButton: true,
     cancelButtonText: "Cancelar",
     didOpen: () => {
+      // Helpers moneda
+      const nfARS = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 });
+      const cleanNumber = (s) => {
+        if (!s) return "";
+        // permito coma o punto como miles, me quedo solo con dígitos
+        return (s + "").replace(/\D+/g, "");
+      };
+      const formatInputARS = (input) => {
+        if (!input) return;
+        const apply = () => {
+          const raw = cleanNumber(input.value);
+          input.value = raw ? nfARS.format(Number(raw)) : "";
+        };
+        input.addEventListener("input", apply);
+        input.addEventListener("blur", apply);
+        // formateo inicial si ya trae valor
+        apply();
+      };
+
       // Precarga si es edición
       const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = (val ?? ""); };
 
@@ -330,9 +360,15 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         set("registroNacionalDePrestadores", u.registroNacionalDePrestadores);
         set("whatsapp", u.whatsapp);
         set("mail", u.mail);
-        set("salarioAcuerdo", u.salarioAcuerdo);
+
+        // Salarios: formateo visual en ARS
+        const salEl = document.getElementById("salarioAcuerdo");
+        const fijoEl = document.getElementById("fijoAcuerdo");
+        if (salEl) salEl.value = u.salarioAcuerdo ? nfARS.format(Number(cleanNumber(u.salarioAcuerdo))) : "";
+        if (fijoEl) fijoEl.value = u.fijoAcuerdo ? nfARS.format(Number(cleanNumber(u.fijoAcuerdo))) : "";
+
         set("salarioAcuerdoObs", u.salarioAcuerdoObs);
-        set("fijoAcuerdo", u.fijoAcuerdo);
+        set("fijoAcuerdo", ""); // ya lo setee formateado arriba
         set("fijoAcuerdoObs", u.fijoAcuerdoObs);
         set("banco", u.banco);
         set("cbu", u.cbu);
@@ -354,6 +390,10 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
           if (passEl)    passEl.value = "";
         }, 0);
       }
+
+      // Activar formato ARS en inputs
+      formatInputARS(document.getElementById("salarioAcuerdo"));
+      formatInputARS(document.getElementById("fijoAcuerdo"));
 
       const rolSelect      = document.getElementById("rol");
       const proSection     = document.getElementById("proSection");
@@ -387,7 +427,6 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
 
       function syncVisibility() {
         const rol = rolSelect.value;
-
         proSection.style.display   = ROLES_PROF.has(rol)  ? "block" : "none";
         coordSection.style.display = ROLES_COORD.has(rol) ? "block" : "none";
 
@@ -397,7 +436,6 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
 
         if (proSection.style.display !== "none" && !proList.querySelector(".pro-row")) addProRow();
         if (coordSection.style.display !== "none" && !coordList.querySelector(".coord-row")) addCoordRow();
-
         pasanteSection.style.display = (rol === "Pasante") ? "block" : "none";
       }
       syncVisibility();
@@ -418,10 +456,9 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
 
       rolSelect.addEventListener("change", syncVisibility);
 
-      // NUEVO: render de documentos existentes (con botón eliminar)
+      // Render docs + eliminar
       const docsBox  = document.getElementById("docsExistentes");
       const docsList = document.getElementById("docsList");
-
       function renderDocs(docs = []) {
         if (!Array.isArray(docs) || docs.length === 0) {
           docsBox.style.display = "none";
@@ -433,7 +470,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
           const href  = d.publicUrl || d.url || "#";
           const name  = d.nombre || (href.split("/").pop() || "archivo");
           const fecha = d.fechaSubida ? new Date(d.fechaSubida).toLocaleString() : "";
-          const idDoc = d._id || d.id; // compat
+          const idDoc = d._id || d.id;
           return `<li style="margin:4px 0; display:flex; align-items:center; gap:8px;">
             <a href="${href}" target="_blank" rel="noopener" style="flex:1">${name}</a>
             ${fecha ? `<small style="color:#666;">${fecha}</small>` : ""}
@@ -443,7 +480,6 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
       }
       if (modoEdicion) renderDocs(u.documentos || []);
 
-      // Delegación de eventos para eliminar documento
       docsList?.addEventListener("click", async (ev) => {
         const btn = ev.target.closest(".btn-del-doc");
         if (!btn) return;
@@ -452,7 +488,6 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
           Swal.fire("Error", "Documento inválido.", "error");
           return;
         }
-
         const conf = await Swal.fire({
           title: "Eliminar documento",
           text: "¿Seguro que querés eliminar este archivo?",
@@ -467,11 +502,9 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         if (!res.ok) {
           let msg = "No se pudo eliminar el documento";
           try { const j = await res.json(); msg = j?.error || msg; } catch {}
-          Swal.fire("Error", msg, "error"); 
+          Swal.fire("Error", msg, "error");
           return;
         }
-
-        // Intentar leer respuesta (usuario/documentos actualizados)
         try {
           const updated = await res.json();
           const docs = Array.isArray(updated?.documentos)
@@ -480,11 +513,9 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
           u.documentos = docs;
           renderDocs(docs);
         } catch {
-          // Fallback: quitar li directamente
           btn.closest("li")?.remove();
           if (!docsList.querySelector("li")) docsBox.style.display = "none";
         }
-
         Swal.fire("Listo", "Documento eliminado", "success");
       });
 
@@ -502,6 +533,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
     },
     preConfirm: () => {
       const get = id => document.getElementById(id)?.value?.trim();
+      const onlyDigits = s => (s || "").replace(/\D+/g, ""); // queda solo número (pesos enteros)
 
       const rol = get("rol");
 
@@ -543,9 +575,9 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         registroNacionalDePrestadores: get("registroNacionalDePrestadores"),
         whatsapp: get("whatsapp"),
         mail: get("mail"),
-        salarioAcuerdo: get("salarioAcuerdo"),
+        salarioAcuerdo: onlyDigits(get("salarioAcuerdo")), // limpio $ y puntos
         salarioAcuerdoObs: get("salarioAcuerdoObs"),
-        fijoAcuerdo: get("fijoAcuerdo"),
+        fijoAcuerdo: onlyDigits(get("fijoAcuerdo")),
         fijoAcuerdoObs: get("fijoAcuerdoObs"),
         banco: get("banco"),
         cbu: get("cbu"),
@@ -573,13 +605,11 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
     let res;
 
     if (!archivos.length) {
-      // JSON: deja que apiFetch ponga Content-Type
       res = await apiFetch(path, {
         method,
         body: JSON.stringify(result.value)
       });
     } else {
-      // FormData: NO setear headers
       const fd = new FormData();
       for (const [key, val] of Object.entries(result.value)) {
         if (val == null) continue;
@@ -590,7 +620,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         }
       }
       for (let i = 0; i < archivos.length; i++) {
-        fd.append("documentos", archivos[i]); // nombre del campo que espera la ruta
+        fd.append("documentos", archivos[i]);
       }
       res = await apiFetch(path, { method, body: fd });
     }

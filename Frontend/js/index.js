@@ -1,6 +1,32 @@
 // /js/index.js
 document.addEventListener("DOMContentLoaded", () => {
   const form = document.getElementById("loginForm");
+
+  // --- 👁️ Mostrar/ocultar contraseña ------------------------
+  const passwordInput = document.getElementById("clave");
+  if (passwordInput) {
+    // Si no existe el botón, lo creo e inserto después del input
+    let togglePassword = document.getElementById("togglePassword");
+    if (!togglePassword) {
+      togglePassword = document.createElement("button");
+      togglePassword.type = "button";
+      togglePassword.id = "togglePassword";
+      togglePassword.className = "toggle-password";
+      togglePassword.textContent = "👁️";
+      togglePassword.style.marginLeft = "8px"; // estilo mínimo para que quede al lado
+      togglePassword.setAttribute("aria-label", "Mostrar u ocultar contraseña");
+      passwordInput.insertAdjacentElement("afterend", togglePassword);
+    }
+
+    togglePassword.addEventListener("click", () => {
+      const isPassword = passwordInput.type === "password";
+      passwordInput.type = isPassword ? "text" : "password";
+      togglePassword.textContent = isPassword ? "🙈" : "👁️";
+      togglePassword.setAttribute("aria-label", isPassword ? "Ocultar contraseña" : "Mostrar contraseña");
+    });
+  }
+  // -----------------------------------------------------------
+
   if (!form) return;
 
   form.addEventListener("submit", async (e) => {

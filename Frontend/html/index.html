@@ -8,6 +8,17 @@
   <link rel="icon" href="/img/fc885963d690a6787ca787cf208cdd25_1778x266_fit.png" type="image/png" />
   <link rel="stylesheet" href="/css/styles.css" />
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
+
+  <!-- Estilos mínimos para el ojito -->
+  <style>
+    .password-field { position: relative; }
+    .password-field input { padding-right: 2.5rem; }
+    .toggle-password {
+      position: absolute; right: .6rem; top: 50%; transform: translateY(-50%);
+      background: transparent; border: 0; cursor: pointer; font-size: 1rem; line-height: 1;
+    }
+    .toggle-password:focus { outline: 2px solid #5f9f9c33; border-radius: .25rem; }
+  </style>
 </head>
 
 <body>
@@ -24,40 +35,44 @@
         <input type="text" id="usuario" name="usuario" required />
 
         <label for="clave">Contraseña</label>
-        <input type="password" id="clave" name="clave" required />
+        <div class="password-field">
+          <input type="password" id="clave" name="clave" required />
+          <button type="button" id="togglePassword" class="toggle-password" aria-label="Mostrar u ocultar contraseña">👁️</button>
+        </div>
 
         <button type="submit" class="btn">Ingresar</button>
-        <button type="recovery" class="btn">Recuperar contraseña</button>
+        <!-- Evitamos que envíe el form -->
+        <button type="button" id="btnRecovery" class="btn">Recuperar contraseña</button>
       </form>
     </div>
   </div>
 
   <!-- 🔹 Parche para reemplazar localhost por el dominio actual -->
   <script>
-  (function () {
-    var ORIGIN = location.origin;
-    var _fetch = window.fetch;
-    window.fetch = function(input, init) {
-      var url = (typeof input === 'string') ? input : input.url;
-      if (url && url.indexOf('http://localhost:3000') === 0) {
-        url = ORIGIN + url.slice('http://localhost:3000'.length);
-        if (typeof input === 'string') input = url;
-        else input = new Request(url, input);
-      }
-      return _fetch(input, init);
-    };
-    var _open = XMLHttpRequest.prototype.open;
-    XMLHttpRequest.prototype.open = function(method, url) {
-      if (url && url.indexOf('http://localhost:3000') === 0) {
-        url = ORIGIN + url.slice('http://localhost:3000'.length);
-      }
-      return _open.apply(this, [method, url].concat([].slice.call(arguments, 2)));
-    };
-  })();
+    (function () {
+      var ORIGIN = location.origin;
+      var _fetch = window.fetch;
+      window.fetch = function (input, init) {
+        var url = (typeof input === 'string') ? input : input.url;
+        if (url && url.indexOf('http://localhost:3000') === 0) {
+          url = ORIGIN + url.slice('http://localhost:3000'.length);
+          if (typeof input === 'string') input = url;
+          else input = new Request(url, input);
+        }
+        return _fetch(input, init);
+      };
+      var _open = XMLHttpRequest.prototype.open;
+      XMLHttpRequest.prototype.open = function (method, url) {
+        if (url && url.indexOf('http://localhost:3000') === 0) {
+          url = ORIGIN + url.slice('http://localhost:3000'.length);
+        }
+        return _open.apply(this, [method, url].concat([].slice.call(arguments, 2)));
+      };
+    })();
   </script>
 
   <!-- ✅ JS de login -->
-   <script src="/js/config.js"></script>
+  <script src="/js/config.js"></script>
   <script src="/js/index.js"></script>
 </body>
 
