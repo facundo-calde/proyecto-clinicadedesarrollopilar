@@ -1,29 +1,34 @@
 // backend/server.js
 require('dotenv').config();
 
-// Preferir IPv4 para evitar rutas IPv6 problemáticas (DNS + TLS)
+// Forzar preferencia IPv4 (evita líos DNS/TLS con IPv6)
 const dns = require('dns');
 dns.setDefaultResultOrder('ipv4first');
+
 const express  = require('express');
 const cors     = require('cors');
 const mongoose = require('mongoose');
 const path     = require('path');
 const fs       = require('fs');
 
-if (!process.env.MONGODB_URI) {
-  console.error('❌ Falta MONGODB_URI en .env');
+/* ====== MONGO URI ====== */
+const RAW_MONGO_URI = (process.env.MONGODB_URI || process.env.MONGODB || '').trim();
+if (!RAW_MONGO_URI) {
+  console.error('❌ Falta MONGODB_URI en .env (o MONGODB como fallback)');
   process.exit(1);
 }
 
 const app = express();
 
-/* ============ CORS ============ */
+/* ====== CORS ====== */
 const allowedOrigins = (process.env.CORS_ORIGIN || '')
-  .split(',').map(s => s.trim()).filter(Boolean);
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
 
 app.use(cors({
   origin: (origin, cb) => {
-    if (!origin) return cb(null, true);
+    if (!origin) return cb(null, true); // requests de same-origin / curl
     if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) return cb(null, true);
     return cb(new Error('CORS bloqueado para ' + origin));
   },
@@ -33,9 +38,9 @@ app.use(cors({
 app.options('*', cors());
 
 app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true })); // <- agregado
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-/* ============ RUTAS API ============ */
+/* ====== RUTAS API ====== */
 const pacientesRoutes  = require('./routes/pacienteroutes');
 const modulosRoutes    = require('./routes/modulosroutes');
 const areasRoutes      = require('./routes/areasroutes');
@@ -48,7 +53,7 @@ app.use('/api/modulos',    modulosRoutes);
 app.use('/api/areas',      areasRoutes);
 app.use('/api',            usuariosRoutes);
 
-/* ============ STATIC ============ */
+/* ====== STATIC ====== */
 const FRONT_DIR_CANDIDATES = [
   path.join(__dirname, '../frontend'),
   path.join(__dirname, '../Frontend'),
@@ -59,32 +64,35 @@ const INDEX_HTML = path.join(FRONT_DIR, 'html/index.html');
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use(express.static(FRONT_DIR));
 
-/* ============ Health ============ */
+/* ====== Health ====== */
 app.get('/health', (_req, res) => res.status(200).send('ok'));
 app.get('/salud',  (_req, res) => res.status(200).send('ok'));
 
-/* ============ Home & Fallback (no-API) ============ */
+/* ====== Home & Fallback (solo GET no-API) ====== */
 app.get('/', (_req, res) => res.sendFile(INDEX_HTML));
 app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) return next();
   res.sendFile(INDEX_HTML);
 });
 
-/* ============ 404 API ============ */
+/* ====== 404 API ====== */
 app.use((req, res) => {
   if (req.path.startsWith('/api')) return res.status(404).json({ error: 'Ruta no encontrada' });
   res.status(404).send('Not found');
 });
 
-/* ============ Start ============ */
-const PORT = process.env.PORT || 3000;
+/* ====== Start ====== */
+const PORT = Number(process.env.PORT) || 3000;
 const HOST = '0.0.0.0';
 
 (async () => {
   try {
     console.log('🔌 Conectando a MongoDB...');
-    await mongoose.connect(process.env.MONGODB_URI, { serverSelectionTimeoutMS: 5000 });
+    await mongoose.connect(RAW_MONGO_URI, {
+      serverSelectionTimeoutMS: 8000,
+    });
     console.log('✅ Conectado a MongoDB');
+
     app.listen(PORT, HOST, () => {
       console.log(`✅ Server escuchando en http://${HOST}:${PORT}`);
       console.log('📂 FRONT_DIR:', FRONT_DIR);
@@ -96,9 +104,16 @@ const HOST = '0.0.0.0';
   }
 })();
 
-/* ============ Señales ============ */
-process.on('SIGINT', async () => {
-  console.log('🛑 Cerrando servidor...');
+/* ====== Señales ====== */
+const shutdown = async (signal) => {
+  console.log(`🛑 Señal ${signal}: cerrando...`);
   try { await mongoose.connection.close(); } catch {}
   process.exit(0);
-});
+};
+process.on('SIGINT',  () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+/* ====== Errores no capturados (para no crashear en silencio) ====== */
+process.on('unhandledRejection', (r) => console.error('UnhandledRejection:', r));
+process.on('uncaughtException',  (e) => { console.error('UncaughtException:', e); process.exit(1); });
+
