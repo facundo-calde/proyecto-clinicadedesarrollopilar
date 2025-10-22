@@ -20,48 +20,9 @@ if (!RAW_MONGO_URI) {
 
 const app = express();
 
-/* ====== CORS (allow por origin exacto o por host) ====== */
-const rawOrigins = (process.env.CORS_ORIGIN || '')
-  .split(',')
-  .map(s => s.trim())
-  .filter(Boolean);
-
-// sumar APP_URL y APP_PUBLIC_URL automáticamente
-if (process.env.APP_URL)        rawOrigins.push(process.env.APP_URL.trim());
-if (process.env.APP_PUBLIC_URL) rawOrigins.push(process.env.APP_PUBLIC_URL.trim());
-
-// normalizar (sin duplicados)
-const allowedOrigins = [...new Set(rawOrigins)];
-
-// hosts permitidos (si cambia http/https o trae puerto)
-const allowedHosts = new Set(
-  allowedOrigins.map(o => {
-    try { return new URL(o).host; } catch { return null; }
-  }).filter(Boolean)
-);
-
-const originAllowed = (incoming) => {
-  try {
-    const inc = new URL(incoming);
-    // 1) match exacto de origin
-    if (allowedOrigins.some(o => {
-      try { return new URL(o).origin === inc.origin; } catch { return o === incoming; }
-    })) return true;
-    // 2) match por host (ignora protocolo y puerto por defecto)
-    return allowedHosts.has(inc.host);
-  } catch {
-    return false;
-  }
-};
-
+/* ====== CORS (abrir todo) ====== */
 app.use(cors({
-  origin: (origin, cb) => {
-    if (!origin) return cb(null, true);                     // same-origin/curl
-    if (allowedOrigins.length === 0) return cb(null, true); // sin restricciones
-    return originAllowed(origin)
-      ? cb(null, true)
-      : cb(new Error('CORS bloqueado para ' + origin));
-  },
+  origin: true, // ✅ acepta cualquier origen
   methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
   credentials: true,
 }));
@@ -144,3 +105,4 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));
 /* ====== Errores no capturados ====== */
 process.on('unhandledRejection', (r) => console.error('UnhandledRejection:', r));
 process.on('uncaughtException',  (e) => { console.error('UncaughtException:', e); process.exit(1); });
+
