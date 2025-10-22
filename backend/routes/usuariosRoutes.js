@@ -4,9 +4,7 @@ const router = express.Router();
 const multer = require('multer');
 const usuariosCtrl = require('../controllers/usuariosControllers');
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Multer en MEMORIA (solo si llega multipart/form-data)
-// ─────────────────────────────────────────────────────────────────────────────
+// Multer en MEMORIA
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
@@ -21,6 +19,7 @@ const upload = multer({
       'application/msword',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     ]);
+
     if (allowed.has(file.mimetype) || file.mimetype.startsWith('image/')) {
       cb(null, true);
     } else {
@@ -32,48 +31,33 @@ const upload = multer({
 // ✅ SOLO usa multer si es multipart/form-data
 const maybeUpload = (req, res, next) => {
   if (req.is('multipart/form-data')) {
-    return upload.any()(req, res, next); // acepta cualquier campo de archivo (p.ej. "documentos", "archivo")
+    return upload.any()(req, res, next); // acepta "documentos" o "archivo"
   }
   return next();
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Rutas públicas
-// ─────────────────────────────────────────────────────────────────────────────
+// 🔑 Login (público)
 router.post('/login', usuariosCtrl.login);
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Rutas protegidas (JWT)
-// ─────────────────────────────────────────────────────────────────────────────
-
-// Listado general (soporta q/limit/sort en el controller)
+// ✅ CRUD Usuarios (con JWT)
 router.get('/usuarios', usuariosCtrl.authMiddleware, usuariosCtrl.obtenerUsuarios);
-
-// Búsqueda (opcional). Si no implementaste el controller, borrá esta línea.
-router.get('/usuarios/buscar', usuariosCtrl.authMiddleware, usuariosCtrl.buscarUsuarios);
-
-// Obtener por ID
 router.get('/usuarios/:id', usuariosCtrl.authMiddleware, usuariosCtrl.getUsuarioPorId);
 
-// Crear (JSON o multipart)
+// Crear/Actualizar: si viene JSON -> NO pasa por multer; si viene FormData -> SÍ
 router.post('/usuarios', usuariosCtrl.authMiddleware, maybeUpload, usuariosCtrl.crearUsuario);
-
-// Actualizar (JSON o multipart)
 router.put('/usuarios/:id', usuariosCtrl.authMiddleware, maybeUpload, usuariosCtrl.actualizarUsuario);
 
-// Eliminar documento de un usuario
+// 🗑️ Eliminar un documento de un usuario
 router.delete(
   '/usuarios/:id/documentos/:docId',
   usuariosCtrl.authMiddleware,
   usuariosCtrl.eliminarDocumentoUsuario
 );
 
-// Eliminar usuario
+// 🗑️ Eliminar usuario
 router.delete('/usuarios/:id', usuariosCtrl.authMiddleware, usuariosCtrl.eliminarUsuario);
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Manejo de errores de subida (multer)
-// ─────────────────────────────────────────────────────────────────────────────
+// Handler claro para errores de subida
 router.use((err, req, res, next) => {
   if (err && err.message === 'Tipo de archivo no permitido') {
     return res.status(400).json({ error: 'Tipo de archivo no permitido (PDF, imágenes, DOCX o TXT).' });
@@ -88,3 +72,4 @@ router.use((err, req, res, next) => {
 });
 
 module.exports = router;
+
