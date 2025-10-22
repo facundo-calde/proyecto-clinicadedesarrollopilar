@@ -325,7 +325,7 @@ async function modificarPaciente(dni) {
              lista.map(u => `<option value="${u._id}">${u.nombreApellido || u.nombre || u.usuario}</option>`).join("");
     };
 
-    // template módulo
+    // template módulo — SOLO cambia este select de cantidad
     const renderModuloSelect = (index) => `
       <div class="modulo-row" data-index="${index}"
            style="margin-bottom:15px; padding:10px; border:1px solid #ddd; border-radius:6px;">
@@ -340,14 +340,10 @@ async function modificarPaciente(dni) {
           <div style="min-width:0;">
             <label>Cantidad:</label>
             <select class="cantidad-select swal2-select" style="width:100%; margin:0;">
-              <option value="0">0</option>
               <option value="0.25">1/4</option>
               <option value="0.5">1/2</option>
               <option value="0.75">3/4</option>
               <option value="1">1</option>
-              <option value="1.25">1 1/4</option>
-              <option value="1.5">1 1/2</option>
-              <option value="2">2</option>
             </select>
           </div>
         </div>
