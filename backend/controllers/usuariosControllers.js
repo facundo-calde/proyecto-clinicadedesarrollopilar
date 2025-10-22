@@ -117,11 +117,16 @@ function extractUsuariosKeyFromUrl(url) {
 
 // Mapear documentos para que siempre expongan publicUrl
 function mapDocsForView(docs) {
-  return (docs || []).map(d => ({
-    ...d,
-    publicUrl: d.publicUrl || toWorkerViewUrl(d.url)
-  }));
+  return (docs || []).map(d => {
+    const plain = d && typeof d.toObject === 'function' ? d.toObject() : d || {};
+    return {
+      ...plain,
+      _id: plain._id?.toString?.() || plain._id || plain.id,   // <-- garantizamos id
+      publicUrl: plain.publicUrl || toWorkerViewUrl(plain.url) // <-- garantizamos publicUrl
+    };
+  });
 }
+
 
 /* ------------------------ Crear ------------------------ */
 exports.crearUsuario = async (req, res) => {
