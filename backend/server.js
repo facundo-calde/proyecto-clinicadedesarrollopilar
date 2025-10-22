@@ -1,6 +1,9 @@
 // backend/server.js
 require('dotenv').config();
 
+// Preferir IPv4 para evitar rutas IPv6 problemáticas (DNS + TLS)
+const dns = require('dns');
+dns.setDefaultResultOrder('ipv4first');
 const express  = require('express');
 const cors     = require('cors');
 const mongoose = require('mongoose');
