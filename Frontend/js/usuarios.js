@@ -199,7 +199,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         input[type="file"].swal2-input{ width:100%; display:block; }
         .two-col { display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
         .swal2-confirm{ background:#2f72c4 !important;color:#fff !important;font-weight:700;padding:8px 20px;border-radius:8px; }
-        .swal2-cancel { background:#e53935 !important;color:#fff !important;font-weight:700;padding:8px 20px;border-radius:8px; }
+        .swal2-cancel { background:#e53935 !important;color:#fff !important;font-weight:700;padding:8px 20px; }
       </style>
 
       <div class="swal-body">
@@ -268,7 +268,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
               </select>
             </div>
 
-            <div id="proSection" class="block" style="display:none;">
+            <div id="proSection" class="block" style="display:none%;">
               <label><strong>Áreas como profesional (con nivel):</strong></label>
               <div id="proList"></div>
               <button type="button" id="btnAddPro" class="mini-btn">+ Agregar área profesional</button>
@@ -300,7 +300,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
             </div>
 
             <label><strong>Documentos:</strong></label>
-            <input type="file" id="documentos" class="swal2-input" multiple>
+            <input type="file" id="documentos" class="swal2-input" multiple accept=".pdf,image/*,.doc,.docx,.txt">
 
             <!-- NUEVO: listado de documentos existentes -->
             <div id="docsExistentes" class="block" style="display:none; margin-top:8px;">
@@ -417,9 +417,10 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
 
       rolSelect.addEventListener("change", syncVisibility);
 
-      // NUEVO: render de documentos existentes
+      // NUEVO: render de documentos existentes (con botón eliminar)
       const docsBox  = document.getElementById("docsExistentes");
       const docsList = document.getElementById("docsList");
+
       function renderDocs(docs = []) {
         if (!Array.isArray(docs) || docs.length === 0) {
           docsBox.style.display = "none";
@@ -428,16 +429,63 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         }
         docsBox.style.display = "block";
         docsList.innerHTML = docs.map(d => {
-          const href = d.publicUrl || d.url || "#";
-          const name = d.nombre || (href.split("/").pop() || "archivo");
+          const href  = d.publicUrl || d.url || "#";
+          const name  = d.nombre || (href.split("/").pop() || "archivo");
           const fecha = d.fechaSubida ? new Date(d.fechaSubida).toLocaleString() : "";
-          return `<li style="margin:4px 0;">
-            <a href="${href}" target="_blank" rel="noopener">${name}</a>
-            ${fecha ? `<small style="color:#666;"> — ${fecha}</small>` : ""}
+          const idDoc = d._id || d.id; // compat
+          return `<li style="margin:4px 0; display:flex; align-items:center; gap:8px;">
+            <a href="${href}" target="_blank" rel="noopener" style="flex:1">${name}</a>
+            ${fecha ? `<small style="color:#666;">${fecha}</small>` : ""}
+            <button type="button" class="mini-btn btn-del-doc" data-docid="${idDoc}" ${!idDoc ? "disabled" : ""}>Eliminar</button>
           </li>`;
         }).join("");
       }
       if (modoEdicion) renderDocs(u.documentos || []);
+
+      // Delegación de eventos para eliminar documento
+      docsList?.addEventListener("click", async (ev) => {
+        const btn = ev.target.closest(".btn-del-doc");
+        if (!btn) return;
+        const docId = btn.getAttribute("data-docid");
+        if (!docId || !u?._id) {
+          Swal.fire("Error", "Documento inválido.", "error");
+          return;
+        }
+
+        const conf = await Swal.fire({
+          title: "Eliminar documento",
+          text: "¿Seguro que querés eliminar este archivo?",
+          icon: "warning",
+          showCancelButton: true,
+          confirmButtonText: "Sí, eliminar",
+          cancelButtonText: "Cancelar"
+        });
+        if (!conf.isConfirmed) return;
+
+        const res = await apiFetch(`/usuarios/${u._id}/documentos/${docId}`, { method: "DELETE" });
+        if (!res.ok) {
+          let msg = "No se pudo eliminar el documento";
+          try { const j = await res.json(); msg = j?.error || msg; } catch {}
+          Swal.fire("Error", msg, "error"); 
+          return;
+        }
+
+        // Intentar leer respuesta (usuario/documentos actualizados)
+        try {
+          const updated = await res.json();
+          const docs = Array.isArray(updated?.documentos)
+            ? updated.documentos
+            : (u.documentos || []).filter(d => (d._id || d.id) !== docId);
+          u.documentos = docs;
+          renderDocs(docs);
+        } catch {
+          // Fallback: quitar li directamente
+          btn.closest("li")?.remove();
+          if (!docsList.querySelector("li")) docsBox.style.display = "none";
+        }
+
+        Swal.fire("Listo", "Documento eliminado", "success");
+      });
 
       // toggle password
       const passInput  = document.getElementById("contrasena");
@@ -560,6 +608,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
     Swal.fire("Error", "No se pudo guardar el usuario", "error");
   });
 }
+
 
 
 

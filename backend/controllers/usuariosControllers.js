@@ -37,7 +37,7 @@ async function uploadUserDocsR2(files, ownerId) {
     out.push({
       tipo: "general",
       nombre: file.originalname,
-      url: internalUrl,                  // interno
+      url: internalUrl,                        // interno
       publicUrl: toWorkerViewUrl(internalUrl), // público para frontend
       fechaSubida: new Date()
     });
@@ -235,6 +235,36 @@ exports.actualizarUsuario = async (req, res) => {
   }
 };
 
+/* ------------------------ Eliminar documento ------------------------ */
+exports.eliminarDocumentoUsuario = async (req, res) => {
+  try {
+    const { id, docId } = req.params;
+
+    const usuario = await Usuario.findById(id);
+    if (!usuario) return res.status(404).json({ error: "Usuario no encontrado" });
+
+    const doc = usuario.documentos.id(docId);
+    if (!doc) return res.status(404).json({ error: "Documento no encontrado" });
+
+    // Borrar en R2 si hay URL interna
+    if (doc.url) {
+      const key = extractUsuariosKeyFromUrl(doc.url);
+      if (key) {
+        try { await deleteKey({ bucket: buckets.usuarios, key }); } catch { /* noop */ }
+      }
+    }
+
+    // Quitar subdocumento y guardar
+    doc.deleteOne();
+    await usuario.save();
+
+    return res.json({ documentos: mapDocsForView(usuario.documentos) });
+  } catch (err) {
+    console.error("eliminarDocumentoUsuario error:", err?.stack || err);
+    return res.status(500).json({ error: "Error al eliminar documento" });
+  }
+};
+
 /* ------------------------ Eliminar ------------------------ */
 exports.eliminarUsuario = async (req, res) => {
   try {
@@ -316,4 +346,5 @@ exports.authMiddleware = (req, res, next) => {
     return res.status(401).json({ error: "Token no válido o expirado" });
   }
 };
+
 
