@@ -8,6 +8,10 @@ const documentoSchema = new mongoose.Schema({
   fechaSubida: { type: Date, default: Date.now }
 });
 
+// ✅ salida plana (incluye virtuals si los agregás luego)
+documentoSchema.set('toJSON',   { virtuals: true, versionKey: false });
+documentoSchema.set('toObject', { virtuals: true, versionKey: false });
+
 // Catálogos
 const NIVELES_PRO = Object.freeze(['Junior', 'Senior']);
 
@@ -100,6 +104,10 @@ const usuarioSchema = new mongoose.Schema({
   documentos: [documentoSchema]
 }, { timestamps: true });
 
+// ✅ salida plana (incluye virtuals si los agregás luego)
+usuarioSchema.set('toJSON',   { virtuals: true, versionKey: false });
+usuarioSchema.set('toObject', { virtuals: true, versionKey: false });
+
 // ------------ Validaciones condicionales ------------
 usuarioSchema.pre('validate', function (next) {
   const rol = this.rol || '';
@@ -169,4 +177,3 @@ Usuario.ROLES = ROLES;
 Usuario.NIVELES_PRO = NIVELES_PRO;
 
 module.exports = Usuario;
-
