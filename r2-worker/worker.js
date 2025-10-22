@@ -1,32 +1,21 @@
-// worker.js
 export default {
   async fetch(request, env) {
-    // CORS helpers
     const cors = {
       headers: {
         "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET,PUT,DELETE,OPTIONS",
+        "Access-Control-Allow-Methods": "GET,HEAD,PUT,DELETE,OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type, Authorization",
       },
     };
-    if (request.method === "OPTIONS") {
-      return new Response(null, cors);
-    }
+    if (request.method === "OPTIONS") return new Response(null, cors);
 
-    // Ruta: /:bucket/:key...
     const url = new URL(request.url);
     const parts = url.pathname.replace(/^\/+/, "").split("/");
     const bucketSeg = (parts.shift() || "").toLowerCase();
     const key = decodeURIComponent(parts.join("/"));
-    if (!bucketSeg || !key) {
-      return new Response("Falta bucket o key", { status: 400, ...cors });
-    }
+    if (!bucketSeg || !key) return new Response("Falta bucket o key", { status: 400, ...cors });
 
-    // Mapear segmento -> binding
-    const map = {
-      usuarios: env.R2_USUARIOS,   // definido en wrangler.toml
-      pacientes: env.R2_PACIENTES, // definido en wrangler.toml
-    };
+    const map = { usuarios: env.R2_USUARIOS, pacientes: env.R2_PACIENTES };
     const bucket = map[bucketSeg];
     if (!bucket) return new Response("Bucket inválido", { status: 404, ...cors });
 
@@ -43,17 +32,31 @@ export default {
             "application/octet-stream";
           headers.set("Content-Type", ct);
           headers.set("Cache-Control", "public, max-age=31536000, immutable");
+          if (obj.size != null) headers.set("Content-Length", String(obj.size));
 
-          // Si es body stream, devolvémoslo directo
           return new Response(obj.body, { status: 200, headers });
+        }
+
+        case "HEAD": {
+          const obj = await bucket.head(key); // solo metadatos
+          if (!obj) return new Response("No encontrado", { status: 404, ...cors });
+
+          const headers = new Headers(cors.headers);
+          const ct =
+            obj.httpMetadata?.contentType ||
+            obj.customMetadata?.contentType ||
+            "application/octet-stream";
+          headers.set("Content-Type", ct);
+          headers.set("Cache-Control", "public, max-age=31536000, immutable");
+          if (obj.size != null) headers.set("Content-Length", String(obj.size));
+
+          return new Response(null, { status: 200, headers });
         }
 
         case "PUT": {
           const ct = request.headers.get("content-type") || "application/octet-stream";
-          const res = await bucket.put(key, request.body, {
-            httpMetadata: { contentType: ct },
-          });
-          return new Response(JSON.stringify({ ok: true, key, version: res?.version }), {
+          const r = await bucket.put(key, request.body, { httpMetadata: { contentType: ct } });
+          return new Response(JSON.stringify({ ok: true, key, version: r?.version }), {
             status: 200,
             headers: { ...cors.headers, "Content-Type": "application/json" },
           });
@@ -72,3 +75,4 @@ export default {
     }
   },
 };
+
