@@ -34,7 +34,10 @@ document.getElementById("busquedaInput").addEventListener("input", async () => {
 // RENDER FICHA
 // ─────────────────────────────────────────────────────────────────────────────
 async function renderFichaPaciente(p) {
+
+  const _l = document.getElementById('listadoPacientes'); if (_l) _l.style.display = 'none';
   const container = document.getElementById("fichaPacienteContainer");
+
 
   // cache simple de catálogos
   if (!window.__catCache) window.__catCache = {};
@@ -48,10 +51,10 @@ async function renderFichaPaciente(p) {
           apiFetchJson(`/areas`),
         ]);
         cache.modulos = Array.isArray(modulos) ? modulos : [];
-        cache.areas   = Array.isArray(areas)   ? areas   : [];
+        cache.areas = Array.isArray(areas) ? areas : [];
       } catch {
         cache.modulos = [];
-        cache.areas   = [];
+        cache.areas = [];
       }
 
       cache.users = [];
@@ -63,7 +66,7 @@ async function renderFichaPaciente(p) {
       }
       cache.usersTried = true;
 
-      cache.modById  = new Map(cache.modulos.map(m => [String(m._id), m]));
+      cache.modById = new Map(cache.modulos.map(m => [String(m._id), m]));
       cache.areaById = new Map(cache.areas.map(a => [String(a._id), a]));
       cache.userById = new Map(cache.users.map(u => [String(u._id), u]));
     }
@@ -97,24 +100,24 @@ async function renderFichaPaciente(p) {
   const modulosHTML = Array.isArray(p.modulosAsignados) && p.modulosAsignados.length
     ? `<ul style="margin:5px 0; padding-left:20px;">
         ${p.modulosAsignados.map(m => {
-          const mod = cache.modById.get(String(m.moduloId));
-          const modNombre = mod ? `Módulo ${mod.numero}` : (m.nombre || "Módulo");
-          const cant = (m.cantidad ?? "-");
+      const mod = cache.modById.get(String(m.moduloId));
+      const modNombre = mod ? `Módulo ${mod.numero}` : (m.nombre || "Módulo");
+      const cant = (m.cantidad ?? "-");
 
-          const det = Array.isArray(m.profesionales) && m.profesionales.length
-            ? `<ul style="margin:4px 0 0 18px;">
+      const det = Array.isArray(m.profesionales) && m.profesionales.length
+        ? `<ul style="margin:4px 0 0 18px;">
                 ${m.profesionales.map(pr => {
-                  const u = cache.userById.get(String(pr.profesionalId));
-                  const profNom = u ? (u.nombreApellido || u.nombre || u.usuario) : "Profesional";
-                  const aVal = pr.areaId ?? pr.area;
-                  const aNom = areaName(aVal);
-                  return `<li>${profNom}${aNom ? ` — ${aNom}` : ""}</li>`;
-                }).join("")}
-               </ul>`
-            : "";
-
-          return `<li>${modNombre} - Cantidad: ${cant}${det}</li>`;
+          const u = cache.userById.get(String(pr.profesionalId));
+          const profNom = u ? (u.nombreApellido || u.nombre || u.usuario) : "Profesional";
+          const aVal = pr.areaId ?? pr.area;
+          const aNom = areaName(aVal);
+          return `<li>${profNom}${aNom ? ` — ${aNom}` : ""}</li>`;
         }).join("")}
+               </ul>`
+        : "";
+
+      return `<li>${modNombre} - Cantidad: ${cant}${det}</li>`;
+    }).join("")}
       </ul>`
     : "Sin módulos asignados";
 
@@ -129,28 +132,26 @@ async function renderFichaPaciente(p) {
     if (Array.isArray(p.responsables) && p.responsables.length) {
       return `
         <ul style="margin:5px 0; padding-left:20px;">
-          ${p.responsables.slice(0,3).map(r => {
-            const rel = cap(r.relacion ?? "");
-            const nom = r.nombre ?? "sin nombre";
-            const wspHTML = r.whatsapp
-              ? ` 📱 <a href="https://wa.me/${r.whatsapp}" target="_blank" style="color:#25d366; text-decoration:none;">${r.whatsapp}</a>`
-              : "";
-            const mailHTML = r.email ? ` ✉️ ${clickableMail(r.email)}` : "";
-            return `<li><strong>${rel}:</strong> ${nom}${wspHTML}${mailHTML}</li>`;
-          }).join("")}
+          ${p.responsables.slice(0, 3).map(r => {
+        const rel = cap(r.relacion ?? "");
+        const nom = r.nombre ?? "sin nombre";
+        const wspHTML = r.whatsapp
+          ? ` 📱 <a href="https://wa.me/${r.whatsapp}" target="_blank" style="color:#25d366; text-decoration:none;">${r.whatsapp}</a>`
+          : "";
+        const mailHTML = r.email ? ` ✉️ ${clickableMail(r.email)}` : "";
+        return `<li><strong>${rel}:</strong> ${nom}${wspHTML}${mailHTML}</li>`;
+      }).join("")}
         </ul>`;
     }
     const tutorLinea = (p.tutor?.nombre || p.tutor?.whatsapp)
-      ? `<li><strong>Tutor/a:</strong> ${p.tutor?.nombre ?? "sin datos"}${
-          p.tutor?.whatsapp
-            ? ` 📱 <a href="https://wa.me/${p.tutor.whatsapp}" target="_blank" style="color:#25d366; text-decoration:none;">${p.tutor.whatsapp}</a>`
-            : ""}</li>`
+      ? `<li><strong>Tutor/a:</strong> ${p.tutor?.nombre ?? "sin datos"}${p.tutor?.whatsapp
+        ? ` 📱 <a href="https://wa.me/${p.tutor.whatsapp}" target="_blank" style="color:#25d366; text-decoration:none;">${p.tutor.whatsapp}</a>`
+        : ""}</li>`
       : "";
     const mpLinea = (p.madrePadre || p.whatsappMadrePadre)
-      ? `<li><strong>Padre o Madre:</strong> ${p.madrePadre ?? "sin datos"}${
-          p.whatsappMadrePadre
-            ? ` 📱 <a href="https://wa.me/${p.whatsappMadrePadre}" target="_blank" style="color:#25d366; text-decoration:none;">${p.whatsappMadrePadre}</a>`
-            : ""}</li>`
+      ? `<li><strong>Padre o Madre:</strong> ${p.madrePadre ?? "sin datos"}${p.whatsappMadrePadre
+        ? ` 📱 <a href="https://wa.me/${p.whatsappMadrePadre}" target="_blank" style="color:#25d366; text-decoration:none;">${p.whatsappMadrePadre}</a>`
+        : ""}</li>`
       : "";
     if (!tutorLinea && !mpLinea) return "Sin responsables cargados";
     return `<ul style="margin:5px 0; padding-left:20px;">${mpLinea}${tutorLinea}</ul>`;
@@ -166,7 +167,7 @@ async function renderFichaPaciente(p) {
     let prevEstado = null;
     const items = hist.map((h, idx) => {
       const from = (h.estadoAnterior ?? h.desde ?? (idx === 0 ? "—" : prevEstado ?? "—"));
-      const to   = (h.estadoNuevo    ?? h.hasta ?? h.estado ?? "—");
+      const to = (h.estadoNuevo ?? h.hasta ?? h.estado ?? "—");
       prevEstado = to;
 
       let actor = "";
@@ -181,7 +182,7 @@ async function renderFichaPaciente(p) {
       }
 
       const actorHTML = actor ? ` — <em style="color:#666;">por ${actor}</em>` : "";
-      const descHTML  = h.descripcion ? ` — <span style="color:#555;">${h.descripcion}</span>` : "";
+      const descHTML = h.descripcion ? ` — <span style="color:#555;">${h.descripcion}</span>` : "";
       const fechaHTML = ` <span style="color:#777;">(${fmtDateTime(h.fecha)})</span>`;
 
       return `<li><strong>${from}</strong> → <strong>${to}</strong>${fechaHTML}${actorHTML}${descHTML}</li>`;
@@ -208,9 +209,9 @@ async function renderFichaPaciente(p) {
           <p><strong>Condición de Pago:</strong> ${p.condicionDePago ?? "sin datos"}</p>
           <p><strong>Estado actual:</strong> ${p.estado ?? "sin datos"}</p>
           ${p.estado === "Baja"
-            ? `<p><strong>Fecha de baja:</strong> ${p.fechaBaja ?? "-"}</p>
+      ? `<p><strong>Fecha de baja:</strong> ${p.fechaBaja ?? "-"}</p>
                <p><strong>Motivo de baja:</strong> ${p.motivoBaja ?? "-"}</p>`
-            : ""}
+      : ""}
           <div style="margin-top:8px;">
             <h4 style="margin:0 0 4px 0;">Historial de estado</h4>
             ${historialHTML}
@@ -273,7 +274,7 @@ async function modificarPaciente(dni) {
         apiFetchJson(`/usuarios`),  // ← antes: fetch('/api/usuarios')
       ]);
       MODULOS = Array.isArray(m) ? m : [];
-      AREAS   = Array.isArray(a) ? a : [];
+      AREAS = Array.isArray(a) ? a : [];
       USUARIOS = Array.isArray(u) ? u : [];
     } catch (_) {
       // deja arrays vacíos si algo falla
@@ -288,7 +289,7 @@ async function modificarPaciente(dni) {
       : `<option value="">No disponible</option>`;
 
     // helpers filtro profesionales
-    const norm  = (s) => (s ?? "").toString().normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
+    const norm = (s) => (s ?? "").toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
     const HEX24 = /^[a-f0-9]{24}$/i;
     const AREA_ID_TO_NAME_NORM = new Map();
     AREAS.forEach(a => AREA_ID_TO_NAME_NORM.set(String(a._id), norm(a.nombre)));
@@ -309,7 +310,7 @@ async function modificarPaciente(dni) {
           }
           const arr = Array.isArray(u.areas) ? u.areas : [];
           for (const it of arr) {
-            const idCandidate   = typeof it === "object" ? it._id    : it;
+            const idCandidate = typeof it === "object" ? it._id : it;
             const nameCandidate = typeof it === "object" ? it.nombre : it;
             if (HEX24.test(String(idCandidate || ""))) {
               const n = AREA_ID_TO_NAME_NORM.get(String(idCandidate));
@@ -322,7 +323,7 @@ async function modificarPaciente(dni) {
 
       if (!lista.length) return `<option value="">Sin profesionales para el área</option>`;
       return `<option value="">-- Seleccionar --</option>` +
-             lista.map(u => `<option value="${u._id}">${u.nombreApellido || u.nombre || u.usuario}</option>`).join("");
+        lista.map(u => `<option value="${u._id}">${u.nombreApellido || u.nombre || u.usuario}</option>`).join("");
     };
 
     // template módulo — SOLO cambia este select de cantidad
@@ -370,24 +371,24 @@ async function modificarPaciente(dni) {
 
     // responsables iniciales
     const responsablesIniciales = Array.isArray(p.responsables) && p.responsables.length
-      ? p.responsables.slice(0,3).map(r => ({
-          relacion: r.relacion, nombre: r.nombre, whatsapp: r.whatsapp, email: r.email || ""
-        }))
+      ? p.responsables.slice(0, 3).map(r => ({
+        relacion: r.relacion, nombre: r.nombre, whatsapp: r.whatsapp, email: r.email || ""
+      }))
       : (() => {
-          const arr = [];
-          if (p.tutor?.nombre && p.tutor?.whatsapp) {
-            arr.push({ relacion:'tutor', nombre:p.tutor.nombre, whatsapp:p.tutor.whatsapp, email: "" });
-          }
-          if (p.madrePadre) {
-            arr.push({
-              relacion: /madre/i.test(p.madrePadre) ? 'madre' : 'padre',
-              nombre: String(p.madrePadre).replace(/^(madre|padre)\s*:\s*/i,'').trim(),
-              whatsapp: p.whatsappMadrePadre || '',
-              email: ""
-            });
-          }
-          return arr.slice(0,3);
-        })();
+        const arr = [];
+        if (p.tutor?.nombre && p.tutor?.whatsapp) {
+          arr.push({ relacion: 'tutor', nombre: p.tutor.nombre, whatsapp: p.tutor.whatsapp, email: "" });
+        }
+        if (p.madrePadre) {
+          arr.push({
+            relacion: /madre/i.test(p.madrePadre) ? 'madre' : 'padre',
+            nombre: String(p.madrePadre).replace(/^(madre|padre)\s*:\s*/i, '').trim(),
+            whatsapp: p.whatsappMadrePadre || '',
+            email: ""
+          });
+        }
+        return arr.slice(0, 3);
+      })();
 
     // modal
     const { isConfirmed, value: data } = await Swal.fire({
@@ -489,14 +490,14 @@ async function modificarPaciente(dni) {
         // responsables
         const cont = document.getElementById("responsablesContainer");
         const btnAdd = document.getElementById("btnAgregarResponsable");
-        const relaciones = ['padre','madre','tutor'];
-        const makeRelacionOptions = (sel='') =>
+        const relaciones = ['padre', 'madre', 'tutor'];
+        const makeRelacionOptions = (sel = '') =>
           ['<option value="">-- Relación --</option>']
-            .concat(relaciones.map(r => `<option value="${r}" ${r===sel?'selected':''}>${r[0].toUpperCase()+r.slice(1)}</option>`))
+            .concat(relaciones.map(r => `<option value="${r}" ${r === sel ? 'selected' : ''}>${r[0].toUpperCase() + r.slice(1)}</option>`))
             .join('');
 
         let idx = 0;
-        const addRespRow = (preset={relacion:'tutor', nombre:'', email:'', whatsapp:''}) => {
+        const addRespRow = (preset = { relacion: 'tutor', nombre: '', email: '', whatsapp: '' }) => {
           const filas = cont.querySelectorAll('.responsable-row').length;
           if (filas >= 3) return;
           const rowId = `resp-${idx++}`;
@@ -518,7 +519,7 @@ async function modificarPaciente(dni) {
             .addEventListener('click', () => cont.removeChild(document.getElementById(rowId)));
         };
         if (responsablesIniciales.length) responsablesIniciales.forEach(r => addRespRow(r));
-        else addRespRow({ relacion:'tutor' });
+        else addRespRow({ relacion: 'tutor' });
         btnAdd.addEventListener('click', () => addRespRow());
 
         // módulos
@@ -543,7 +544,7 @@ async function modificarPaciente(dni) {
           const wireFilter = (row) => {
             const areaSel = row.querySelector(".area-select");
             const profSel = row.querySelector(".profesional-select");
-            const render  = () => { profSel.innerHTML = profesionalesDeArea(areaSel.value); };
+            const render = () => { profSel.innerHTML = profesionalesDeArea(areaSel.value); };
             areaSel.addEventListener("change", render);
             render();
           };
@@ -616,9 +617,9 @@ async function modificarPaciente(dni) {
         const nombre = gv("nombre");
         const fechaNacimiento = gv("fecha");
 
-        const colegio     = gv("colegio");
+        const colegio = gv("colegio");
         const colegioMail = gv("colegioMail");
-        const curso       = gv("curso");
+        const curso = gv("curso");
 
         const condicionDePagoVal = gv("condicionDePago");
         const estado = gv("estado");
@@ -627,7 +628,7 @@ async function modificarPaciente(dni) {
           : "";
 
         const mailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        const wspRegex  = /^\d{10,15}$/;
+        const wspRegex = /^\d{10,15}$/;
 
         if (!nombre || !fechaNacimiento) {
           Swal.showValidationMessage("⚠️ Completá los campos obligatorios (Nombre, Fecha).");
@@ -646,8 +647,8 @@ async function modificarPaciente(dni) {
         const responsables = [];
         for (const row of filas) {
           const relacion = row.querySelector('.resp-relacion')?.value || "";
-          const nombreR  = (row.querySelector('.resp-nombre')?.value || "").trim();
-          const emailR   = (row.querySelector('.resp-email')?.value || "").trim().toLowerCase();
+          const nombreR = (row.querySelector('.resp-nombre')?.value || "").trim();
+          const emailR = (row.querySelector('.resp-email')?.value || "").trim().toLowerCase();
           const whatsapp = (row.querySelector('.resp-whatsapp')?.value || "").trim();
 
           if (!relacion || !nombreR || !whatsapp) {
@@ -675,7 +676,7 @@ async function modificarPaciente(dni) {
           if (moduloId && cantidad > 0) {
             const profesionalesAsignados = [];
             row.querySelectorAll(".profesional-row").forEach(profRow => {
-              const areaId        = profRow.querySelector(".area-select")?.value;
+              const areaId = profRow.querySelector(".area-select")?.value;
               const profesionalId = profRow.querySelector(".profesional-select")?.value;
               if (profesionalId && areaId) profesionalesAsignados.push({ profesionalId, areaId });
             });
@@ -687,9 +688,9 @@ async function modificarPaciente(dni) {
 
         let prestador = "", credencial = "", tipo = "";
         if (condicionDePagoVal === "Obra Social" || condicionDePagoVal === "Obra Social + Particular") {
-          prestador  = gv("prestador");
+          prestador = gv("prestador");
           credencial = gv("credencial");
-          tipo       = gv("tipo");
+          tipo = gv("tipo");
         }
 
         return {
@@ -720,7 +721,7 @@ async function modificarPaciente(dni) {
 
     if (!putRes.ok) {
       let msg = "Error al guardar";
-      try { const j = await putRes.json(); msg = j?.error || msg; } catch {}
+      try { const j = await putRes.json(); msg = j?.error || msg; } catch { }
       if (putRes.status === 401) msg = 'Token requerido o inválido. Iniciá sesión nuevamente.';
       throw new Error(msg);
     }
@@ -855,7 +856,7 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
           apiFetchJson(`/usuarios`)
         ]);
 
-        AREAS    = Array.isArray(areas) ? areas : [];
+        AREAS = Array.isArray(areas) ? areas : [];
         USUARIOS = Array.isArray(usuarios) ? usuarios : [];
 
         setOptions(areaSel, AREAS, (a) => `<option value="${a._id}">${a.nombre}</option>`, "No disponible");
@@ -896,9 +897,9 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
           profSel.innerHTML = lista.length === 0
             ? `<option value="">Sin profesionales para el área</option>`
             : `<option value="">-- Seleccionar --</option>` +
-              lista.map(u =>
-                `<option value="${u._id}">${u.nombreApellido || u.nombre || u.usuario}</option>`
-              ).join("");
+            lista.map(u =>
+              `<option value="${u._id}">${u.nombreApellido || u.nombre || u.usuario}</option>`
+            ).join("");
         };
 
         renderProfesionales();
@@ -917,11 +918,11 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
       const makeRelacionOptions = (seleccionActual = '') =>
         ['<option value="">-- Relación --</option>']
           .concat(relaciones.map(r =>
-            `<option value="${r}" ${r === seleccionActual ? 'selected' : ''}>${r[0].toUpperCase()+r.slice(1)}</option>`
+            `<option value="${r}" ${r === seleccionActual ? 'selected' : ''}>${r[0].toUpperCase() + r.slice(1)}</option>`
           )).join('');
 
       let idx = 0;
-      const addRow = (preset = {relacion:'tutor', nombre:'', whatsapp:'', email:''}) => {
+      const addRow = (preset = { relacion: 'tutor', nombre: '', whatsapp: '', email: '' }) => {
         const filas = cont.querySelectorAll('.responsable-row').length;
         if (filas >= 3) return;
 
@@ -946,7 +947,7 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
       };
 
       btnAdd.addEventListener('click', () => addRow());
-      addRow({relacion:'tutor'});
+      addRow({ relacion: 'tutor' });
     },
 
     preConfirm: () => {
@@ -956,14 +957,14 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
       const dni = gv("dni");
       const fechaNacimiento = gv("fecha");
 
-      const colegio      = gv("colegio");
-      const colegioMail  = gv("colegioMail");
-      const curso        = gv("curso");
+      const colegio = gv("colegio");
+      const colegioMail = gv("colegioMail");
+      const curso = gv("curso");
 
       const condicionDePagoVal = gv("condicionDePago");
-      const estado       = gv("estado");
+      const estado = gv("estado");
 
-      const dniRegex  = /^\d{7,8}$/;
+      const dniRegex = /^\d{7,8}$/;
       const mailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
       if (!nombre || !dni || !fechaNacimiento) {
@@ -987,9 +988,9 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
       const responsables = [];
       for (const row of filas) {
         const relacion = row.querySelector('.resp-relacion')?.value || "";
-        const nombreR  = (row.querySelector('.resp-nombre')?.value || "").trim();
+        const nombreR = (row.querySelector('.resp-nombre')?.value || "").trim();
         const whatsapp = (row.querySelector('.resp-whatsapp')?.value || "").trim();
-        const email    = (row.querySelector('.resp-email')?.value || "").trim().toLowerCase();
+        const email = (row.querySelector('.resp-email')?.value || "").trim().toLowerCase();
 
         if (!relacion || !nombreR || !whatsapp) {
           Swal.showValidationMessage("⚠️ Completá relación, nombre y WhatsApp en cada responsable.");
@@ -1009,11 +1010,11 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
         responsables.push(r);
       }
 
-      let prestador="", credencial="", tipo="";
+      let prestador = "", credencial = "", tipo = "";
       if (condicionDePagoVal === "Obra Social" || condicionDePagoVal === "Obra Social + Particular") {
-        prestador  = gv("prestador");
+        prestador = gv("prestador");
         credencial = gv("credencial");
-        tipo       = gv("tipo");
+        tipo = gv("tipo");
       }
 
       // si no usás módulos acá:
@@ -1278,5 +1279,122 @@ if (btnLogout) {
   btnLogout.addEventListener('click', () => {
     localStorage.clear();
     goLogin();
+  });
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LISTADO INICIAL (primeros 20 pacientes)
+// ─────────────────────────────────────────────────────────────────────────────
+function ensureListadoContainer() {
+  let el = document.getElementById('listadoPacientes');
+  if (el) return el;
+
+  // Lo ubicamos justo antes del contenedor de ficha si existe (queda bajo la línea azul)
+  const ficha = document.getElementById('fichaPacienteContainer');
+  el = document.createElement('div');
+  el.id = 'listadoPacientes';
+  el.style.margin = '12px 8px';
+  el.style.padding = '10px';
+  el.style.background = '#fff';
+  el.style.border = '1px solid #e0e0e0';
+  el.style.borderRadius = '6px';
+  el.style.boxShadow = '0 1px 2px rgba(0,0,0,0.04)';
+
+  if (ficha && ficha.parentNode) {
+    ficha.parentNode.insertBefore(el, ficha);
+  } else {
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+function renderListadoPacientes(items) {
+  const cont = ensureListadoContainer();
+  if (!Array.isArray(items) || items.length === 0) {
+    cont.innerHTML = `<div style="color:#666;">No hay pacientes para mostrar.</div>`;
+    return;
+  }
+
+  // Tabla simple
+  const filas = items.map(p => `
+    <tr data-dni="${p.dni ?? ''}" style="cursor:pointer;">
+      <td style="padding:6px 8px;">${p.nombre ?? '(Sin nombre)'}</td>
+      <td style="padding:6px 8px;">${p.dni ?? '-'}</td>
+      <td style="padding:6px 8px;">${p.estado ?? '-'}</td>
+      <td style="padding:6px 8px;">${p.condicionDePago ?? '-'}</td>
+      <td style="padding:6px 8px; text-align:right;">
+        <button class="btn-ver" data-dni="${p.dni ?? ''}" style="padding:4px 8px;">Ver</button>
+      </td>
+    </tr>
+  `).join('');
+
+  cont.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+      <strong>Pacientes (primeros 20)</strong>
+      <small style="color:#777;">Click en una fila para ver la ficha</small>
+    </div>
+    <div style="overflow:auto;">
+      <table style="width:100%; border-collapse:collapse; font-size:14px;">
+        <thead>
+          <tr style="background:#f5f7f8;">
+            <th style="text-align:left; padding:6px 8px;">Nombre</th>
+            <th style="text-align:left; padding:6px 8px;">DNI</th>
+            <th style="text-align:left; padding:6px 8px;">Estado</th>
+            <th style="text-align:left; padding:6px 8px;">Condición</th>
+            <th style="text-align:right; padding:6px 8px;">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>${filas}</tbody>
+      </table>
+    </div>
+  `;
+
+  // Click fila / botón
+  cont.querySelectorAll('tr[data-dni], .btn-ver').forEach(el => {
+    el.addEventListener('click', async (e) => {
+      const dni = el.getAttribute('data-dni') || e.target.getAttribute('data-dni');
+      if (!dni) return;
+      try {
+        const p = await apiFetchJson(`/pacientes/${dni}`);
+        // Oculto el listado al abrir una ficha
+        const l = document.getElementById('listadoPacientes');
+        if (l) l.style.display = 'none';
+        renderFichaPaciente(p);
+      } catch (err) {
+        console.error(err);
+      }
+    });
+  });
+}
+
+async function cargarListadoInicial() {
+  try {
+    // Intento con limit en el server; si no soporta, recorto en cliente.
+    let data = await apiFetchJson(`/pacientes?limit=20`);
+    if (Array.isArray(data)) {
+      renderListadoPacientes(data.slice(0, 20));
+    } else if (data && Array.isArray(data.items)) {
+      renderListadoPacientes(data.items.slice(0, 20));
+    } else {
+      // Fallback sin paginación
+      data = await apiFetchJson(`/pacientes`);
+      renderListadoPacientes(Array.isArray(data) ? data.slice(0, 20) : []);
+    }
+  } catch (e) {
+    console.error('No se pudo cargar el listado inicial', e);
+    renderListadoPacientes([]);
+  }
+}
+
+// Cargar al entrar a pacientes.html
+document.addEventListener('DOMContentLoaded', cargarListadoInicial);
+
+// Si querés que al hacer una búsqueda se oculte el listado:
+const __inputBusq = document.getElementById('busquedaInput');
+if (__inputBusq) {
+  __inputBusq.addEventListener('input', () => {
+    const l = document.getElementById('listadoPacientes');
+    if (l) l.style.display = 'none';
   });
 }
