@@ -4,7 +4,7 @@ const bcrypt  = require("bcrypt");
 const jwt     = require("jsonwebtoken");
 
 // === R2 (Cloudflare) ===
-const { uploadBuffer, deleteKey, buckets } = require("../lib/storageR2");
+const { uploadBuffer, deleteKey, buckets, toWorkerViewUrl } = require("../lib/storageR2");
 
 const JWT_SECRET = process.env.JWT_SECRET || "supersecreto";
 
@@ -24,11 +24,23 @@ function collectFilesFromReq(req) {
   return files;
 }
 
+// Convierte URLs internas a URLs de vista (Worker) SOLO para responder al front
+function mapDocsForView(docs) {
+  if (!Array.isArray(docs)) return [];
+  return docs.map(d => ({
+    ...d,
+    url: toWorkerViewUrl(d?.url || "")
+  }));
+}
+
 // Sube archivos a R2 y devuelve objetos {tipo, nombre, url, fechaSubida}
 async function uploadUserDocsR2(files, ownerId) {
   const out = [];
   for (const file of files) {
-    const key = `${ownerId}/${Date.now()}_${file.originalname}`;
+    const safeName = String(file.originalname || "archivo")
+      .replace(/[/\\]+/g, "_")
+      .replace(/\s+/g, "_");
+    const key = `${ownerId}/${Date.now()}_${safeName}`;
     const url = await uploadBuffer({
       bucket: buckets.usuarios,
       key,
@@ -38,7 +50,7 @@ async function uploadUserDocsR2(files, ownerId) {
     out.push({
       tipo: "general",
       nombre: file.originalname,
-      url,
+      url,                   // interna: https://r2.internal/<bucket>/<key>
       fechaSubida: new Date()
     });
   }
@@ -107,13 +119,19 @@ function applyRoleCleaning(rol, body, currentDoc = null) {
   }
 }
 
-// Extrae key de URL R2 (bucket usuarios)
-function extractUsuariosKeyFromUrl(url) {
+// Extrae key del URL interno: https://r2.internal/<bucket>/<key>
+// (para borrar en R2 cuando eliminás el usuario)
+function extractKeyFromInternalUrl(url, expectedBucket) {
   try {
-    const pivot = `/${buckets.usuarios}/`;
-    const idx = url.indexOf(pivot);
-    if (idx === -1) return null;
-    return url.substring(idx + pivot.length);
+    const prefix = "https://r2.internal/";
+    if (!url?.startsWith(prefix)) return null;
+    const rest = url.slice(prefix.length);
+    const slash = rest.indexOf("/");
+    if (slash === -1) return null;
+    const bucket = rest.slice(0, slash);
+    const key    = rest.slice(slash + 1);
+    if (expectedBucket && bucket !== expectedBucket) return null;
+    return key;
   } catch {
     return null;
   }
@@ -153,8 +171,12 @@ exports.crearUsuario = async (req, res) => {
       await nuevo.save();
     }
 
-    nuevo.contrasena = undefined;
-    return res.status(201).json(nuevo);
+    // Preparar respuesta (sin hash y con URLs visibles)
+    const resp = nuevo.toObject();
+    delete resp.contrasena;
+    resp.documentos = mapDocsForView(resp.documentos);
+
+    return res.status(201).json(resp);
   } catch (err) {
     console.error("crearUsuario error:", err?.stack || err);
     return res.status(500).json({ error: "Error al crear usuario", detalles: err.message });
@@ -165,7 +187,12 @@ exports.crearUsuario = async (req, res) => {
 exports.obtenerUsuarios = async (_req, res) => {
   try {
     const lista = await Usuario.find().select("-contrasena");
-    res.status(200).json(lista);
+    const resp = lista.map(u => {
+      const obj = u.toObject();
+      obj.documentos = mapDocsForView(obj.documentos);
+      return obj;
+    });
+    res.status(200).json(resp);
   } catch (err) {
     res.status(500).json({ error: "Error al obtener usuarios" });
   }
@@ -176,7 +203,9 @@ exports.getUsuarioPorId = async (req, res) => {
   try {
     const usuario = await Usuario.findById(req.params.id).select("-contrasena");
     if (!usuario) return res.status(404).json({ error: "No encontrado" });
-    res.json(usuario);
+    const obj = usuario.toObject();
+    obj.documentos = mapDocsForView(obj.documentos);
+    res.json(obj);
   } catch (err) {
     res.status(500).json({ error: "Error al obtener usuario" });
   }
@@ -220,8 +249,12 @@ exports.actualizarUsuario = async (req, res) => {
     }
 
     await usuario.save();
-    usuario.contrasena = undefined;
-    return res.json(usuario);
+
+    const resp = usuario.toObject();
+    delete resp.contrasena;
+    resp.documentos = mapDocsForView(resp.documentos);
+
+    return res.json(resp);
   } catch (err) {
     console.error("actualizarUsuario error:", err?.stack || err);
     return res.status(500).json({ error: "Error al actualizar usuario", detalles: err.message });
@@ -238,10 +271,8 @@ exports.eliminarUsuario = async (req, res) => {
     if (Array.isArray(usuario.documentos) && usuario.documentos.length > 0) {
       const jobs = [];
       for (const doc of usuario.documentos) {
-        if (doc?.url) {
-          const key = extractUsuariosKeyFromUrl(doc.url);
-          if (key) jobs.push(deleteKey({ bucket: buckets.usuarios, key }).catch(() => null));
-        }
+        const key = extractKeyFromInternalUrl(doc?.url, buckets.usuarios);
+        if (key) jobs.push(deleteKey({ bucket: buckets.usuarios, key }).catch(() => null));
       }
       await Promise.all(jobs);
     }
@@ -287,6 +318,9 @@ exports.login = async (req, res) => {
     delete userData.passwordHash;
     delete userData.clave;
 
+    // también mapeo URLs por si devolvés documentos en el perfil
+    userData.documentos = mapDocsForView(userData.documentos);
+
     res.json({ mensaje: "Login exitoso", user: userData, token });
   } catch (err) {
     console.error("Error en login:", err?.stack || err);
@@ -310,5 +344,3 @@ exports.authMiddleware = (req, res, next) => {
     return res.status(401).json({ error: "Token no válido o expirado" });
   }
 };
-
-

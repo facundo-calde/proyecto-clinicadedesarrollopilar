@@ -39,6 +39,32 @@ function makeInternalUrl(bucket, key) {
 }
 
 /**
+ * Convierte URL interna (https://r2.internal/<bucket>/<key>)
+ * a URL de visualización vía Worker (si R2_WORKER_URL está seteada).
+ */
+function toWorkerViewUrl(internalUrl) {
+  try {
+    if (!workerURL) return internalUrl;
+    if (!internalUrl?.startsWith("https://r2.internal/")) return internalUrl;
+
+    const rest = internalUrl.slice("https://r2.internal/".length);
+    const slash = rest.indexOf("/");
+    if (slash === -1) return internalUrl;
+
+    const bucket = rest.slice(0, slash);
+    const key = rest.slice(slash + 1);
+
+    let seg = bucket;
+    if (bucket === buckets.usuarios)  seg = "usuarios";
+    if (bucket === buckets.pacientes) seg = "pacientes";
+
+    return `${workerURL.replace(/\/+$/,"")}/${seg}/${encodeURIComponent(key)}`;
+  } catch {
+    return internalUrl;
+  }
+}
+
+/**
  * Sube un buffer a R2.
  * - Si hay R2_WORKER_URL => usa el Worker (PUT).
  * - Si no hay => usa SDK S3 directo.
@@ -93,4 +119,4 @@ async function deleteKey({ bucket, key }) {
   await (s3?.send(new DeleteObjectCommand({ Bucket: bucket, Key: key })) || Promise.resolve());
 }
 
-module.exports = { uploadBuffer, deleteKey, buckets };
+module.exports = { uploadBuffer, deleteKey, buckets, toWorkerViewUrl };
