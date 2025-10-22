@@ -1,5 +1,6 @@
 // backend/server.js
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 // Forzar preferencia IPv4 (evita líos DNS/TLS con IPv6)
 const dns = require('dns');
@@ -8,7 +9,6 @@ dns.setDefaultResultOrder('ipv4first');
 const express  = require('express');
 const cors     = require('cors');
 const mongoose = require('mongoose');
-const path     = require('path');
 const fs       = require('fs');
 
 /* ====== MONGO URI ====== */
@@ -28,7 +28,7 @@ const allowedOrigins = (process.env.CORS_ORIGIN || '')
 
 app.use(cors({
   origin: (origin, cb) => {
-    if (!origin) return cb(null, true); // requests de same-origin / curl
+    if (!origin) return cb(null, true); // same-origin / curl
     if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) return cb(null, true);
     return cb(new Error('CORS bloqueado para ' + origin));
   },
@@ -88,9 +88,7 @@ const HOST = '0.0.0.0';
 (async () => {
   try {
     console.log('🔌 Conectando a MongoDB...');
-    await mongoose.connect(RAW_MONGO_URI, {
-      serverSelectionTimeoutMS: 8000,
-    });
+    await mongoose.connect(RAW_MONGO_URI, { serverSelectionTimeoutMS: 8000 });
     console.log('✅ Conectado a MongoDB');
 
     app.listen(PORT, HOST, () => {
@@ -113,7 +111,6 @@ const shutdown = async (signal) => {
 process.on('SIGINT',  () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 
-/* ====== Errores no capturados (para no crashear en silencio) ====== */
+/* ====== Errores no capturados ====== */
 process.on('unhandledRejection', (r) => console.error('UnhandledRejection:', r));
 process.on('uncaughtException',  (e) => { console.error('UncaughtException:', e); process.exit(1); });
-
