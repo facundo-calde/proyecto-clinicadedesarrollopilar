@@ -301,6 +301,12 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
 
             <label><strong>Documentos:</strong></label>
             <input type="file" id="documentos" class="swal2-input" multiple>
+
+            <!-- NUEVO: listado de documentos existentes -->
+            <div id="docsExistentes" class="block" style="display:none; margin-top:8px;">
+              <label><strong>Documentos existentes:</strong></label>
+              <ul id="docsList" style="margin:6px 0; padding-left:18px;"></ul>
+            </div>
           </div>
         </div>
       </div>
@@ -410,6 +416,28 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
       }
 
       rolSelect.addEventListener("change", syncVisibility);
+
+      // NUEVO: render de documentos existentes
+      const docsBox  = document.getElementById("docsExistentes");
+      const docsList = document.getElementById("docsList");
+      function renderDocs(docs = []) {
+        if (!Array.isArray(docs) || docs.length === 0) {
+          docsBox.style.display = "none";
+          docsList.innerHTML = "";
+          return;
+        }
+        docsBox.style.display = "block";
+        docsList.innerHTML = docs.map(d => {
+          const href = d.publicUrl || d.url || "#";
+          const name = d.nombre || (href.split("/").pop() || "archivo");
+          const fecha = d.fechaSubida ? new Date(d.fechaSubida).toLocaleString() : "";
+          return `<li style="margin:4px 0;">
+            <a href="${href}" target="_blank" rel="noopener">${name}</a>
+            ${fecha ? `<small style="color:#666;"> — ${fecha}</small>` : ""}
+          </li>`;
+        }).join("");
+      }
+      if (modoEdicion) renderDocs(u.documentos || []);
 
       // toggle password
       const passInput  = document.getElementById("contrasena");
@@ -532,6 +560,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
     Swal.fire("Error", "No se pudo guardar el usuario", "error");
   });
 }
+
 
 
 
