@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html lang="es">
-
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -9,37 +8,16 @@
   <link rel="stylesheet" href="/css/styles.css" />
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
 
-  <!-- Estilos mínimos -->
+  <!-- CSS mínimo y aislado SOLO para el ojito -->
   <style>
-    .password-field {
-      position: relative;
+    .password-field{ position:relative; width:100%; }
+    .password-field input{ width:100%; display:block; padding-right:3.25rem; } /* espacio para el botón */
+    #togglePassword{
+      position:absolute; top:50%; right:.6rem; transform:translateY(-50%);
+      width:28px; height:28px; display:flex; align-items:center; justify-content:center;
+      border:0; background:transparent; border-radius:6px; cursor:pointer; line-height:1; font-size:18px;
     }
-    .password-field input {
-      padding-right: 2.5rem;
-    }
-    .toggle-password {
-      position: absolute;
-      right: .6rem;
-      top: 50%;
-      transform: translateY(-50%);
-      background: transparent;
-      border: 0;
-      cursor: pointer;
-      font-size: 1.1rem;
-      line-height: 1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 0;
-    }
-    .toggle-password svg {
-      width: 20px;
-      height: 20px;
-    }
-    .toggle-password:focus {
-      outline: 2px solid #5f9f9c33;
-      border-radius: .25rem;
-    }
+    #togglePassword:hover{ background:rgba(0,0,0,.06); }
   </style>
 </head>
 
@@ -51,20 +29,14 @@
       </div>
       <h2>Iniciar sesión</h2>
 
-      <!-- Formulario -->
       <form id="loginForm">
         <label for="usuario">Usuario</label>
-        <input type="text" id="usuario" name="usuario" required />
+        <input type="text" id="usuario" name="usuario" autocomplete="username" required />
 
         <label for="clave">Contraseña</label>
         <div class="password-field">
-          <input type="password" id="clave" name="clave" required />
-          <button type="button" id="togglePassword" class="toggle-password" aria-label="Mostrar u ocultar contraseña" aria-pressed="false">
-            <svg id="eyeIcon" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"></path>
-              <circle cx="12" cy="12" r="3"></circle>
-            </svg>
-          </button>
+          <input type="password" id="clave" name="clave" autocomplete="current-password" required />
+          <button type="button" id="togglePassword" aria-label="Mostrar u ocultar contraseña">👁️</button>
         </div>
 
         <button type="submit" class="btn">Ingresar</button>
@@ -73,33 +45,29 @@
     </div>
   </div>
 
-  <!-- 🔹 Parche para reemplazar localhost por el dominio actual -->
+  <!-- Parche de origen (si usás localhost en JS) -->
   <script>
     (function () {
-      var ORIGIN = location.origin;
-      var _fetch = window.fetch;
+      var ORIGIN = location.origin, _fetch = window.fetch;
       window.fetch = function (input, init) {
         var url = (typeof input === 'string') ? input : input.url;
-        if (url && url.indexOf('http://localhost:3000') === 0) {
+        if (url && url.startsWith('http://localhost:3000')) {
           url = ORIGIN + url.slice('http://localhost:3000'.length);
-          if (typeof input === 'string') input = url;
-          else input = new Request(url, input);
+          input = (typeof input === 'string') ? url : new Request(url, input);
         }
         return _fetch(input, init);
       };
       var _open = XMLHttpRequest.prototype.open;
-      XMLHttpRequest.prototype.open = function (method, url) {
-        if (url && url.indexOf('http://localhost:3000') === 0) {
+      XMLHttpRequest.prototype.open = function (m, url) {
+        if (url && url.startsWith('http://localhost:3000')) {
           url = ORIGIN + url.slice('http://localhost:3000'.length);
         }
-        return _open.apply(this, [method, url].concat([].slice.call(arguments, 2)));
+        return _open.apply(this, [m, url].concat([].slice.call(arguments, 2)));
       };
     })();
   </script>
 
-  <!-- ✅ Scripts -->
   <script src="/js/config.js"></script>
   <script src="/js/index.js"></script>
 </body>
-
 </html>
