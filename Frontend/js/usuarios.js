@@ -233,14 +233,12 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
             <div class="two-col">
               <div>
                 <div class="prefix-wrapper">
-                  <span class="peso-prefix">$</span>
-                  <input class="swal2-input" id="salarioAcuerdo" placeholder="Salario acordado" autocomplete="off" inputmode="numeric">
+                                    <input class="swal2-input" id="salarioAcuerdo" placeholder="Salario acordado" autocomplete="off" inputmode="numeric">
                 </div>
                 <input class="swal2-input" id="salarioAcuerdoObs" placeholder="Obs. salario (opcional)" autocomplete="off">
               </div>
               <div>
                 <div class="prefix-wrapper">
-                  <span class="peso-prefix">$</span>
                   <input class="swal2-input" id="fijoAcuerdo" placeholder="Fijo acordado" autocomplete="off" inputmode="numeric">
                 </div>
                 <input class="swal2-input" id="fijoAcuerdoObs" placeholder="Obs. fijo (opcional)" autocomplete="off">
