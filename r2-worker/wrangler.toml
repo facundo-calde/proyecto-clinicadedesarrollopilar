@@ -1,0 +1,11 @@
+name = "r2-uploader"
+main = "worker.js"
+compatibility_date = "2024-10-01"
+
+[[r2_buckets]]
+binding = "R2_USUARIOS"
+bucket_name = "documentos-usuarios"
+
+[[r2_buckets]]
+binding = "R2_PACIENTES"
+bucket_name = "documentos-pacientes"
