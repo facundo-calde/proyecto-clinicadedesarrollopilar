@@ -23,8 +23,10 @@ const ROLES = Object.freeze([
   'Profesional',
   'Administrativo',
   'Recepcionista',
-  'Pasante', // 👈 nuevo
+  'Pasante',
+  'Área' // 👈 nuevo rol
 ]);
+
 
 // Profesional por área (permite distintos niveles por área)
 const areaProfesionalSchema = new mongoose.Schema({

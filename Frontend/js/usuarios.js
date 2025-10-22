@@ -257,6 +257,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
               <option value="Pasante">Pasante</option>
               <option value="Administrativo">Administrativo</option>
               <option value="Recepcionista">Recepcionista</option>
+              <option value="Área">Área</option>
             </select>
 
             <div id="pasanteSection" class="block" style="display:none;">

@@ -72,11 +72,21 @@ function normalizeBody(body) {
   if (body.usuario) body.usuario = body.usuario.toLowerCase();
   if (body.mail)    body.mail    = body.mail.toLowerCase();
 
+  // 👇 alias front → schema
+  if (Object.prototype.hasOwnProperty.call(body, 'pasanteNivel')) {
+    body.nivelPasante = body.pasanteNivel || undefined;
+  }
+
   return body;
 }
 
 // Reglas por rol
 function applyRoleCleaning(rol, body, currentDoc = null) {
+  // 👇 alias front → schema (defensivo)
+  if (body.pasanteNivel && !body.nivelPasante) {
+    body.nivelPasante = body.pasanteNivel;
+  }
+
   const esProfesional = rol === "Profesional" || rol === "Coordinador y profesional";
   const esCoordinador = rol === "Coordinador de área" || rol === "Coordinador y profesional";
   const esPasante     = rol === "Pasante";
@@ -91,7 +101,8 @@ function applyRoleCleaning(rol, body, currentDoc = null) {
     if (!esCoordinador) body.areasCoordinadas = [];
   }
 
-  if (!esPasante) body.pasanteNivel = undefined;
+  // Si NO es pasante, borramos el nivel de pasante (en el campo real del schema)
+  if (!esPasante) body.nivelPasante = undefined;
 
   if (currentDoc) {
     if (!Array.isArray(body.areasProfesional) && currentDoc.areasProfesional) {
@@ -127,7 +138,6 @@ function mapDocsForView(docs) {
   });
 }
 
-
 /* ------------------------ Crear ------------------------ */
 exports.crearUsuario = async (req, res) => {
   try {
@@ -158,10 +168,15 @@ exports.crearUsuario = async (req, res) => {
       await nuevo.save();
     }
 
-    nuevo.contrasena = undefined;
-    nuevo.documentos = mapDocsForView(nuevo.documentos);
+    // salida
+    const nuevoObj = nuevo.toObject();
+    delete nuevoObj.contrasena;
 
-    return res.status(201).json(nuevo);
+    return res.status(201).json({
+      ...nuevoObj,
+      pasanteNivel: nuevoObj.nivelPasante,               // espejo para el front
+      documentos: mapDocsForView(nuevoObj.documentos)
+    });
   } catch (err) {
     console.error("crearUsuario error:", err?.stack || err);
     return res.status(500).json({ error: "Error al crear usuario", detalles: err.message });
@@ -172,10 +187,14 @@ exports.crearUsuario = async (req, res) => {
 exports.obtenerUsuarios = async (_req, res) => {
   try {
     const lista = await Usuario.find().select("-contrasena");
-    res.status(200).json(lista.map(u => ({
-      ...u.toObject(),
-      documentos: mapDocsForView(u.documentos)
-    })));
+    res.status(200).json(lista.map(u => {
+      const o = u.toObject();
+      return {
+        ...o,
+        pasanteNivel: o.nivelPasante,                     // espejo para el front en listados
+        documentos: mapDocsForView(o.documentos)
+      };
+    }));
   } catch (err) {
     res.status(500).json({ error: "Error al obtener usuarios" });
   }
@@ -186,9 +205,12 @@ exports.getUsuarioPorId = async (req, res) => {
   try {
     const usuario = await Usuario.findById(req.params.id).select("-contrasena");
     if (!usuario) return res.status(404).json({ error: "No encontrado" });
+
+    const uObj = usuario.toObject();
     res.json({
-      ...usuario.toObject(),
-      documentos: mapDocsForView(usuario.documentos)
+      ...uObj,
+      pasanteNivel: uObj.nivelPasante,                    // espejo para el front
+      documentos: mapDocsForView(uObj.documentos)
     });
   } catch (err) {
     res.status(500).json({ error: "Error al obtener usuario" });
@@ -228,11 +250,14 @@ exports.actualizarUsuario = async (req, res) => {
     }
 
     await usuario.save();
-    usuario.contrasena = undefined;
+
+    const uObj = usuario.toObject();
+    delete uObj.contrasena;
 
     return res.json({
-      ...usuario.toObject(),
-      documentos: mapDocsForView(usuario.documentos)
+      ...uObj,
+      pasanteNivel: uObj.nivelPasante,                     // espejo para el front
+      documentos: mapDocsForView(uObj.documentos)
     });
   } catch (err) {
     console.error("actualizarUsuario error:", err?.stack || err);
@@ -334,6 +359,7 @@ exports.login = async (req, res) => {
     res.status(500).json({ error: "Error en login", detalles: err.message });
   }
 };
+
 
 /* ------------------------ Auth middleware ------------------------ */
 exports.authMiddleware = (req, res, next) => {
