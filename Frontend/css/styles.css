@@ -102,13 +102,27 @@ body {
   width: auto;
 }
 
-/* Colocalo en tu styles.css si querés más prolijo */
-.password-field { position: relative; }
-.password-field input { padding-right: 2.5rem; }
-.toggle-password {
-  position: static; /* si lo ponés dentro de .password-field podés pasarlo a absolute */
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-  font-size: 1rem;
+.password-field {
+  position: relative;
+  display: block;
+}
+.password-field > input {
+  width: 100%;
+  padding-right: 42px; /* espacio para el ojito */
+}
+.password-field .toggle-password {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  border: 0; padding: 0; margin: 0;
+  background: transparent; cursor: pointer; line-height: 1;
+  color: #475569; opacity: .85;
+}
+.password-field .toggle-password:hover { opacity: 1; }
+.password-field .toggle-password:focus {
+  outline: 2px solid #5f9f9c33;
+  border-radius: 6px;
 }

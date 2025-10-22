@@ -2,32 +2,35 @@ document.addEventListener("DOMContentLoaded", () => {
   const form = document.getElementById("loginForm");
 
   // --- 👁️ Mostrar/ocultar contraseña ------------------------
-  const passwordInput = document.getElementById("clave");
-  if (passwordInput) {
-    // Si no existe el botón, lo creo e inserto dentro de un contenedor
-    let togglePassword = document.getElementById("togglePassword");
-    if (!togglePassword) {
-      togglePassword = document.createElement("button");
-      togglePassword.type = "button";
-      togglePassword.id = "togglePassword";
-      togglePassword.className = "toggle-password";
-      togglePassword.innerHTML = "👁️"; // icono inicial
-      togglePassword.setAttribute("aria-label", "Mostrar u ocultar contraseña");
+  (function () {
+    const input = document.getElementById("clave");
+    if (!input) return;
 
-      // Insertar el botón justo después del input
-      passwordInput.insertAdjacentElement("afterend", togglePassword);
-    }
+    // Si ya está envuelto, no hacer nada
+    if (input.parentElement && input.parentElement.classList.contains("password-field")) return;
 
-    togglePassword.addEventListener("click", () => {
-      const isPassword = passwordInput.type === "password";
-      passwordInput.type = isPassword ? "text" : "password";
-      togglePassword.innerHTML = isPassword ? "🙈" : "👁️";
-      togglePassword.setAttribute(
-        "aria-label",
-        isPassword ? "Ocultar contraseña" : "Mostrar contraseña"
-      );
+    // Crear wrapper y meter el input adentro
+    const wrap = document.createElement("div");
+    wrap.className = "password-field";
+    input.parentNode.insertBefore(wrap, input);
+    wrap.appendChild(input);
+
+    // Crear botón ojito
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.id = "togglePassword";
+    btn.className = "toggle-password";
+    btn.setAttribute("aria-label", "Mostrar u ocultar contraseña");
+    btn.innerHTML = "👁️";
+    wrap.appendChild(btn);
+
+    btn.addEventListener("click", () => {
+      const show = input.type === "password";
+      input.type = show ? "text" : "password";
+      btn.innerHTML = show ? "🙈" : "👁️";
+      btn.setAttribute("aria-label", show ? "Ocultar contraseña" : "Mostrar contraseña");
     });
-  }
+  })();
   // -----------------------------------------------------------
 
   if (!form) return;
@@ -76,4 +79,3 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 });
-
