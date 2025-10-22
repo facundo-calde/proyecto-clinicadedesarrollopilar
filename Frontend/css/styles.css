@@ -102,27 +102,27 @@ body {
   width: auto;
 }
 
-.password-field {
-  position: relative;
-  display: block;
+/* ---- Toggle password limpio y bien posicionado ---- */
+.password-field{ position: relative; display:block; }
+.password-field > input{
+  width:100%;
+  padding-right: 52px;         /* espacio para el ojo */
 }
-.password-field > input {
-  width: 100%;
-  padding-right: 42px; /* espacio para el ojito */
-}
-.password-field .toggle-password {
+
+/* neutraliza cualquier estilo global de botón (btn) */
+.password-field .toggle-password{
+  all: unset;                  /* borra estilos heredados */
   position: absolute;
   right: 10px;
   top: 50%;
   transform: translateY(-50%);
   width: 28px; height: 28px;
   display: flex; align-items: center; justify-content: center;
-  border: 0; padding: 0; margin: 0;
-  background: transparent; cursor: pointer; line-height: 1;
-  color: #475569; opacity: .85;
-}
-.password-field .toggle-password:hover { opacity: 1; }
-.password-field .toggle-password:focus {
-  outline: 2px solid #5f9f9c33;
+  cursor: pointer;
+  color: #475569;              /* gris */
+  z-index: 2;                  /* por encima del input */
   border-radius: 6px;
 }
+.password-field .toggle-password:hover { background: rgba(0,0,0,.06); }
+.password-field .toggle-password:focus  { outline: 2px solid #5f9f9c33; }
+
