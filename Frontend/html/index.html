@@ -9,15 +9,37 @@
   <link rel="stylesheet" href="/css/styles.css" />
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
 
-  <!-- Estilos mínimos para el ojito -->
+  <!-- Estilos mínimos -->
   <style>
-    .password-field { position: relative; }
-    .password-field input { padding-right: 2.5rem; }
-    .toggle-password {
-      position: absolute; right: .6rem; top: 50%; transform: translateY(-50%);
-      background: transparent; border: 0; cursor: pointer; font-size: 1rem; line-height: 1;
+    .password-field {
+      position: relative;
     }
-    .toggle-password:focus { outline: 2px solid #5f9f9c33; border-radius: .25rem; }
+    .password-field input {
+      padding-right: 2.5rem;
+    }
+    .toggle-password {
+      position: absolute;
+      right: .6rem;
+      top: 50%;
+      transform: translateY(-50%);
+      background: transparent;
+      border: 0;
+      cursor: pointer;
+      font-size: 1.1rem;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+    }
+    .toggle-password svg {
+      width: 20px;
+      height: 20px;
+    }
+    .toggle-password:focus {
+      outline: 2px solid #5f9f9c33;
+      border-radius: .25rem;
+    }
   </style>
 </head>
 
@@ -29,7 +51,7 @@
       </div>
       <h2>Iniciar sesión</h2>
 
-      <!-- ✅ Form corregido -->
+      <!-- Formulario -->
       <form id="loginForm">
         <label for="usuario">Usuario</label>
         <input type="text" id="usuario" name="usuario" required />
@@ -37,11 +59,15 @@
         <label for="clave">Contraseña</label>
         <div class="password-field">
           <input type="password" id="clave" name="clave" required />
-          <button type="button" id="togglePassword" class="toggle-password" aria-label="Mostrar u ocultar contraseña">👁️</button>
+          <button type="button" id="togglePassword" class="toggle-password" aria-label="Mostrar u ocultar contraseña" aria-pressed="false">
+            <svg id="eyeIcon" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+          </button>
         </div>
 
         <button type="submit" class="btn">Ingresar</button>
-        <!-- Evitamos que envíe el form -->
         <button type="button" id="btnRecovery" class="btn">Recuperar contraseña</button>
       </form>
     </div>
@@ -71,7 +97,7 @@
     })();
   </script>
 
-  <!-- ✅ JS de login -->
+  <!-- ✅ Scripts -->
   <script src="/js/config.js"></script>
   <script src="/js/index.js"></script>
 </body>
