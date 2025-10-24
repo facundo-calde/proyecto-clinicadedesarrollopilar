@@ -11,13 +11,3 @@ yarn-error.log*
 # Logs
 logs
 *.log
-pero 
-# Build
-dist/
-build/
-coverage/
-
-# Sistema
-.DS_Store
-Thumbs.db
-
