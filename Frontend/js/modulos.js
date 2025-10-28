@@ -180,20 +180,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const arr = (v) => Array.isArray(v) ? v : (v ? [v] : []);
 
-      const normAreaEntry = (x) => {
-        if (!x) return null;
-        if (typeof x === 'string') return { nombre: x.trim(), nivel: '' };
-        if (typeof x === 'object') {
-          const nombre = (x.nombre || x.name || x.titulo || x.area || '').toString().trim();
-          const nivel  = (
-            x.nivel ?? x.Nivel ?? x.nivelArea ?? x.nivel_area ??
-            x.nivelProfesional ?? x.grado ?? x.categoria ?? x.seniority ?? ''
-          ).toString().trim();
-          if (!nombre && !nivel) return null;
-          return { nombre, nivel };
-        }
-        return null;
-      };
+ // dentro de botonCargar.addEventListener(...) -> helpers
+const normAreaEntry = (x) => {
+  if (!x) return null;
+  if (typeof x === 'string') return { nombre: x.trim(), nivel: '' };
+  if (typeof x === 'object') {
+    // ⬇️ ahora contempla areaNombre también
+    const nombre = (
+      x.nombre || x.name || x.titulo || x.area || x.areaNombre || ''
+    ).toString().trim();
+    const nivel  = (
+      x.nivel ?? x.Nivel ?? x.nivelArea ?? x.nivel_area ??
+      x.nivelProfesional ?? x.grado ?? x.categoria ?? x.seniority ?? ''
+    ).toString().trim();
+    if (!nombre && !nivel) return null;
+    return { nombre, nivel };
+  }
+  return null;
+};
+
 
       const pairAreasLevels = (areas = [], niveles = []) => areas.map((a, i) => {
         const nombre = (typeof a === 'string' ? a : (a?.nombre || a?.name || a?.area || '')).toString().trim();

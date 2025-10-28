@@ -143,19 +143,22 @@ const arr = (v) => Array.isArray(v) ? v : (v ? [v] : []);
 
 function normAreaEntry(x){
   if (!x) return null;
-  if (typeof x === "string") return { nombre: x.trim(), nivel: "" };
-  if (typeof x === "object"){
+  if (typeof x === 'string') return { nombre: x.trim(), nivel: '' };
+  if (typeof x === 'object'){
+    // ⬇️ incluye areaNombre
     const nombre =
-      (x.nombre || x.name || x.titulo || x.area || "").toString().trim();
+      (x.nombre || x.name || x.titulo || x.area || x.areaNombre || '')
+      .toString().trim();
     const nivel =
       (x.nivel ?? x.Nivel ?? x.nivelArea ?? x.nivel_area ??
-       x.nivelProfesional ?? x.grado ?? x.categoria ?? x.seniority ?? "")
+       x.nivelProfesional ?? x.grado ?? x.categoria ?? x.seniority ?? '')
       .toString().trim();
     if (!nombre && !nivel) return null;
     return { nombre, nivel };
   }
   return null;
 }
+
 
 function pairAreasLevels(areas = [], niveles = []) {
   return areas.map((a, i) => {
