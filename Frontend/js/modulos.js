@@ -155,9 +155,16 @@ document.addEventListener('DOMContentLoaded', () => {
     `;
   }
 
- // ---------- Crear módulo (una columna | Fonoaudiología + Psicopedagogía | muestra Área — Nivel) ----------
+ // ---------- Crear módulo (una columna | Fonoaudiología + Psicopedagogía | muestra Área — Nivel + ARS) ----------
 if (botonCargar) {
   botonCargar.addEventListener('click', async () => {
+    // 0) Helper ARS
+    const formatARS = (v) => new Intl.NumberFormat("es-AR", {
+      style: "currency",
+      currency: "ARS",
+      minimumFractionDigits: 2
+    }).format(Number.isFinite(v) ? v : 0);
+
     // 1) Traer usuarios
     let usuarios = [];
     try {
@@ -182,8 +189,7 @@ if (botonCargar) {
       if (!x) return null;
       if (typeof x === 'string') return { nombre: x.trim(), nivel: '' };
       if (typeof x === 'object') {
-        // incluye areaNombre
-        const nombre = (x.nombre || x.name || x.titulo || x.area || x.areaNombre || '').toString().trim();
+        const nombre = (x.nombre || x.name || x.titulo || x.area || '').toString().trim();
         const nivel  = (
           x.nivel ?? x.Nivel ?? x.nivelArea ?? x.nivel_area ??
           x.nivelProfesional ?? x.grado ?? x.categoria ?? x.seniority ?? ''
@@ -280,7 +286,7 @@ if (botonCargar) {
     const coordinadores = candidatos.filter(u => hasRolCanon(u, 'coordinador', 'directora'));
     const pasantes      = candidatos.filter(u => hasRolCanon(u, 'pasante'));
 
-    // 3) UI: una sola columna con Área — Nivel visible
+    // 3) UI: una sola columna con Área — Nivel visible (con fallback de nivel)
     const renderRows = (arr, rolKey, titulo) => {
       if (!arr.length) return `<div class="empty">No hay ${titulo} en esas áreas</div>`;
       return `
@@ -288,8 +294,8 @@ if (botonCargar) {
         ${arr
           .sort((a,b)=>fullName(a).localeCompare(fullName(b), 'es'))
           .map(u => {
-            const principal = getAreaPrincipalWithLevel(u);
-            const allAreas  = formatAllAreas(u);
+            const principal = getAreaPrincipalWithLevel(u);           // {nombre, nivel}
+            const allAreas  = formatAllAreas(u);                       // tooltip
             const nivelFallback = (
               principal.nivel ||
               (Array.isArray(u.nivelesProfesional) && u.nivelesProfesional[0]) ||
@@ -309,7 +315,7 @@ if (botonCargar) {
                        class="monto-input"
                        data-rol="${rolKey}"
                        data-user="${u._id}"
-                       placeholder="0" />
+                       placeholder="${formatARS(0)}" />
               </div>
             `;
           }).join('')}
@@ -323,23 +329,25 @@ if (botonCargar) {
         <style>
           .form-col{display:flex;flex-direction:column;gap:14px}
           .section-title{font-weight:700;margin:10px 0 4px}
-          .person-row{display:grid;grid-template-columns:1fr 120px;gap:8px;align-items:center;border-bottom:1px dashed #eee;padding:4px 0}
+          .person-row{display:grid;grid-template-columns:1fr 140px;gap:8px;align-items:center;border-bottom:1px dashed #eee;padding:4px 0}
           .person-row:last-child{border-bottom:none}
           .name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
           .area-badge{display:inline-block;margin-left:8px;padding:2px 6px;font-size:11px;line-height:1;border:1px solid #e5e7eb;border-radius:999px;background:#f8fafc;color:#334155;vertical-align:middle;max-width:280px;text-overflow:ellipsis;overflow:hidden}
           .empty{color:#888;font-style:italic;padding:6px}
           .swal2-input{width:100%}
           .panel{border:1px solid #e5e7eb;border-radius:10px;padding:10px;max-height:340px;overflow:auto}
+          .money-hint{font-size:12px;color:#555;margin-top:4px}
         </style>
 
         <div class="form-col">
           <div>
             <label for="modulo_numero"><strong>Número del módulo:</strong></label>
-            <input id="modulo_numero" type="number" min="0" step="1" class="swal2-input">
+            <input id="modulo_numero" type="number" min="0" step="1" class="swal2-input" placeholder="Ej: 101">
           </div>
           <div>
             <label for="valor_padres"><strong>Pagan los padres (valor del módulo):</strong></label>
-            <input id="valor_padres" type="number" min="0" step="0.01" class="swal2-input">
+            <input id="valor_padres" type="number" min="0" step="0.01" class="swal2-input" placeholder="${formatARS(0)}">
+            <div class="money-hint">Se mostrará como ${formatARS(12345.67)}.</div>
           </div>
 
           <div class="section-title">VALORES FONOAUDIOLOGÍA - PSICOPEDAGOGÍA</div>
@@ -354,30 +362,24 @@ if (botonCargar) {
       confirmButtonText: 'Guardar',
       cancelButtonText: 'Cancelar',
       preConfirm: () => {
-        const numero = parseInt(document.getElementById('modulo_numero').value, 10);
-        // ahora es opcional; si está vacío -> 0
-        const valorPadres = Number(document.getElementById('valor_padres').value) || 0;
+        const numeroEl = document.getElementById('modulo_numero');
+        const padresEl = document.getElementById('valor_padres');
 
-        if (isNaN(numero)) {
-          return Swal.showValidationMessage('⚠️ El número del módulo es obligatorio');
-        }
+        const numero = parseInt(numeroEl.value, 10);
+        const valorPadres = Number(padresEl.value);
+        if (Number.isNaN(numero)) return Swal.showValidationMessage('⚠️ El número del módulo es obligatorio');
 
         const take = (rol) => [...document.querySelectorAll(`.monto-input[data-rol="${rol}"]`)]
           .map(i => ({ usuario: i.dataset.user, monto: Number(i.value) || 0 }))
           .filter(x => x.usuario && x.monto > 0);
 
-        const profesionalesAsignaciones = take('profesional');
-        const coordinadoresAsignaciones = take('coordinador');
-        const pasantesAsignaciones      = take('pasante');
-
-        // ❌ Sin validar contra valorPadres. Cada uno puede cobrar 0, una parte o el total.
-
+        // SIN validación de suma vs. valorPadres (se puede cargar 100%, parcial o 0)
         return {
           numero,
-          valorPadres,
-          profesionales: profesionalesAsignaciones,
-          coordinadores: coordinadoresAsignaciones,
-          pasantes: pasantesAsignaciones
+          valorPadres: Number.isNaN(valorPadres) ? 0 : valorPadres,
+          profesionales: take('profesional'),
+          coordinadores: take('coordinador'),
+          pasantes: take('pasante')
         };
       }
     });
@@ -402,6 +404,7 @@ if (botonCargar) {
     }
   });
 }
+
 
 
   // ---------- Handlers globales (usados por onclick en la tabla) ----------
