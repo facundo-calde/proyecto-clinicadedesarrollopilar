@@ -257,25 +257,24 @@ exports.crearUsuario = async (req, res) => {
   }
 };
 
-/* ------------------------ Listar ------------------------ */
 exports.obtenerUsuarios = async (_req, res) => {
   try {
-    const lista = await Usuario.find().select("-contrasena").lean();
-
-    const resp = lista.map(u => ({
-      ...u,
-      pasanteNivel: u.nivelPasante,                     // espejo para el front en listados
-      documentos: mapDocsForView(u.documentos),
-      areasProfesionalDetalladas: buildAreasDetalladas(u, 'Profesional'),
-      areasCoordinadasDetalladas: buildAreasDetalladas(u, 'Coordinador')
+    const lista = await Usuario.find().select("-contrasena");
+    res.status(200).json(lista.map(u => {
+      const o = u.toObject();
+      return {
+        ...o,
+        pasanteNivel: o.nivelPasante, // espejo
+        nivelRol: o.rol === "Profesional" ? (o.nivelProfesional || o.nivel) :
+                  o.rol === "Pasante" ? o.nivelPasante : undefined,
+        documentos: mapDocsForView(o.documentos)
+      };
     }));
-
-    res.status(200).json(resp);
   } catch (err) {
-    console.error('obtenerUsuarios error:', err);
     res.status(500).json({ error: "Error al obtener usuarios" });
   }
 };
+
 
 /* ------------------------ Obtener por ID ------------------------ */
 exports.getUsuarioPorId = async (req, res) => {

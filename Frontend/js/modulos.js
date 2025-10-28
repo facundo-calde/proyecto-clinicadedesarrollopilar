@@ -219,7 +219,8 @@ if (botonCargar) {
             const parts = [];
             if (principal.nombre)  parts.push(principal.nombre);
             if (principal.nivel)   parts.push(principal.nivel);
-            const badgeText = parts.join(' — ');
+            const badgeText = [principal.nombre, principal.nivel || u.nivelRol].filter(Boolean).join(' — ');
+
             return `
               <div class="person-row">
                 <div class="name">
