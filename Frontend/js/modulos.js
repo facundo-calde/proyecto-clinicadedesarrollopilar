@@ -136,7 +136,9 @@ if (botonCargar) {
     try {
       const res = await apiFetch('/usuarios', { method: 'GET' });
       if (res.ok) usuarios = await res.json();
-    } catch (e) { console.warn('No se pudieron obtener usuarios:', e); }
+    } catch (e) {
+      console.warn('No se pudieron obtener usuarios:', e);
+    }
 
     // ===== Helpers =====
     const fullName = (u) => {
@@ -148,25 +150,88 @@ if (botonCargar) {
       ].map(x => (x || '').toString().trim()).filter(Boolean);
       return cands[0] || 'Sin nombre';
     };
+    const arr = (v) => Array.isArray(v) ? v : (v ? [v] : []);
 
-    // --- Áreas desde backend ---
-    const getAreasDetailed = (u) => {
-      const prof = Array.isArray(u.areasProfesionalDetalladas) ? u.areasProfesionalDetalladas : [];
-      const coord = Array.isArray(u.areasCoordinadasDetalladas) ? u.areasCoordinadasDetalladas : [];
-      return [...prof, ...coord];
+    // Normaliza una entrada de área a {nombre, nivel}
+    const normAreaEntry = (x) => {
+      if (!x) return null;
+      if (typeof x === 'string') return { nombre: x.trim(), nivel: '' };
+      if (typeof x === 'object') {
+        const nombre = (x.nombre || x.name || x.titulo || x.area || '').toString().trim();
+        const nivel = (
+          x.nivel ?? x.Nivel ?? x.nivelArea ?? x.nivel_area ??
+          x.nivelProfesional ?? x.grado ?? x.categoria ?? x.seniority ?? ''
+        ).toString().trim();
+        if (!nombre && !nivel) return null;
+        return { nombre, nivel };
+      }
+      return null;
     };
 
-    const hasAreaFP = (u) =>
-      getAreasDetailed(u).some(a =>
-        /fonoaudiolog[ií]a/i.test(a.nombre) || /psicopedagog[ií]a/i.test(a.nombre)
-      );
+    const pairAreasLevels = (areas = [], niveles = []) =>
+      areas.map((a, i) => {
+        const nombre = (typeof a === 'string' ? a : (a?.nombre || a?.name || a?.area || '')).toString().trim();
+        const nivel  = (niveles[i] ?? a?.nivel ?? a?.nivelProfesional ?? '').toString().trim();
+        if (!nombre && !nivel) return null;
+        return { nombre, nivel };
+      }).filter(Boolean);
 
+    // --- Áreas (usa backend si lo manda, si no reconstruye) ---
+    const getAreasDetailed = (u) => {
+      // 1) Si backend ya envía detalladas, usarlas directo
+      const profDet = Array.isArray(u.areasProfesionalDetalladas) ? u.areasProfesionalDetalladas : [];
+      const coordDet = Array.isArray(u.areasCoordinadasDetalladas) ? u.areasCoordinadasDetalladas : [];
+      let list = [...profDet, ...coordDet].map(normAreaEntry).filter(Boolean);
+
+      if (list.length) return list;
+
+      // 2) Reconstrucción desde campos "viejos"
+      const pools = [
+        u.areasProfesional, u.areasCoordinadas, u.areas, u.area, u.areaPrincipal
+      ];
+      list = pools.flatMap(arr).map(normAreaEntry).filter(Boolean);
+
+      // Arrays paralelos
+      const paralelos = [
+        ['areasProfesional', 'nivelesProfesional'],
+        ['areasCoordinadas', 'nivelesCoordinadas'],
+        ['areas', 'nivelesAreas'],
+      ];
+      paralelos.forEach(([aKey, nKey]) => {
+        const A = arr(u?.[aKey]); const N = arr(u?.[nKey]);
+        if (A.length && N.length) list = list.concat(pairAreasLevels(A, N));
+      });
+
+      // Nivel global si ninguno tiene nivel
+      if (!list.some(a => a.nivel)) {
+        const userLevel = (
+          u.nivel ?? u.Nivel ?? u.nivelProfesional ?? u.categoria ?? u.grado ?? u.seniority ?? u.pasanteNivel ?? ''
+        ).toString().trim();
+        if (userLevel) list = list.map(a => ({ ...a, nivel: a.nivel || userLevel }));
+      }
+
+      // Compactar duplicados
+      const seen = new Set();
+      list = list.filter(a => {
+        const k = `${a.nombre}|${a.nivel}`;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+
+      return list;
+    };
+
+    // Filtro por Fonoaudiología + Psicopedagogía
+    const isFono     = (s='') => /fonoaudiolog[ií]a/i.test(s);
+    const isPsicoPed = (s='') => /psicopedagog[ií]a/i.test(s);
+    const hasAreaFP = (u) => getAreasDetailed(u).some(a => isFono(a.nombre) || isPsicoPed(a.nombre));
+
+    // Elegir principal (prioriza Fonoaudiología > Psicopedagogía)
     const getAreaPrincipalWithLevel = (u) => {
       const list = getAreasDetailed(u);
       if (!list.length) return { nombre: '', nivel: '' };
-      return list.find(a => /fonoaudiolog[ií]a/i.test(a.nombre)) ||
-             list.find(a => /psicopedagog[ií]a/i.test(a.nombre)) ||
-             list[0];
+      return list.find(a => isFono(a.nombre)) || list.find(a => isPsicoPed(a.nombre)) || list[0];
     };
 
     const formatAllAreas = (u) => {
@@ -216,10 +281,14 @@ if (botonCargar) {
           .map(u => {
             const principal = getAreaPrincipalWithLevel(u);
             const allAreas  = formatAllAreas(u);
-            const parts = [];
-            if (principal.nombre)  parts.push(principal.nombre);
-            if (principal.nivel)   parts.push(principal.nivel);
-            const badgeText = [principal.nombre, principal.nivel || u.nivelRol].filter(Boolean).join(' — ');
+            // si no viene nivel de principal, intentá con campo global de usuario
+            const nivelFallback = (
+              u.nivelRol || u.nivel || u.nivelProfesional || u.categoria || u.grado || u.seniority || u.pasanteNivel || ''
+            );
+            const partes = [];
+            if (principal.nombre)  partes.push(principal.nombre);
+            if (principal.nivel || nivelFallback) partes.push(principal.nivel || nivelFallback);
+            const badgeText = partes.join(' — ');
 
             return `
               <div class="person-row">
@@ -333,6 +402,7 @@ if (botonCargar) {
     }
   });
 }
+
 
 
 
