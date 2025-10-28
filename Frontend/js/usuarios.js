@@ -233,7 +233,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
             <div class="two-col">
               <div>
                 <div class="prefix-wrapper">
-                                    <input class="swal2-input" id="salarioAcuerdo" placeholder="Salario acordado" autocomplete="off" inputmode="numeric">
+                  <input class="swal2-input" id="salarioAcuerdo" placeholder="Salario acordado" autocomplete="off" inputmode="numeric">
                 </div>
                 <input class="swal2-input" id="salarioAcuerdoObs" placeholder="Obs. salario (opcional)" autocomplete="off">
               </div>
@@ -277,9 +277,15 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
                 <option value="Junior">Junior</option>
                 <option value="Senior">Senior</option>
               </select>
+
+              <label><strong>Área de pasante:</strong></label>
+              <select id="pasanteArea" class="swal2-select">
+                <option value="">-- Área --</option>
+                ${AREA_OPTS}
+              </select>
             </div>
 
-            <div id="proSection" class="block" style="display:none%;">
+            <div id="proSection" class="block" style="display:none;">
               <label><strong>Áreas como profesional (con nivel):</strong></label>
               <div id="proList"></div>
               <button type="button" id="btnAddPro" class="mini-btn">+ Agregar área profesional</button>
@@ -329,7 +335,6 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
       const nfARS = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 });
       const cleanNumber = (s) => {
         if (!s) return "";
-        // permito coma o punto como miles, me quedo solo con dígitos
         return (s + "").replace(/\D+/g, "");
       };
       const formatInputARS = (input) => {
@@ -340,11 +345,9 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         };
         input.addEventListener("input", apply);
         input.addEventListener("blur", apply);
-        // formateo inicial si ya trae valor
         apply();
       };
 
-      // Precarga si es edición
       const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = (val ?? ""); };
 
       if (modoEdicion) {
@@ -359,14 +362,13 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         set("whatsapp", u.whatsapp);
         set("mail", u.mail);
 
-        // Salarios: formateo visual en ARS
         const salEl = document.getElementById("salarioAcuerdo");
         const fijoEl = document.getElementById("fijoAcuerdo");
         if (salEl) salEl.value = u.salarioAcuerdo ? nfARS.format(Number(cleanNumber(u.salarioAcuerdo))) : "";
         if (fijoEl) fijoEl.value = u.fijoAcuerdo ? nfARS.format(Number(cleanNumber(u.fijoAcuerdo))) : "";
 
         set("salarioAcuerdoObs", u.salarioAcuerdoObs);
-        set("fijoAcuerdo", ""); // ya lo setee formateado arriba
+        set("fijoAcuerdo", "");
         set("fijoAcuerdoObs", u.fijoAcuerdoObs);
         set("banco", u.banco);
         set("cbu", u.cbu);
@@ -378,6 +380,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         set("usuario", u.usuario);
         if (u.rol) document.getElementById("rol").value = u.rol;
         if (u.pasanteNivel) document.getElementById("pasanteNivel").value = u.pasanteNivel;
+        if (u.pasanteArea)  document.getElementById("pasanteArea").value  = u.pasanteArea;
       } else {
         const usuarioEl = document.getElementById("usuario");
         const passEl    = document.getElementById("contrasena");
@@ -389,7 +392,6 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         }, 0);
       }
 
-      // Activar formato ARS en inputs
       formatInputARS(document.getElementById("salarioAcuerdo"));
       formatInputARS(document.getElementById("fijoAcuerdo"));
 
@@ -417,8 +419,8 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         if (areaNombre) row.querySelector(".coord-area").value = areaNombre;
         row.querySelector(".btn-del-coord").addEventListener("click", () => row.remove());
       }
-      btnAddPro.addEventListener("click", () => addProRow());
-      btnAddCoord.addEventListener("click", () => addCoordRow());
+      btnAddPro?.addEventListener("click", () => addProRow());
+      btnAddCoord?.addEventListener("click", () => addCoordRow());
 
       const ROLES_PROF  = new Set(["Profesional", "Coordinador y profesional"]);
       const ROLES_COORD = new Set(["Coordinador de área", "Coordinador y profesional"]);
@@ -434,6 +436,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
 
         if (proSection.style.display !== "none" && !proList.querySelector(".pro-row")) addProRow();
         if (coordSection.style.display !== "none" && !coordList.querySelector(".coord-row")) addCoordRow();
+
         pasanteSection.style.display = (rol === "Pasante") ? "block" : "none";
       }
       syncVisibility();
@@ -531,7 +534,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
     },
     preConfirm: () => {
       const get = id => document.getElementById(id)?.value?.trim();
-      const onlyDigits = s => (s || "").replace(/\D+/g, ""); // queda solo número (pesos enteros)
+      const onlyDigits = s => (s || "").replace(/\D+/g, "");
 
       const rol = get("rol");
 
@@ -553,6 +556,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
       const ROLES_PROF  = new Set(["Profesional", "Coordinador y profesional"]);
       const ROLES_COORD = new Set(["Coordinador de área", "Coordinador y profesional"]);
 
+      // Validaciones por rol
       if (ROLES_PROF.has(rol) && areasProfesional.length === 0) {
         Swal.showValidationMessage("Agregá al menos un área con nivel para el rol profesional.");
         return false;
@@ -560,6 +564,13 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
       if (ROLES_COORD.has(rol) && areasCoordinadas.length === 0) {
         Swal.showValidationMessage("Agregá al menos un área para coordinación.");
         return false;
+      }
+      if (rol === "Pasante") {
+        const pasanteArea = get("pasanteArea");
+        if (!pasanteArea) {
+          Swal.showValidationMessage("Seleccioná el área a la que pertenece el pasante.");
+          return false;
+        }
       }
 
       return {
@@ -573,7 +584,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         registroNacionalDePrestadores: get("registroNacionalDePrestadores"),
         whatsapp: get("whatsapp"),
         mail: get("mail"),
-        salarioAcuerdo: onlyDigits(get("salarioAcuerdo")), // limpio $ y puntos
+        salarioAcuerdo: onlyDigits(get("salarioAcuerdo")),
         salarioAcuerdoObs: get("salarioAcuerdoObs"),
         fijoAcuerdo: onlyDigits(get("fijoAcuerdo")),
         fijoAcuerdoObs: get("fijoAcuerdoObs"),
@@ -586,6 +597,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         tipoCuenta: get("tipoCuenta"),
         rol,
         pasanteNivel: get("pasanteNivel"),
+        pasanteArea: get("pasanteArea"),
         usuario: get("usuario"),
         contrasena: get("contrasena"),
         seguroMalaPraxis: get("seguroMalaPraxis") || undefined,
@@ -637,6 +649,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
     Swal.fire("Error", "No se pudo guardar el usuario", "error");
   });
 }
+
 
 
 

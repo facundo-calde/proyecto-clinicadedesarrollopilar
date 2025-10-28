@@ -7,8 +7,6 @@ const documentoSchema = new mongoose.Schema({
   url:         { type: String, required: true },
   fechaSubida: { type: Date, default: Date.now }
 });
-
-// ✅ salida plana (incluye virtuals si los agregás luego)
 documentoSchema.set('toJSON',   { virtuals: true, versionKey: false });
 documentoSchema.set('toObject', { virtuals: true, versionKey: false });
 
@@ -24,19 +22,24 @@ const ROLES = Object.freeze([
   'Administrativo',
   'Recepcionista',
   'Pasante',
-  'Área' // 👈 nuevo rol
+  'Área'
 ]);
 
-
-// Profesional por área (permite distintos niveles por área)
+// Profesional por área
 const areaProfesionalSchema = new mongoose.Schema({
-  areaId:     { type: mongoose.Schema.Types.ObjectId, ref: 'Area' }, // recomendado
-  areaNombre: { type: String },                                       // fallback/legacy
+  areaId:     { type: mongoose.Schema.Types.ObjectId, ref: 'Area' },
+  areaNombre: { type: String },
   nivel:      { type: String, enum: NIVELES_PRO, required: true }
 }, { _id: false });
 
 // Coordinación por área
 const areaCoordinadaSchema = new mongoose.Schema({
+  areaId:     { type: mongoose.Schema.Types.ObjectId, ref: 'Area' },
+  areaNombre: { type: String }
+}, { _id: false });
+
+// 👇 Nuevo: área para Pasante (una sola)
+const pasanteAreaSchema = new mongoose.Schema({
   areaId:     { type: mongoose.Schema.Types.ObjectId, ref: 'Area' },
   areaNombre: { type: String }
 }, { _id: false });
@@ -50,7 +53,6 @@ const usuarioSchema = new mongoose.Schema({
   cuit: String,
   matricula: String,
 
-  // 👇 ahora tolera '' convirtiéndolo a undefined (no rompe enum)
   jurisdiccion: {
     type: String,
     enum: ['Provincial', 'Nacional'],
@@ -64,9 +66,9 @@ const usuarioSchema = new mongoose.Schema({
 
   // 💰 acuerdos + observaciones
   salarioAcuerdo: String,
-  salarioAcuerdoObs: String,  // 👈 nuevo
+  salarioAcuerdoObs: String,
   fijoAcuerdo: String,
-  fijoAcuerdoObs: String,     // 👈 nuevo
+  fijoAcuerdoObs: String,
 
   banco: String,
   cbu: String,
@@ -76,20 +78,21 @@ const usuarioSchema = new mongoose.Schema({
   nombreFiguraExtracto: String,
   tipoCuenta: String,
 
-  // ✅ Detalle por rol/área
-  areasProfesional: [areaProfesionalSchema], // {areaId/areaNombre, nivel: 'Junior'|'Senior'}
-  areasCoordinadas: [areaCoordinadaSchema],  // {areaId/areaNombre}
+  // Detalle por rol/área
+  areasProfesional: [areaProfesionalSchema],
+  areasCoordinadas: [areaCoordinadaSchema],
 
   // ⚠️ LEGACY: lista “chata” (se autollenará)
   areas: [String],
 
   rol: { type: String, enum: ROLES, required: true },
 
-  // Solo para roles que incluyen parte profesional (no obligatorio)
+  // Solo para roles con parte profesional (no obligatorio)
   seguroMalaPraxis: String,
 
-  // 👇 Para el rol "Pasante": nivel global (no por área)
-  nivelPasante: { type: String, enum: NIVELES_PRO, default: undefined },
+  // 👇 Para Pasante: nivel + área
+  pasanteNivel: { type: String, enum: NIVELES_PRO, default: undefined }, // <— renombrado para alinear con frontend
+  pasanteArea:  { type: pasanteAreaSchema, default: undefined },         // <— NUEVO
 
   usuario: {
     type: String,
@@ -106,7 +109,6 @@ const usuarioSchema = new mongoose.Schema({
   documentos: [documentoSchema]
 }, { timestamps: true });
 
-// ✅ salida plana (incluye virtuals si los agregás luego)
 usuarioSchema.set('toJSON',   { virtuals: true, versionKey: false });
 usuarioSchema.set('toObject', { virtuals: true, versionKey: false });
 
@@ -131,9 +133,9 @@ usuarioSchema.pre('validate', function (next) {
       }
     }
     // Seguro NO obligatorio
-    this.nivelPasante = undefined; // por si cambió el rol
+    this.pasanteNivel = undefined;
+    this.pasanteArea  = undefined;
   } else {
-    // Si no es profesional, vaciamos su estructura
     this.areasProfesional = [];
     this.seguroMalaPraxis = undefined;
   }
@@ -143,22 +145,29 @@ usuarioSchema.pre('validate', function (next) {
     if (!Array.isArray(this.areasCoordinadas) || this.areasCoordinadas.length === 0) {
       this.invalidate('areasCoordinadas', 'Debe tener al menos un área para coordinación');
     }
+    this.pasanteNivel = undefined;
+    this.pasanteArea  = undefined;
   } else {
     this.areasCoordinadas = [];
   }
 
-  // Pasante: requiere nivel general (Junior/Senior)
+  // Pasante: requiere nivel + área (id o nombre)
   if (esPasante) {
-    if (!this.nivelPasante) {
-      this.invalidate('nivelPasante', 'El rol Pasante requiere seleccionar nivel (Junior/Senior)');
+    if (!this.pasanteNivel) {
+      this.invalidate('pasanteNivel', 'El rol Pasante requiere seleccionar nivel (Junior/Senior)');
     }
-    // No requiere áreas profesionales ni coordinadas
+    const a = this.pasanteArea || {};
+    const tieneArea = Boolean(a.areaId || (a.areaNombre && a.areaNombre.trim()));
+    if (!tieneArea) {
+      this.invalidate('pasanteArea', 'El rol Pasante requiere asignar un área');
+    }
+    // No usa profesional/coord ni seguro
     this.areasProfesional = [];
     this.areasCoordinadas = [];
     this.seguroMalaPraxis = undefined;
   } else {
-    // Si cambió a otro rol, limpiamos nivelPasante
-    this.nivelPasante = undefined;
+    this.pasanteNivel = undefined;
+    this.pasanteArea  = undefined;
   }
 
   next();
@@ -169,6 +178,7 @@ usuarioSchema.pre('save', function (next) {
   const nombres = new Set();
   (this.areasProfesional || []).forEach(a => { if (a?.areaNombre) nombres.add(a.areaNombre); });
   (this.areasCoordinadas || []).forEach(a => { if (a?.areaNombre) nombres.add(a.areaNombre); });
+  if (this.pasanteArea?.areaNombre) nombres.add(this.pasanteArea.areaNombre); // <— incluir Pasante
   this.areas = Array.from(nombres);
   next();
 });
