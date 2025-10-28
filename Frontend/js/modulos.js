@@ -59,41 +59,42 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function renderListado(mods) {
-    const rows = mods.map(m => `
-      <tr>
-        <td>${m.numero}</td>
-        <td>01-2027</td>
-        <td>$${(m.valoresModulo?.paciente ?? 0).toLocaleString()}</td>
-        <td>$${(m.areasExternas?.profesional ?? 0).toLocaleString()}</td>
-        <td>$${(m.habilidadesSociales?.profesional ?? 0).toLocaleString()}</td>
-        <td>Activo</td>
-        <td>
-          <button class="btn-modificar" onclick="modificarModulo(${m.numero})">✏️</button>
-          <button class="btn-borrar"    onclick="borrarModulo(${m.numero})">🗑️</button>
-        </td>
-      </tr>
-    `).join('');
+function renderListado(mods) {
+  const rows = mods.map(m => `
+    <tr>
+      <td>${m.numero}</td>
+      <td>01-2027</td>
+      <td>$${Number(m.valorPadres ?? 0).toLocaleString()}</td>
+      <td>${Array.isArray(m.profesionales) ? m.profesionales.length : 0}</td>
+      <td>${Array.isArray(m.coordinadores) ? m.coordinadores.length : 0}</td>
+      <td>Activo</td>
+      <td>
+        <button class="btn-modificar" onclick="modificarModulo(${m.numero})">✏️</button>
+        <button class="btn-borrar"    onclick="borrarModulo(${m.numero})">🗑️</button>
+      </td>
+    </tr>
+  `).join('');
 
-    contenedorLista.innerHTML = `
-      <div class="table-container">
-        <table class="modulo-detalle">
-          <thead>
-            <tr>
-              <th>Módulo</th>
-              <th>Última modificación</th>
-              <th>Valor FONO-PSICO</th>
-              <th>Valor ÁREAS EXTERNAS</th>
-              <th>Valor HABILIDADES SOCIALES</th>
-              <th>Estado</th>
-              <th>Acción</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
-    `;
-  }
+  contenedorLista.innerHTML = `
+    <div class="table-container">
+      <table class="modulo-detalle">
+        <thead>
+          <tr>
+            <th>Módulo</th>
+            <th>Última modificación</th>
+            <th>Valor padres</th>
+            <th># Profesionales</th>
+            <th># Coordinadores</th>
+            <th>Estado</th>
+            <th>Acción</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
 
   // ---------- Autocompletado / búsqueda ----------
   if (inputBusqueda) {
