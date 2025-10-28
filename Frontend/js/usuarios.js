@@ -380,7 +380,8 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         set("usuario", u.usuario);
         if (u.rol) document.getElementById("rol").value = u.rol;
         if (u.pasanteNivel) document.getElementById("pasanteNivel").value = u.pasanteNivel;
-        if (u.pasanteArea)  document.getElementById("pasanteArea").value  = u.pasanteArea;
+        if (u.pasanteArea)  document.getElementById("pasanteArea").value  =
+          (typeof u.pasanteArea === "string" ? u.pasanteArea : (u.pasanteArea?.areaNombre || ""));
       } else {
         const usuarioEl = document.getElementById("usuario");
         const passEl    = document.getElementById("contrasena");
@@ -566,12 +567,19 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         return false;
       }
       if (rol === "Pasante") {
-        const pasanteArea = get("pasanteArea");
-        if (!pasanteArea) {
+        const pasanteAreaSel = get("pasanteArea");
+        if (!pasanteAreaSel) {
           Swal.showValidationMessage("Seleccioná el área a la que pertenece el pasante.");
           return false;
         }
       }
+
+      // Armar objeto pasanteArea acorde al esquema
+      const pasanteAreaObj = (() => {
+        const val = get("pasanteArea");
+        if (!val) return undefined;
+        return { areaNombre: val };
+      })();
 
       return {
         nombreApellido: get("nombreApellido"),
@@ -597,7 +605,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         tipoCuenta: get("tipoCuenta"),
         rol,
         pasanteNivel: get("pasanteNivel"),
-        pasanteArea: get("pasanteArea"),
+        pasanteArea: pasanteAreaObj, // 👈 ahora es objeto { areaNombre }
         usuario: get("usuario"),
         contrasena: get("contrasena"),
         seguroMalaPraxis: get("seguroMalaPraxis") || undefined,
@@ -623,8 +631,8 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
       const fd = new FormData();
       for (const [key, val] of Object.entries(result.value)) {
         if (val == null) continue;
-        if (key === "areasProfesional" || key === "areasCoordinadas") {
-          fd.append(key, JSON.stringify(val));
+        if (key === "areasProfesional" || key === "areasCoordinadas" || key === "pasanteArea") {
+          fd.append(key, JSON.stringify(val)); // 👈 stringify objetos/arrays
         } else {
           fd.append(key, val);
         }
