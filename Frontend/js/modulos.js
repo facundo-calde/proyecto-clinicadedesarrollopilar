@@ -128,7 +128,7 @@ function renderListado(mods) {
     });
   }
 
-  // ---------- Crear módulo (todos los roles en una sola columna) ----------
+  // ---------- Crear módulo (una sola columna | Fonoaudiología + Psicopedagogía) ----------
 if (botonCargar) {
   botonCargar.addEventListener('click', async () => {
     // Traer usuarios
@@ -138,7 +138,7 @@ if (botonCargar) {
       if (res.ok) usuarios = await res.json();
     } catch (e) { console.warn('No se pudieron obtener usuarios:', e); }
 
-    // Helpers para roles/áreas
+    // Helpers
     const fullName = (u) => {
       const cands = [
         u.nombreApellido, u.apellidoNombre, u.nombreCompleto,
@@ -152,8 +152,14 @@ if (botonCargar) {
     const getAreas = (u) =>
       [u.areasProfesional, u.areasCoordinadas, u.areas, u.area, u.areaPrincipal]
         .flatMap(getArr).map(a => (a || '').toString().trim()).filter(Boolean);
-    const hasAreaFP = (u) => /(fonoaudiolog[íi]a|psicolog[íi]a)/i.test(getAreas(u).join(' '));
 
+    // ⬇️ Filtro por Fonoaudiología + Psicopedagogía (con y sin acentos)
+    const hasAreaFP = (u) => {
+      const text = getAreas(u).join(' ').toLowerCase();
+      return /(fonoaudiolog[ií]a|psicopedagog[ií]a)/i.test(text);
+    };
+
+    // Roles canónicos según tu lista
     const mapRolCanonical = (r = '') => {
       const s = String(r).trim().toLowerCase();
       switch (s) {
@@ -180,7 +186,7 @@ if (botonCargar) {
     };
 
     // Filtrar candidatos
-    const candidatos   = usuarios.filter(u => hasAreaFP(u));
+    const candidatos    = usuarios.filter(u => hasAreaFP(u));
     const profesionales = candidatos.filter(u => hasRolCanon(u, 'profesional'));
     const coordinadores = candidatos.filter(u => hasRolCanon(u, 'coordinador', 'directora'));
     const pasantes      = candidatos.filter(u => hasRolCanon(u, 'pasante'));
@@ -218,6 +224,7 @@ if (botonCargar) {
           .empty{color:#888;font-style:italic;padding:6px}
           .swal2-input{width:100%}
           .notice{font-size:12px;color:#555}
+          .panel{border:1px solid #e5e7eb;border-radius:10px;padding:10px;max-height:340px;overflow:auto}
         </style>
 
         <div class="form-col">
@@ -231,7 +238,7 @@ if (botonCargar) {
             <div class="notice">Distribuí este total entre las personas de abajo.</div>
           </div>
 
-          <div class="section-title">VALORES FONOAUDIOLOGÍA - PSICOLOGÍA</div>
+          <div class="section-title">VALORES FONOAUDIOLOGÍA - PSICOPEDAGOGÍA</div>
           <div class="panel">
             ${renderRows(profesionales, 'profesional', 'Profesionales')}
             ${renderRows(coordinadores, 'coordinador', 'Coordinadores')}
@@ -275,6 +282,7 @@ if (botonCargar) {
 
     if (!formValues) return;
 
+    // Guardar
     try {
       const res = await apiFetch(`/modulos`, {
         method: 'POST',
