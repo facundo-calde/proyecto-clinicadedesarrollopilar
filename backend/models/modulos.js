@@ -1,3 +1,4 @@
+// backend/models/modulos.js
 const mongoose = require('mongoose');
 const { Schema } = mongoose;
 
@@ -9,25 +10,17 @@ const ItemAsignacion = new Schema({
 const moduloSchema = new Schema({
   numero: { type: Number, required: true, unique: true, index: true },
 
-  // Total abonado por padres
+  // total pagado por padres
   valorPadres: { type: Number, default: 0 },
 
-  // Asignaciones por persona
+  // asignaciones por persona
   profesionales: [ItemAsignacion],
   coordinadores: [ItemAsignacion],
   pasantes:      [ItemAsignacion],
 
-  // Campos existentes que mantenés
-  areasExternas: {
-    paciente: Number,
-    porcentaje: Number,
-    profesional: Number,
-  },
-  habilidadesSociales: {
-    paciente: Number,
-    porcentaje: Number,
-    profesional: Number,
-  },
+  // campos que ya tenías
+  areasExternas: { paciente: Number, porcentaje: Number, profesional: Number },
+  habilidadesSociales: { paciente: Number, porcentaje: Number, profesional: Number }
 }, { timestamps: true });
 
 moduloSchema.set('toJSON', {
@@ -37,4 +30,3 @@ moduloSchema.set('toJSON', {
 });
 
 module.exports = mongoose.model('Modulo', moduloSchema);
-

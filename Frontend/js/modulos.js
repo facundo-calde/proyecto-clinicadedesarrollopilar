@@ -128,20 +128,17 @@ function renderListado(mods) {
     });
   }
 
-  // ---------- Crear módulo (con monto por persona) ----------
+  // ---------- Crear módulo (todos los roles en una sola columna) ----------
 if (botonCargar) {
   botonCargar.addEventListener('click', async () => {
-    // 1) Traer usuarios
+    // Traer usuarios
     let usuarios = [];
     try {
       const res = await apiFetch('/usuarios', { method: 'GET' });
       if (res.ok) usuarios = await res.json();
-    } catch (e) {
-      console.warn('No se pudieron obtener usuarios:', e);
-    }
+    } catch (e) { console.warn('No se pudieron obtener usuarios:', e); }
 
-    // ---- helpers robustos ----
-    const getArr = (v) => Array.isArray(v) ? v : (v ? [v] : []);
+    // Helpers para roles/áreas
     const fullName = (u) => {
       const cands = [
         u.nombreApellido, u.apellidoNombre, u.nombreCompleto,
@@ -151,54 +148,71 @@ if (botonCargar) {
       ].map(x => (x || '').toString().trim()).filter(Boolean);
       return cands[0] || 'Sin nombre';
     };
+    const getArr = (v) => Array.isArray(v) ? v : (v ? [v] : []);
     const getAreas = (u) =>
       [u.areasProfesional, u.areasCoordinadas, u.areas, u.area, u.areaPrincipal]
         .flatMap(getArr).map(a => (a || '').toString().trim()).filter(Boolean);
     const hasAreaFP = (u) => /(fonoaudiolog[íi]a|psicolog[íi]a)/i.test(getAreas(u).join(' '));
-    const rolesOf = (u) => {
-      const base = [u.rol, u.role, ...(Array.isArray(u.roles) ? u.roles : [])]
-        .filter(Boolean).map(r => r.toString().toLowerCase().trim());
-      return new Set(base);
+
+    const mapRolCanonical = (r = '') => {
+      const s = String(r).trim().toLowerCase();
+      switch (s) {
+        case 'directoras':                   return 'directora';
+        case 'coordinador y profesional':    return 'coord_y_prof';
+        case 'coordinador de área':
+        case 'coordinador de area':          return 'coordinador';
+        case 'profesional':                  return 'profesional';
+        case 'pasante':                      return 'pasante';
+        default:                             return s;
+      }
     };
-    const hasRol = (u, ...rols) => {
-      const R = rolesOf(u);
-      return rols.some(r => R.has(r.toLowerCase()));
+    const rolesCanonicos = (u) => {
+      const crudos = [u.rol, u.role, u.cargo, ...(Array.isArray(u.roles) ? u.roles : [])].filter(Boolean);
+      const expandidos = crudos.flatMap(r => {
+        const canon = mapRolCanonical(r);
+        return canon === 'coord_y_prof' ? ['coordinador', 'profesional'] : [canon];
+      });
+      return new Set(expandidos);
+    };
+    const hasRolCanon = (u, ...wanted) => {
+      const R = rolesCanonicos(u);
+      return wanted.some(w => R.has(w));
     };
 
-    // 2) Filtrar por áreas y agrupar por rol
-    const candidatos = usuarios.filter(u => hasAreaFP(u));
-    const profesionales = candidatos.filter(u => hasRol(u, 'profesional', 'terapeuta'));
-    const coordinadores = candidatos.filter(u => hasRol(u, 'coordinador', 'coordinadora'));
-    const pasantes      = candidatos.filter(u => hasRol(u, 'pasante', 'practicante', 'interno'));
+    // Filtrar candidatos
+    const candidatos   = usuarios.filter(u => hasAreaFP(u));
+    const profesionales = candidatos.filter(u => hasRolCanon(u, 'profesional'));
+    const coordinadores = candidatos.filter(u => hasRolCanon(u, 'coordinador', 'directora'));
+    const pasantes      = candidatos.filter(u => hasRolCanon(u, 'pasante'));
 
-    const renderRows = (arr, rolKey) => {
-      if (!arr.length) return `<div class="empty">No hay ${rolKey} en esas áreas</div>`;
-      return arr
-        .sort((a,b)=>fullName(a).localeCompare(fullName(b), 'es'))
-        .map(u => `
-          <div class="person-row">
-            <div class="name">${fullName(u)}</div>
-            <input type="number" min="0" step="0.01"
-                   class="monto-input"
-                   data-rol="${rolKey}"
-                   data-user="${u._id}"
-                   placeholder="0" />
-          </div>
-        `).join('');
+    // Render rows en una sola columna
+    const renderRows = (arr, rolKey, titulo) => {
+      if (!arr.length) return `<div class="empty">No hay ${titulo} en esas áreas</div>`;
+      return `
+        <div class="section-title">${titulo}</div>
+        ${arr
+          .sort((a,b)=>fullName(a).localeCompare(fullName(b), 'es'))
+          .map(u => `
+            <div class="person-row">
+              <div class="name">${fullName(u)}</div>
+              <input type="number" min="0" step="0.01"
+                     class="monto-input"
+                     data-rol="${rolKey}"
+                     data-user="${u._id}"
+                     placeholder="0" />
+            </div>
+          `).join('')}
+      `;
     };
 
     const { value: formValues } = await Swal.fire({
       title: 'Cargar nuevo módulo',
-      width: '980px',
+      width: '700px',
       html: `
         <style>
-          .form-grid{display:grid;gap:14px}
-          .row{display:grid;gap:10px}
-          .cols-2{grid-template-columns:1fr 1fr}
-          .cols-3{grid-template-columns:1fr 1fr 1fr}
-          .section-title{font-weight:700;margin:6px 0}
-          .panel{border:1px solid #e5e7eb;border-radius:10px;padding:10px;max-height:260px;overflow:auto}
-          .person-row{display:grid;grid-template-columns:1fr 140px;gap:8px;align-items:center;border-bottom:1px dashed #eee;padding:6px 0}
+          .form-col{display:flex;flex-direction:column;gap:14px}
+          .section-title{font-weight:700;margin:10px 0 4px}
+          .person-row{display:grid;grid-template-columns:1fr 120px;gap:8px;align-items:center;border-bottom:1px dashed #eee;padding:4px 0}
           .person-row:last-child{border-bottom:none}
           .name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
           .empty{color:#888;font-style:italic;padding:6px}
@@ -206,33 +220,22 @@ if (botonCargar) {
           .notice{font-size:12px;color:#555}
         </style>
 
-        <div class="form-grid">
-          <div class="row cols-2">
-            <div>
-              <label for="modulo_numero"><strong>Número del módulo:</strong></label>
-              <input id="modulo_numero" type="number" min="0" step="1" class="swal2-input">
-            </div>
-            <div>
-              <label for="valor_padres"><strong>Pagan los padres (valor del módulo):</strong></label>
-              <input id="valor_padres" type="number" min="0" step="0.01" class="swal2-input">
-              <div class="notice">Luego distribuí este total entre las personas de abajo.</div>
-            </div>
+        <div class="form-col">
+          <div>
+            <label for="modulo_numero"><strong>Número del módulo:</strong></label>
+            <input id="modulo_numero" type="number" min="0" step="1" class="swal2-input">
+          </div>
+          <div>
+            <label for="valor_padres"><strong>Pagan los padres (valor del módulo):</strong></label>
+            <input id="valor_padres" type="number" min="0" step="0.01" class="swal2-input">
+            <div class="notice">Distribuí este total entre las personas de abajo.</div>
           </div>
 
           <div class="section-title">VALORES FONOAUDIOLOGÍA - PSICOLOGÍA</div>
-          <div class="row cols-3">
-            <div>
-              <div class="section-title">Profesionales</div>
-              <div class="panel">${renderRows(profesionales, 'profesional')}</div>
-            </div>
-            <div>
-              <div class="section-title">Coordinadores</div>
-              <div class="panel">${renderRows(coordinadores, 'coordinador')}</div>
-            </div>
-            <div>
-              <div class="section-title">Pasantes</div>
-              <div class="panel">${renderRows(pasantes, 'pasante')}</div>
-            </div>
+          <div class="panel">
+            ${renderRows(profesionales, 'profesional', 'Profesionales')}
+            ${renderRows(coordinadores, 'coordinador', 'Coordinadores')}
+            ${renderRows(pasantes, 'pasante', 'Pasantes')}
           </div>
         </div>
       `,
@@ -272,7 +275,6 @@ if (botonCargar) {
 
     if (!formValues) return;
 
-    // 3) Guardar
     try {
       const res = await apiFetch(`/modulos`, {
         method: 'POST',
@@ -290,6 +292,7 @@ if (botonCargar) {
     }
   });
 }
+
 
 
   // ---------- Handlers globales (usados por onclick en la tabla) ----------
