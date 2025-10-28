@@ -72,8 +72,8 @@ function normalizeBody(body) {
   if (body.usuario) body.usuario = body.usuario.toLowerCase();
   if (body.mail)    body.mail    = body.mail.toLowerCase();
 
-  // 👇 alias front → schema
-  if (Object.prototype.hasOwnProperty.call(body, 'pasanteNivel')) {
+  // alias front → schema
+  if (Object.prototype.hasOwnProperty.call(body, "pasanteNivel")) {
     body.nivelPasante = body.pasanteNivel || undefined;
   }
 
@@ -82,7 +82,7 @@ function normalizeBody(body) {
 
 // Reglas por rol
 function applyRoleCleaning(rol, body, currentDoc = null) {
-  // 👇 alias front → schema (defensivo)
+  // alias defensivo
   if (body.pasanteNivel && !body.nivelPasante) {
     body.nivelPasante = body.pasanteNivel;
   }
@@ -101,7 +101,7 @@ function applyRoleCleaning(rol, body, currentDoc = null) {
     if (!esCoordinador) body.areasCoordinadas = [];
   }
 
-  // Si NO es pasante, borramos el nivel de pasante (en el campo real del schema)
+  // Si NO es pasante, borrar nivel de pasante
   if (!esPasante) body.nivelPasante = undefined;
 
   if (currentDoc) {
@@ -129,11 +129,11 @@ function extractUsuariosKeyFromUrl(url) {
 // Mapear documentos para que siempre expongan publicUrl
 function mapDocsForView(docs) {
   return (docs || []).map(d => {
-    const plain = d && typeof d.toObject === 'function' ? d.toObject() : d || {};
+    const plain = d && typeof d.toObject === "function" ? d.toObject() : d || {};
     return {
       ...plain,
-      _id: plain._id?.toString?.() || plain._id || plain.id,   // <-- garantizamos id
-      publicUrl: plain.publicUrl || toWorkerViewUrl(plain.url) // <-- garantizamos publicUrl
+      _id: plain._id?.toString?.() || plain._id || plain.id,
+      publicUrl: plain.publicUrl || toWorkerViewUrl(plain.url)
     };
   });
 }
@@ -143,13 +143,13 @@ const arr = (v) => Array.isArray(v) ? v : (v ? [v] : []);
 
 function normAreaEntry(x){
   if (!x) return null;
-  if (typeof x === 'string') return { nombre: x.trim(), nivel: '' };
-  if (typeof x === 'object'){
+  if (typeof x === "string") return { nombre: x.trim(), nivel: "" };
+  if (typeof x === "object"){
     const nombre =
-      (x.nombre || x.name || x.titulo || x.area || '').toString().trim();
+      (x.nombre || x.name || x.titulo || x.area || "").toString().trim();
     const nivel =
       (x.nivel ?? x.Nivel ?? x.nivelArea ?? x.nivel_area ??
-       x.nivelProfesional ?? x.grado ?? x.categoria ?? x.seniority ?? '')
+       x.nivelProfesional ?? x.grado ?? x.categoria ?? x.seniority ?? "")
       .toString().trim();
     if (!nombre && !nivel) return null;
     return { nombre, nivel };
@@ -159,11 +159,11 @@ function normAreaEntry(x){
 
 function pairAreasLevels(areas = [], niveles = []) {
   return areas.map((a, i) => {
-    const nombre = (typeof a === 'string'
+    const nombre = (typeof a === "string"
       ? a
-      : (a?.nombre || a?.name || a?.area || '')
+      : (a?.nombre || a?.name || a?.area || "")
     ).toString().trim();
-    const nivel = (niveles[i] ?? a?.nivel ?? a?.nivelProfesional ?? '')
+    const nivel = (niveles[i] ?? a?.nivel ?? a?.nivelProfesional ?? "")
       .toString().trim();
     if (!nombre && !nivel) return null;
     return { nombre, nivel };
@@ -171,17 +171,17 @@ function pairAreasLevels(areas = [], niveles = []) {
 }
 
 // Devuelve [{nombre, nivel}] robusto para PROF / COORD
-function buildAreasDetalladas(u, tipo = 'Profesional') {
+function buildAreasDetalladas(u, tipo = "Profesional") {
   const userLevel = (
-    u.nivel ?? u.Nivel ?? u.nivelProfesional ?? u.categoria ?? u.grado ?? u.seniority ?? ''
+    u.nivel ?? u.Nivel ?? u.nivelProfesional ?? u.categoria ?? u.grado ?? u.seniority ?? ""
   ).toString().trim();
 
-  const Akey = (tipo === 'Profesional') ? 'areasProfesional'   : 'areasCoordinadas';
-  const Nkey = (tipo === 'Profesional') ? 'nivelesProfesional' : 'nivelesCoordinadas';
+  const Akey = (tipo === "Profesional") ? "areasProfesional"   : "areasCoordinadas";
+  const Nkey = (tipo === "Profesional") ? "nivelesProfesional" : "nivelesCoordinadas";
 
   let list = [];
 
-  // 1) Objetos con {nombre/nombre, nivel}
+  // 1) Objetos con {nombre/nivel}
   list = list.concat(arr(u[Akey]).map(normAreaEntry).filter(Boolean));
 
   // 2) Arrays paralelos (si existen)
@@ -194,7 +194,7 @@ function buildAreasDetalladas(u, tipo = 'Profesional') {
   list = list.concat(arr(u.area).map(normAreaEntry).filter(Boolean));
   list = list.concat(arr(u.areaPrincipal).map(normAreaEntry).filter(Boolean));
 
-  // Completar nivel faltante con el nivel del usuario
+  // Completar nivel faltante con nivel del usuario
   if (userLevel) list = list.map(a => ({ ...a, nivel: a.nivel || userLevel }));
 
   // Quitar duplicados simples
@@ -247,9 +247,8 @@ exports.crearUsuario = async (req, res) => {
       ...nuevoObj,
       pasanteNivel: nuevoObj.nivelPasante,               // espejo para el front
       documentos: mapDocsForView(nuevoObj.documentos),
-      // añadimos también el derivado por conveniencia
-      areasProfesionalDetalladas: buildAreasDetalladas(nuevoObj, 'Profesional'),
-      areasCoordinadasDetalladas: buildAreasDetalladas(nuevoObj, 'Coordinador')
+      areasProfesionalDetalladas: buildAreasDetalladas(nuevoObj, "Profesional"),
+      areasCoordinadasDetalladas: buildAreasDetalladas(nuevoObj, "Coordinador")
     });
   } catch (err) {
     console.error("crearUsuario error:", err?.stack || err);
@@ -257,24 +256,24 @@ exports.crearUsuario = async (req, res) => {
   }
 };
 
+/* ------------------------ Listar ------------------------ */
 exports.obtenerUsuarios = async (_req, res) => {
   try {
-    const lista = await Usuario.find().select("-contrasena");
-    res.status(200).json(lista.map(u => {
-      const o = u.toObject();
-      return {
-        ...o,
-        pasanteNivel: o.nivelPasante, // espejo
-        nivelRol: o.rol === "Profesional" ? (o.nivelProfesional || o.nivel) :
-                  o.rol === "Pasante" ? o.nivelPasante : undefined,
-        documentos: mapDocsForView(o.documentos)
-      };
+    const lista = await Usuario.find().select("-contrasena").lean();
+    const out = lista.map(u => ({
+      ...u,
+      pasanteNivel: u.nivelPasante, // espejo
+      // Para pasantes es útil un nivel “global”
+      nivelRol: u.rol === "Pasante" ? (u.nivelPasante || "") : "",
+      documentos: mapDocsForView(u.documentos),
+      areasProfesionalDetalladas: buildAreasDetalladas(u, "Profesional"),
+      areasCoordinadasDetalladas: buildAreasDetalladas(u, "Coordinador")
     }));
+    res.status(200).json(out);
   } catch (err) {
     res.status(500).json({ error: "Error al obtener usuarios" });
   }
 };
-
 
 /* ------------------------ Obtener por ID ------------------------ */
 exports.getUsuarioPorId = async (req, res) => {
@@ -284,10 +283,10 @@ exports.getUsuarioPorId = async (req, res) => {
 
     res.json({
       ...u,
-      pasanteNivel: u.nivelPasante,                    // espejo para el front
+      pasanteNivel: u.nivelPasante,
       documentos: mapDocsForView(u.documentos),
-      areasProfesionalDetalladas: buildAreasDetalladas(u, 'Profesional'),
-      areasCoordinadasDetalladas: buildAreasDetalladas(u, 'Coordinador')
+      areasProfesionalDetalladas: buildAreasDetalladas(u, "Profesional"),
+      areasCoordinadasDetalladas: buildAreasDetalladas(u, "Coordinador")
     });
   } catch (err) {
     res.status(500).json({ error: "Error al obtener usuario" });
@@ -333,10 +332,10 @@ exports.actualizarUsuario = async (req, res) => {
 
     return res.json({
       ...uObj,
-      pasanteNivel: uObj.nivelPasante,                     // espejo para el front
+      pasanteNivel: uObj.nivelPasante,
       documentos: mapDocsForView(uObj.documentos),
-      areasProfesionalDetalladas: buildAreasDetalladas(uObj, 'Profesional'),
-      areasCoordinadasDetalladas: buildAreasDetalladas(uObj, 'Coordinador')
+      areasProfesionalDetalladas: buildAreasDetalladas(uObj, "Profesional"),
+      areasCoordinadasDetalladas: buildAreasDetalladas(uObj, "Coordinador")
     });
   } catch (err) {
     console.error("actualizarUsuario error:", err?.stack || err);
@@ -439,7 +438,6 @@ exports.login = async (req, res) => {
   }
 };
 
-
 /* ------------------------ Auth middleware ------------------------ */
 exports.authMiddleware = (req, res, next) => {
   const authHeader = req.headers.authorization || req.headers["x-access-token"];
@@ -456,3 +454,4 @@ exports.authMiddleware = (req, res, next) => {
     return res.status(401).json({ error: "Token no válido o expirado" });
   }
 };
+
