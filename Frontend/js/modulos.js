@@ -128,7 +128,7 @@ function renderListado(mods) {
     });
   }
 
-  // ---------- Crear módulo (una columna | Fonoaudiología + Psicopedagogía | muestra Área — Nivel) ----------
+ // ---------- Crear módulo (una columna | Fonoaudiología + Psicopedagogía | muestra Área — Nivel) ----------
 if (botonCargar) {
   botonCargar.addEventListener('click', async () => {
     // 1) Traer usuarios
@@ -149,95 +149,29 @@ if (botonCargar) {
       return cands[0] || 'Sin nombre';
     };
 
-    const getArr = (v) => Array.isArray(v) ? v : (v ? [v] : []);
-
-    // Empareja dos arrays por índice => [{name, level}]
-    const pairAreasLevels = (areas = [], levels = []) =>
-      areas.map((a, i) => {
-        const name = (typeof a === 'string' ? a : (a?.nombre || a?.name || a?.area || '')).toString().trim();
-        const level = (levels[i] ?? a?.nivel ?? a?.nivelProfesional ?? '').toString().trim();
-        if (!name && !level) return null;
-        return { name, level };
-      }).filter(Boolean);
-
-    // Normaliza una entrada de área a {name, level}
-    const normAreaEntry = (x) => {
-      if (!x) return null;
-      if (typeof x === 'string') return { name: x.trim(), level: '' };
-      if (typeof x === 'object') {
-        const name  = (x.nombre || x.name || x.titulo || x.area || '').toString().trim();
-        const level = (
-          x.nivel ?? x.Nivel ?? x.nivelArea ?? x.nivel_area ??
-          x.nivelProfesional ?? x.grado ?? x.categoria ?? x.seniority ?? ''
-        ).toString().trim();
-        if (!name && !level) return null;
-        return { name, level };
-      }
-      return null;
-    };
-
-    // Todas las áreas del usuario como [{name, level}], soporta múltiples formatos
+    // --- Áreas desde backend ---
     const getAreasDetailed = (u) => {
-      const pools = [
-        u.areasProfesional, u.areasCoordinadas, u.areas, u.area, u.areaPrincipal
-      ];
-
-      // 1) Objetos ya con nivel
-      let list = pools.flatMap(getArr).map(normAreaEntry).filter(Boolean);
-
-      // 2) Arrays paralelos (p.ej. nivelesProfesional)
-      const paralelos = [
-        ['areasProfesional', 'nivelesProfesional'],
-        ['areasCoordinadas', 'nivelesCoordinadas'],
-        ['areas', 'nivelesAreas'],
-      ];
-      paralelos.forEach(([aKey, nKey]) => {
-        const A = getArr(u?.[aKey]);
-        const N = getArr(u?.[nKey]);
-        if (A.length && N.length) {
-          list = list.concat(pairAreasLevels(A, N));
-        }
-      });
-
-      // 3) Fallback: si ninguna entrada tiene nivel, usar nivel global del usuario
-      const anyLevel = list.some(a => a.level);
-      if (!anyLevel) {
-        const userLevel = (
-          u.nivel ?? u.Nivel ?? u.nivelProfesional ?? u.categoria ?? u.grado ?? u.seniority ?? ''
-        ).toString().trim();
-        if (userLevel) list = list.map(a => ({ ...a, level: userLevel }));
-      }
-      return list;
+      const prof = Array.isArray(u.areasProfesionalDetalladas) ? u.areasProfesionalDetalladas : [];
+      const coord = Array.isArray(u.areasCoordinadasDetalladas) ? u.areasCoordinadasDetalladas : [];
+      return [...prof, ...coord];
     };
 
-    // Filtro por Fonoaudiología + Psicopedagogía
-    const isFono     = (s='') => /fonoaudiolog[ií]a/i.test(s);
-    const isPsicoPed = (s='') => /psicopedagog[ií]a/i.test(s);
-    const hasAreaFP = (u) => getAreasDetailed(u).some(a => isFono(a.name) || isPsicoPed(a.name));
+    const hasAreaFP = (u) =>
+      getAreasDetailed(u).some(a =>
+        /fonoaudiolog[ií]a/i.test(a.nombre) || /psicopedagog[ií]a/i.test(a.nombre)
+      );
 
-    // Elegir principal (prioriza Fonoaudiología > Psicopedagogía)
     const getAreaPrincipalWithLevel = (u) => {
       const list = getAreasDetailed(u);
-      if (!list.length) {
-        const userLevel = (
-          u.nivel ?? u.Nivel ?? u.nivelProfesional ?? u.categoria ?? u.grado ?? u.seniority ?? ''
-        ).toString().trim();
-        return { name: '', level: userLevel };
-      }
-      const chosen = list.find(a => isFono(a.name)) || list.find(a => isPsicoPed(a.name)) || list[0];
-      return chosen;
+      if (!list.length) return { nombre: '', nivel: '' };
+      return list.find(a => /fonoaudiolog[ií]a/i.test(a.nombre)) ||
+             list.find(a => /psicopedagog[ií]a/i.test(a.nombre)) ||
+             list[0];
     };
 
-    // Tooltip con todas las áreas y niveles
     const formatAllAreas = (u) => {
       const list = getAreasDetailed(u);
-      if (!list.length) {
-        const userLevel = (
-          u.nivel ?? u.Nivel ?? u.nivelProfesional ?? u.categoria ?? u.grado ?? u.seniority ?? ''
-        ).toString().trim();
-        return userLevel || '';
-      }
-      return list.map(a => a.level ? `${a.name} — ${a.level}` : a.name).join(' | ');
+      return list.map(a => a.nivel ? `${a.nombre} — ${a.nivel}` : a.nombre).join(' | ');
     };
 
     // Roles canónicos
@@ -283,8 +217,8 @@ if (botonCargar) {
             const principal = getAreaPrincipalWithLevel(u);
             const allAreas  = formatAllAreas(u);
             const parts = [];
-            if (principal.name)  parts.push(principal.name);
-            if (principal.level) parts.push(principal.level);
+            if (principal.nombre)  parts.push(principal.nombre);
+            if (principal.nivel)   parts.push(principal.nivel);
             const badgeText = parts.join(' — ');
             return `
               <div class="person-row">
