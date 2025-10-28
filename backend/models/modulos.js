@@ -1,41 +1,55 @@
+// backend/models/modulos.js
 const mongoose = require('mongoose');
+const { Schema } = mongoose;
 
-const moduloSchema = new mongoose.Schema({
+const moduloSchema = new Schema({
+  // Número del módulo (único y obligatorio)
   numero: {
     type: Number,
-    required: true  // ✅ Campo obligatorio
+    required: true,
+    unique: true,
+    index: true,
   },
 
-  // Valores por área
+  // Valor que pagan los padres (valor del módulo)
+  valorPadres: {
+    type: Number,
+    default: 0,
+  },
+
+  // Listas de personas vinculadas al módulo
+  profesionales: [{
+    type: Schema.Types.ObjectId,
+    ref: 'Usuario',
+  }],
+
+  coordinadores: [{
+    type: Schema.Types.ObjectId,
+    ref: 'Usuario',
+  }],
+
+  // Campos que ya tenías y mantenemos
   areasExternas: {
     paciente: Number,
     porcentaje: Number,
     profesional: Number,
   },
+
   habilidadesSociales: {
     paciente: Number,
     porcentaje: Number,
     profesional: Number,
   },
+}, { timestamps: true });
 
-  // Valores fonoudiología / psicología
-  valoresModulo: {
-    paciente: Number,
-    direccion: Number,
-  },
-
-  // Fijos coordinadores
-  coordinadores: {
-    horas: Number,
-    tema: Number,
-  },
-
-  // Fijos profesionales
-  profesionales: {
-    senior: Number,
-    junior: Number,
+// Limpieza de salida JSON
+moduloSchema.set('toJSON', {
+  virtuals: true,
+  versionKey: false,
+  transform: (_, ret) => {
+    ret.id = ret._id;
+    delete ret._id;
   }
 });
 
 module.exports = mongoose.model('Modulo', moduloSchema);
-
