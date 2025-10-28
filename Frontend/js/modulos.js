@@ -155,151 +155,138 @@ document.addEventListener('DOMContentLoaded', () => {
     `;
   }
 
-  // ---------- Crear módulo (una columna Fonoaudiología + Psicopedagogía) ----------
-  if (botonCargar) {
-    botonCargar.addEventListener('click', async () => {
-      // 1) Traer usuarios
-      let usuarios = [];
-      try {
-        const res = await apiFetch('/usuarios', { method: 'GET' });
-        if (res.ok) usuarios = await res.json();
-      } catch (e) {
-        console.warn('No se pudieron obtener usuarios:', e);
+ // ---------- Crear módulo (una columna | Fonoaudiología + Psicopedagogía | muestra Área — Nivel) ----------
+if (botonCargar) {
+  botonCargar.addEventListener('click', async () => {
+    // 1) Traer usuarios
+    let usuarios = [];
+    try {
+      const res = await apiFetch('/usuarios', { method: 'GET' });
+      if (res.ok) usuarios = await res.json();
+    } catch (e) { console.warn('No se pudieron obtener usuarios:', e); }
+
+    // ===== Helpers =====
+    const fullName = (u) => {
+      const cands = [
+        u.nombreApellido, u.apellidoNombre, u.nombreCompleto,
+        [u.apellido, u.nombre].filter(Boolean).join(', '),
+        [u.nombre, u.apellido].filter(Boolean).join(' '),
+        u.nombre, u.apellido, u.displayName, u.usuario, u.email
+      ].map(x => (x || '').toString().trim()).filter(Boolean);
+      return cands[0] || 'Sin nombre';
+    };
+    const arr = (v) => Array.isArray(v) ? v : (v ? [v] : []);
+
+    // --- Áreas (usa backend si lo manda, si no reconstruye) ---
+    const normAreaEntry = (x) => {
+      if (!x) return null;
+      if (typeof x === 'string') return { nombre: x.trim(), nivel: '' };
+      if (typeof x === 'object') {
+        // incluye areaNombre
+        const nombre = (x.nombre || x.name || x.titulo || x.area || x.areaNombre || '').toString().trim();
+        const nivel  = (
+          x.nivel ?? x.Nivel ?? x.nivelArea ?? x.nivel_area ??
+          x.nivelProfesional ?? x.grado ?? x.categoria ?? x.seniority ?? ''
+        ).toString().trim();
+        if (!nombre && !nivel) return null;
+        return { nombre, nivel };
       }
-
-      // ===== Helpers =====
-      const fullName = (u) => {
-        const cands = [
-          u.nombreApellido, u.apellidoNombre, u.nombreCompleto,
-          [u.apellido, u.nombre].filter(Boolean).join(', '),
-          [u.nombre, u.apellido].filter(Boolean).join(' '),
-          u.nombre, u.apellido, u.displayName, u.usuario, u.email
-        ].map(x => (x || '').toString().trim()).filter(Boolean);
-        return cands[0] || 'Sin nombre';
-      };
-
-      const arr = (v) => Array.isArray(v) ? v : (v ? [v] : []);
-
- // dentro de botonCargar.addEventListener(...) -> helpers
-const normAreaEntry = (x) => {
-  if (!x) return null;
-  if (typeof x === 'string') return { nombre: x.trim(), nivel: '' };
-  if (typeof x === 'object') {
-    // ⬇️ ahora contempla areaNombre también
-    const nombre = (
-      x.nombre || x.name || x.titulo || x.area || x.areaNombre || ''
-    ).toString().trim();
-    const nivel  = (
-      x.nivel ?? x.Nivel ?? x.nivelArea ?? x.nivel_area ??
-      x.nivelProfesional ?? x.grado ?? x.categoria ?? x.seniority ?? ''
-    ).toString().trim();
-    if (!nombre && !nivel) return null;
-    return { nombre, nivel };
-  }
-  return null;
-};
-
-
-      const pairAreasLevels = (areas = [], niveles = []) => areas.map((a, i) => {
+      return null;
+    };
+    const pairAreasLevels = (areas = [], niveles = []) =>
+      areas.map((a, i) => {
         const nombre = (typeof a === 'string' ? a : (a?.nombre || a?.name || a?.area || '')).toString().trim();
         const nivel  = (niveles[i] ?? a?.nivel ?? a?.nivelProfesional ?? '').toString().trim();
         if (!nombre && !nivel) return null;
         return { nombre, nivel };
       }).filter(Boolean);
 
-      const getAreasDetailed = (u) => {
-        // preferir derivado del backend si existe
-        const profDet  = Array.isArray(u.areasProfesionalDetalladas) ? u.areasProfesionalDetalladas : [];
-        const coordDet = Array.isArray(u.areasCoordinadasDetalladas) ? u.areasCoordinadasDetalladas : [];
-        let list = [...profDet, ...coordDet].map(normAreaEntry).filter(Boolean);
-        if (list.length) return list;
+    const getAreasDetailed = (u) => {
+      const profDet  = Array.isArray(u.areasProfesionalDetalladas) ? u.areasProfesionalDetalladas : [];
+      const coordDet = Array.isArray(u.areasCoordinadasDetalladas) ? u.areasCoordinadasDetalladas : [];
+      let list = [...profDet, ...coordDet].map(normAreaEntry).filter(Boolean);
+      if (list.length) return list;
 
-        // reconstrucción
-        const pools = [u.areasProfesional, u.areasCoordinadas, u.areas, u.area, u.areaPrincipal];
-        list = pools.flatMap(arr).map(normAreaEntry).filter(Boolean);
+      const pools = [u.areasProfesional, u.areasCoordinadas, u.areas, u.area, u.areaPrincipal];
+      list = pools.flatMap(arr).map(normAreaEntry).filter(Boolean);
 
-        const paralelos = [
-          ['areasProfesional', 'nivelesProfesional'],
-          ['areasCoordinadas', 'nivelesCoordinadas'],
-          ['areas', 'nivelesAreas']
-        ];
-        paralelos.forEach(([aKey, nKey]) => {
-          const A = arr(u?.[aKey]); const N = arr(u?.[nKey]);
-          if (A.length && N.length) list = list.concat(pairAreasLevels(A, N));
-        });
+      const paralelos = [
+        ['areasProfesional', 'nivelesProfesional'],
+        ['areasCoordinadas', 'nivelesCoordinadas'],
+        ['areas', 'nivelesAreas'],
+      ];
+      paralelos.forEach(([aKey, nKey]) => {
+        const A = arr(u?.[aKey]); const N = arr(u?.[nKey]);
+        if (A.length && N.length) list = list.concat(pairAreasLevels(A, N));
+      });
 
-        if (!list.some(a => a.nivel)) {
-          const userLevel = (
-            u.nivelRol || u.nivel || u.nivelProfesional ||
-            u.categoria || u.grado || u.seniority || u.pasanteNivel || ''
-          ).toString().trim();
-          if (userLevel) list = list.map(a => ({ ...a, nivel: a.nivel || userLevel }));
-        }
+      if (!list.some(a => a.nivel)) {
+        const userLevel = (
+          u.nivelRol || u.nivel || u.nivelProfesional || u.categoria || u.grado || u.seniority || u.pasanteNivel || ''
+        ).toString().trim();
+        if (userLevel) list = list.map(a => ({ ...a, nivel: a.nivel || userLevel }));
+      }
 
-        const seen = new Set();
-        list = list.filter(a => {
-          const k = `${a.nombre}|${a.nivel}`;
-          if (seen.has(k)) return false;
-          seen.add(k);
-          return true;
-        });
+      const seen = new Set();
+      list = list.filter(a => { const k = `${a.nombre}|${a.nivel}`; if (seen.has(k)) return false; seen.add(k); return true; });
+      return list;
+    };
 
-        return list;
-      };
+    // Filtro por Fonoaudiología + Psicopedagogía
+    const isFono     = (s='') => /fonoaudiolog[ií]a/i.test(s);
+    const isPsicoPed = (s='') => /psicopedagog[ií]a/i.test(s);
+    const hasAreaFP  = (u) => getAreasDetailed(u).some(a => isFono(a.nombre) || isPsicoPed(a.nombre));
 
-      const isFono     = (s = '') => /fonoaudiolog[ií]a/i.test(s);
-      const isPsicoPed = (s = '') => /psicopedagog[ií]a/i.test(s);
-      const hasAreaFP  = (u) => getAreasDetailed(u).some(a => isFono(a.nombre) || isPsicoPed(a.nombre));
+    const getAreaPrincipalWithLevel = (u) => {
+      const list = getAreasDetailed(u);
+      if (!list.length) return { nombre: '', nivel: '' };
+      return list.find(a => isFono(a.nombre)) || list.find(a => isPsicoPed(a.nombre)) || list[0];
+    };
 
-      const getAreaPrincipalWithLevel = (u) => {
-        const list = getAreasDetailed(u);
-        if (!list.length) return { nombre: '', nivel: '' };
-        return list.find(a => isFono(a.nombre)) || list.find(a => isPsicoPed(a.nombre)) || list[0];
-        // devuelve {nombre, nivel}
-      };
+    const formatAllAreas = (u) => {
+      const list = getAreasDetailed(u);
+      return list.map(a => a.nivel ? `${a.nombre} — ${a.nivel}` : a.nombre).join(' | ');
+    };
 
-      const formatAllAreas = (u) => {
-        const list = getAreasDetailed(u);
-        return list.map(a => (a.nivel ? `${a.nombre} — ${a.nivel}` : a.nombre)).join(' | ');
-      };
+    // Roles canónicos
+    const mapRolCanonical = (r = '') => {
+      const s = String(r).trim().toLowerCase();
+      switch (s) {
+        case 'directoras':                   return 'directora';
+        case 'coordinador y profesional':    return 'coord_y_prof';
+        case 'coordinador de área':
+        case 'coordinador de area':          return 'coordinador';
+        case 'profesional':                  return 'profesional';
+        case 'pasante':                      return 'pasante';
+        default:                             return s;
+      }
+    };
+    const rolesCanonicos = (u) => {
+      const crudos = [u.rol, u.role, u.cargo, ...(Array.isArray(u.roles) ? u.roles : [])].filter(Boolean);
+      const expandidos = crudos.flatMap(r => {
+        const canon = mapRolCanonical(r);
+        return canon === 'coord_y_prof' ? ['coordinador', 'profesional'] : [canon];
+      });
+      return new Set(expandidos);
+    };
+    const hasRolCanon = (u, ...wanted) => {
+      const R = rolesCanonicos(u);
+      return wanted.some(w => R.has(w));
+    };
 
-      const mapRolCanonical = (r = '') => {
-        const s = String(r).trim().toLowerCase();
-        switch (s) {
-          case 'directoras':                return 'directora';
-          case 'coordinador y profesional': return 'coord_y_prof';
-          case 'coordinador de área':
-          case 'coordinador de area':       return 'coordinador';
-          case 'profesional':               return 'profesional';
-          case 'pasante':                   return 'pasante';
-          default:                          return s;
-        }
-      };
+    // 2) Filtrar candidatos / buckets
+    const candidatos    = usuarios.filter(u => hasAreaFP(u));
+    const profesionales = candidatos.filter(u => hasRolCanon(u, 'profesional'));
+    const coordinadores = candidatos.filter(u => hasRolCanon(u, 'coordinador', 'directora'));
+    const pasantes      = candidatos.filter(u => hasRolCanon(u, 'pasante'));
 
-      const rolesCanonicos = (u) => {
-        const crudos = [u.rol, u.role, u.cargo, ...(Array.isArray(u.roles) ? u.roles : [])].filter(Boolean);
-        const expandidos = crudos.flatMap(r => {
-          const canon = mapRolCanonical(r);
-          return canon === 'coord_y_prof' ? ['coordinador', 'profesional'] : [canon];
-        });
-        return new Set(expandidos);
-      };
-
-      const hasRolCanon = (u, ...wanted) => {
-        const R = rolesCanonicos(u);
-        return wanted.some(w => R.has(w));
-      };
-
-      const candidatos    = usuarios.filter(u => hasAreaFP(u));
-      const profesionales = candidatos.filter(u => hasRolCanon(u, 'profesional'));
-      const coordinadores = candidatos.filter(u => hasRolCanon(u, 'coordinador', 'directora'));
-      const pasantes      = candidatos.filter(u => hasRolCanon(u, 'pasante'));
-
-      const renderRows = (arrUsers, rolKey, titulo) => {
-        if (!arrUsers.length) return `<div class="empty">No hay ${titulo} en esas áreas</div>`;
-        const rows = arrUsers
-          .slice()
-          .sort((a, b) => fullName(a).localeCompare(fullName(b), 'es'))
+    // 3) UI: una sola columna con Área — Nivel visible
+    const renderRows = (arr, rolKey, titulo) => {
+      if (!arr.length) return `<div class="empty">No hay ${titulo} en esas áreas</div>`;
+      return `
+        <div class="section-title">${titulo}</div>
+        ${arr
+          .sort((a,b)=>fullName(a).localeCompare(fullName(b), 'es'))
           .map(u => {
             const principal = getAreaPrincipalWithLevel(u);
             const allAreas  = formatAllAreas(u);
@@ -325,115 +312,97 @@ const normAreaEntry = (x) => {
                        placeholder="0" />
               </div>
             `;
-          }).join('');
+          }).join('')}
+      `;
+    };
 
-        return `
-          <div class="section-title">${titulo}</div>
-          ${rows}
-        `;
-      };
+    const { value: formValues } = await Swal.fire({
+      title: 'Cargar nuevo módulo',
+      width: '700px',
+      html: `
+        <style>
+          .form-col{display:flex;flex-direction:column;gap:14px}
+          .section-title{font-weight:700;margin:10px 0 4px}
+          .person-row{display:grid;grid-template-columns:1fr 120px;gap:8px;align-items:center;border-bottom:1px dashed #eee;padding:4px 0}
+          .person-row:last-child{border-bottom:none}
+          .name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+          .area-badge{display:inline-block;margin-left:8px;padding:2px 6px;font-size:11px;line-height:1;border:1px solid #e5e7eb;border-radius:999px;background:#f8fafc;color:#334155;vertical-align:middle;max-width:280px;text-overflow:ellipsis;overflow:hidden}
+          .empty{color:#888;font-style:italic;padding:6px}
+          .swal2-input{width:100%}
+          .panel{border:1px solid #e5e7eb;border-radius:10px;padding:10px;max-height:340px;overflow:auto}
+        </style>
 
-      const { value: formValues } = await Swal.fire({
-        title: 'Cargar nuevo módulo',
-        width: '700px',
-        html: `
-          <style>
-            .form-col{display:flex;flex-direction:column;gap:14px}
-            .section-title{font-weight:700;margin:10px 0 4px}
-            .person-row{display:grid;grid-template-columns:1fr 120px;gap:8px;align-items:center;border-bottom:1px dashed #eee;padding:4px 0}
-            .person-row:last-child{border-bottom:none}
-            .name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-            .area-badge{
-              display:inline-block;margin-left:8px;padding:2px 6px;font-size:11px;line-height:1;
-              border:1px solid #e5e7eb;border-radius:999px;background:#f8fafc;color:#334155;vertical-align:middle;
-              max-width:280px;text-overflow:ellipsis;overflow:hidden
-            }
-            .empty{color:#888;font-style:italic;padding:6px}
-            .swal2-input{width:100%}
-            .notice{font-size:12px;color:#555}
-            .panel{border:1px solid #e5e7eb;border-radius:10px;padding:10px;max-height:340px;overflow:auto}
-          </style>
-
-          <div class="form-col">
-            <div>
-              <label for="modulo_numero"><strong>Número del módulo:</strong></label>
-              <input id="modulo_numero" type="number" min="0" step="1" class="swal2-input">
-            </div>
-            <div>
-              <label for="valor_padres"><strong>Pagan los padres (valor del módulo):</strong></label>
-              <input id="valor_padres" type="number" min="0" step="0.01" class="swal2-input">
-              <div class="notice">Distribuí este total entre las personas de abajo.</div>
-            </div>
-
-            <div class="section-title">VALORES FONOAUDIOLOGÍA - PSICOPEDAGOGÍA</div>
-            <div class="panel">
-              ${renderRows(profesionales, 'profesional', 'Profesionales')}
-              ${renderRows(coordinadores, 'coordinador', 'Coordinadores')}
-              ${renderRows(pasantes, 'pasante', 'Pasantes')}
-            </div>
+        <div class="form-col">
+          <div>
+            <label for="modulo_numero"><strong>Número del módulo:</strong></label>
+            <input id="modulo_numero" type="number" min="0" step="1" class="swal2-input">
           </div>
-        `,
-        showCancelButton: true,
-        confirmButtonText: 'Guardar',
-        cancelButtonText: 'Cancelar',
-        preConfirm: () => {
-          const numero = parseInt(document.getElementById('modulo_numero').value, 10);
-          const valorPadres = Number(document.getElementById('valor_padres').value);
-          if (isNaN(numero)) {
-            Swal.showValidationMessage('⚠️ El número del módulo es obligatorio');
-            return false;
-          }
-          if (Number.isNaN(valorPadres) || valorPadres < 0) {
-            Swal.showValidationMessage('⚠️ Ingresá un valor válido para “Pagan los padres”');
-            return false;
-          }
+          <div>
+            <label for="valor_padres"><strong>Pagan los padres (valor del módulo):</strong></label>
+            <input id="valor_padres" type="number" min="0" step="0.01" class="swal2-input">
+          </div>
 
-          const take = (rol) => [...document.querySelectorAll(`.monto-input[data-rol="${rol}"]`)]
-            .map(i => ({ usuario: i.dataset.user, monto: Number(i.value) || 0 }))
-            .filter(x => x.usuario && x.monto > 0);
+          <div class="section-title">VALORES FONOAUDIOLOGÍA - PSICOPEDAGOGÍA</div>
+          <div class="panel">
+            ${renderRows(profesionales, 'profesional', 'Profesionales')}
+            ${renderRows(coordinadores, 'coordinador', 'Coordinadores')}
+            ${renderRows(pasantes, 'pasante', 'Pasantes')}
+          </div>
+        </div>
+      `,
+      showCancelButton: true,
+      confirmButtonText: 'Guardar',
+      cancelButtonText: 'Cancelar',
+      preConfirm: () => {
+        const numero = parseInt(document.getElementById('modulo_numero').value, 10);
+        // ahora es opcional; si está vacío -> 0
+        const valorPadres = Number(document.getElementById('valor_padres').value) || 0;
 
-          const profesionalesAsignaciones = take('profesional');
-          const coordinadoresAsignaciones = take('coordinador');
-          const pasantesAsignaciones      = take('pasante');
-
-          const totalAsignado = [...profesionalesAsignaciones, ...coordinadoresAsignaciones, ...pasantesAsignaciones]
-            .reduce((acc, x) => acc + x.monto, 0);
-
-          if (totalAsignado > valorPadres + 0.0001) {
-            Swal.showValidationMessage(`⚠️ El total asignado ($${totalAsignado.toFixed(2)}) supera el valor de padres ($${valorPadres.toFixed(2)}).`);
-            return false;
-          }
-
-          return {
-            numero,
-            valorPadres,
-            profesionales: profesionalesAsignaciones,
-            coordinadores: coordinadoresAsignaciones,
-            pasantes: pasantesAsignaciones
-          };
+        if (isNaN(numero)) {
+          return Swal.showValidationMessage('⚠️ El número del módulo es obligatorio');
         }
-      });
 
-      if (!formValues) return;
+        const take = (rol) => [...document.querySelectorAll(`.monto-input[data-rol="${rol}"]`)]
+          .map(i => ({ usuario: i.dataset.user, monto: Number(i.value) || 0 }))
+          .filter(x => x.usuario && x.monto > 0);
 
-      // Guardar
-      try {
-        const res = await apiFetch('/modulos', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formValues)
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.error || 'No se pudo guardar');
+        const profesionalesAsignaciones = take('profesional');
+        const coordinadoresAsignaciones = take('coordinador');
+        const pasantesAsignaciones      = take('pasante');
 
-        Swal.fire('Éxito', 'Módulo guardado correctamente', 'success');
-        cargarListadoModulos();
-      } catch (error) {
-        console.error('Error guardando módulo:', error);
-        Swal.fire('Error', error?.message || 'Ocurrió un error al guardar', 'error');
+        // ❌ Sin validar contra valorPadres. Cada uno puede cobrar 0, una parte o el total.
+
+        return {
+          numero,
+          valorPadres,
+          profesionales: profesionalesAsignaciones,
+          coordinadores: coordinadoresAsignaciones,
+          pasantes: pasantesAsignaciones
+        };
       }
     });
-  }
+
+    if (!formValues) return;
+
+    // 4) Guardar
+    try {
+      const res = await apiFetch(`/modulos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formValues)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'No se pudo guardar');
+
+      Swal.fire('Éxito', 'Módulo guardado correctamente', 'success');
+      cargarListadoModulos();
+    } catch (error) {
+      console.error('Error guardando módulo:', error);
+      Swal.fire('Error', error?.message || 'Ocurrió un error al guardar', 'error');
+    }
+  });
+}
+
 
   // ---------- Handlers globales (usados por onclick en la tabla) ----------
   window.borrarModulo = async (numero) => {
