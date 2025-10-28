@@ -128,249 +128,129 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ---------- Crear módulo ----------
-if (botonCargar) {
-  botonCargar.addEventListener('click', async () => {
+  if (botonCargar) {
+    botonCargar.addEventListener('click', async () => {
+      const { value: formValues } = await Swal.fire({
+        title: 'Cargar nuevo módulo',
+        width: '800px',
+        html: `
+          <div style="margin-bottom: 15px;">
+            <label for="modulo_numero"><strong>Número del módulo:</strong></label>
+            <input id="modulo_numero" class="swal2-input" style="width: 100%;">
+          </div>
 
-    // Helpers de UI $ARS
-    const formatARS = (n) => {
-      if (n === '' || n == null || isNaN(n)) return '';
-      try {
-        return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 2 }).format(Number(n));
-      } catch { return `$ ${Number(n).toFixed(2)}`; }
-    };
-    const attachMoneyMask = (root) => {
-      root.querySelectorAll('input.money').forEach(inp => {
-        inp.setAttribute('inputmode', 'decimal');
-        inp.setAttribute('step', '0.01');
-        inp.addEventListener('blur', () => {
-          const v = inp.value.trim();
-          if (v === '') return;
-          const num = Number(v.replace(',', '.'));
-          if (!isNaN(num)) inp.value = num.toFixed(2);
-          const label = inp.closest('.money-wrap')?.querySelector('.money-preview');
-          if (label) label.textContent = formatARS(inp.value || 0);
-        });
-        inp.addEventListener('input', () => {
-          const label = inp.closest('.money-wrap')?.querySelector('.money-preview');
-          if (label) {
-            const num = Number((inp.value || '0').replace(',', '.'));
-            label.textContent = isNaN(num) ? '' : formatARS(num);
+          <!-- FONO/PSICO -->
+          <div class="grupo-bloque azul">
+            <h4>VALORES FONOAUDIOLOGÍA - PSICOLOGÍA</h4>
+            <label>Paciente:</label>
+            <input id="fp_paciente">
+            <label>Dirección:</label>
+            <input id="fp_direccion">
+          </div>
+
+          <!-- COORDINADORES -->
+          <div class="grupo-bloque azul">
+            <h4>FIJO COORDINADORES</h4>
+            <label>Nora:</label>
+            <input id="coord_nora">
+            <label>Tete:</label>
+            <input id="coord_tete">
+          </div>
+
+          <!-- PROFESIONALES -->
+          <div class="grupo-bloque azul">
+            <h4>FIJO PROFESIONALES</h4>
+            <label>Senior:</label>
+            <input id="prof_senior">
+            <label>Junior:</label>
+            <input id="prof_junior">
+          </div>
+
+          <!-- ÁREAS EXTERNAS -->
+          <div class="grupo-bloque verde">
+            <h4>ÁREAS EXTERNAS</h4>
+            <label>Paciente:</label>
+            <input id="ae_paciente">
+            <label>%:</label>
+            <input id="ae_porcentaje">
+            <label>Profesional:</label>
+            <input id="ae_profesional" readonly>
+          </div>
+
+          <!-- HABILIDADES SOCIALES -->
+          <div class="grupo-bloque verde">
+            <h4>HABILIDADES SOCIALES</h4>
+            <label>Paciente:</label>
+            <input id="hs_paciente">
+            <label>%:</label>
+            <input id="hs_porcentaje">
+            <label>Profesional:</label>
+            <input id="hs_profesional" readonly>
+          </div>
+        `,
+        showCancelButton: true,
+        confirmButtonText: 'Guardar',
+        cancelButtonText: 'Cancelar',
+        didOpen: () => {
+          calcProfesional('ae_paciente', 'ae_porcentaje', 'ae_profesional');
+          calcProfesional('hs_paciente', 'hs_porcentaje', 'hs_profesional');
+        },
+        preConfirm: () => {
+          const numero = parseInt(document.getElementById('modulo_numero').value, 10);
+          if (isNaN(numero)) {
+            Swal.showValidationMessage('⚠️ El número del módulo es obligatorio');
+            return false;
           }
-        });
-      });
-    };
-
-    // Traer usuarios por área+rol
-    async function fetchUsuariosPorArea(areaNombre) {
-      // Ajustá estos endpoints/queries si tus rutas difieren
-      const qp = encodeURIComponent(areaNombre);
-      const [profRes, coordRes] = await Promise.all([
-        apiFetch(`/usuarios?area=${qp}&rol=profesional`, { method: 'GET' }),
-        apiFetch(`/usuarios?area=${qp}&rol=coordinador`, { method: 'GET' })
-      ]);
-      const profesionales = (await profRes.json()).filter(Boolean);
-      const coordinadores = (await coordRes.json()).filter(Boolean);
-      return { profesionales, coordinadores };
-    }
-
-    // Pre-cargar datos de Fono y Psico
-    let FONO = { profesionales: [], coordinadores: [] };
-    let PSICO = { profesionales: [], coordinadores: [] };
-    try {
-      [FONO, PSICO] = await Promise.all([
-        fetchUsuariosPorArea('Fonoaudiología'),
-        fetchUsuariosPorArea('Psicología'),
-      ]);
-    } catch (e) {
-      console.error('Error cargando usuarios por área:', e);
-      // Seguimos con arrays vacíos para no romper el modal
-    }
-
-    // Renderiza listas (checkbox + input $) por persona
-    const renderLista = (items = [], prefix = '') => {
-      if (!Array.isArray(items) || items.length === 0) {
-        return `<div class="text-sm text-gray-500" style="margin:6px 0 10px;">(No hay personas para asignar)</div>`;
-      }
-      return items.map(u => {
-        const id = (u._id || u.id || Math.random().toString(36).slice(2));
-        const nombre = [u.apellido, u.nombre].filter(Boolean).join(', ') || u.nombre || u.usuario || 'Sin nombre';
-        return `
-          <div class="persona-row" style="display:flex; gap:10px; align-items:center; margin:6px 0;">
-            <input type="checkbox" id="${prefix}_chk_${id}" data-userid="${id}" data-nombre="${nombre}">
-            <label for="${prefix}_chk_${id}" style="flex:1;">${nombre}</label>
-            <div class="money-wrap" style="display:flex; gap:6px; align-items:center;">
-              <span>$</span>
-              <input class="money" id="${prefix}_monto_${id}" placeholder="0,00" style="width:120px; text-align:right;">
-              <span class="money-preview" style="min-width:110px; text-align:right; font-size:12px; color:#666;"></span>
-            </div>
-          </div>
-        `;
-      }).join('');
-    };
-
-    const { value: formValues } = await Swal.fire({
-      title: 'Cargar nuevo módulo',
-      width: '900px',
-      html: `
-        <style>
-          .grupo-bloque { border:1px solid #e5e7eb; border-radius:8px; padding:12px; margin:10px 0; }
-          .azul { background:#f0f7ff; }
-          .verde { background:#f2fff0; }
-          .grupo-bloque h4 { margin:0 0 8px; }
-          .grid-2 { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
-          .subcol { border:1px dashed #cbd5e1; border-radius:8px; padding:8px; background:#fff; }
-          .subcol h5 { margin:0 0 6px; font-size:14px; }
-          .swal2-input { width:100%; }
-          label { display:block; font-size:13px; margin-bottom:4px; }
-        </style>
-
-        <!-- NRO MÓDULO -->
-        <div class="grupo-bloque">
-          <label for="modulo_numero"><strong>Número del módulo</strong></label>
-          <input id="modulo_numero" class="swal2-input" placeholder="Ej: 101">
-        </div>
-
-        <!-- PAGA PACIENTE -->
-        <div class="grupo-bloque">
-          <label for="paga_paciente"><strong>Paga paciente</strong> <small>(ARS)</small></label>
-          <div class="money-wrap" style="display:flex; gap:8px; align-items:center;">
-            <span>$</span>
-            <input id="paga_paciente" class="swal2-input money" style="max-width:200px; text-align:right;" placeholder="0,00">
-            <span id="paga_paciente_preview" class="money-preview" style="min-width:120px; text-align:right; font-size:12px; color:#666;"></span>
-          </div>
-        </div>
-
-        <!-- FONO / PSICO -->
-        <div class="grupo-bloque azul">
-          <h4>FONOAUDIOLOGÍA</h4>
-          <div class="grid-2">
-            <div class="subcol">
-              <h5>Coordinadores (monto por módulo)</h5>
-              ${renderLista(FONO.coordinadores, 'fono_coord')}
-            </div>
-            <div class="subcol">
-              <h5>Profesionales (monto por módulo)</h5>
-              ${renderLista(FONO.profesionales, 'fono_prof')}
-            </div>
-          </div>
-        </div>
-
-        <div class="grupo-bloque azul">
-          <h4>PSICOLOGÍA</h4>
-          <div class="grid-2">
-            <div class="subcol">
-              <h5>Coordinadores (monto por módulo)</h5>
-              ${renderLista(PSICO.coordinadores, 'psico_coord')}
-            </div>
-            <div class="subcol">
-              <h5>Profesionales (monto por módulo)</h5>
-              ${renderLista(PSICO.profesionales, 'psico_prof')}
-            </div>
-          </div>
-        </div>
-
-        <!-- ÁREAS EXTERNAS (se mantiene) -->
-        <div class="grupo-bloque verde">
-          <h4>ÁREAS EXTERNAS</h4>
-          <div style="display:grid; grid-template-columns: 1fr 120px 1fr; gap:10px; align-items:end;">
-            <div class="money-wrap">
-              <label>Paciente (ARS)</label>
-              <div style="display:flex; gap:6px; align-items:center;">
-                <span>$</span>
-                <input id="ae_paciente" class="money" placeholder="0,00" style="width:120px; text-align:right;">
-                <span class="money-preview" style="min-width:110px; text-align:right; font-size:12px; color:#666;"></span>
-              </div>
-            </div>
-            <div>
-              <label>%</label>
-              <input id="ae_porcentaje" class="swal2-input" placeholder="Ej: 30" style="width:120px;">
-            </div>
-            <div>
-              <label>Profesional (calculado)</label>
-              <input id="ae_profesional" class="swal2-input" readonly>
-            </div>
-          </div>
-        </div>
-      `,
-      showCancelButton: true,
-      confirmButtonText: 'Guardar',
-      cancelButtonText: 'Cancelar',
-      didOpen: () => {
-        // Máscaras $ARS
-        attachMoneyMask(document);
-        // Cálculo áreas externas
-        calcProfesional('ae_paciente', 'ae_porcentaje', 'ae_profesional');
-      },
-      preConfirm: () => {
-        const numero = parseInt(document.getElementById('modulo_numero').value, 10);
-        if (isNaN(numero)) {
-          Swal.showValidationMessage('⚠️ El número del módulo es obligatorio');
-          return false;
+          return {
+            numero,
+            valoresModulo: {
+              paciente:  getNumberOrZero('fp_paciente'),
+              direccion: getNumberOrZero('fp_direccion')
+            },
+            coordinadores: {
+              nora: getNumberOrZero('coord_nora'),
+              tete: getNumberOrZero('coord_tete')
+            },
+            profesionales: {
+              senior: getNumberOrZero('prof_senior'),
+              junior: getNumberOrZero('prof_junior')
+            },
+            areasExternas: {
+              paciente:    getNumberOrZero('ae_paciente'),
+              porcentaje:  getNumberOrZero('ae_porcentaje'),
+              profesional: getNumberOrZero('ae_profesional')
+            },
+            habilidadesSociales: {
+              paciente:    getNumberOrZero('hs_paciente'),
+              porcentaje:  getNumberOrZero('hs_porcentaje'),
+              profesional: getNumberOrZero('hs_profesional')
+            }
+          };
         }
+      });
 
-        // Paga paciente
-        const pagaPaciente = getNumberOrZero('paga_paciente');
+      if (!formValues) return;
 
-        // Recolectar asignaciones (area, rol, userId, nombre, monto)
-        const collectAsignaciones = (prefix, area, rol) => {
-          const rows = [];
-          document.querySelectorAll(`[id^="${prefix}_chk_"]`).forEach(chk => {
-            if (!chk.checked) return;
-            const userId = chk.getAttribute('data-userid');
-            const nombre = chk.getAttribute('data-nombre') || '';
-            const montoInputId = `${prefix}_monto_${userId}`;
-            const monto = getNumberOrZero(montoInputId);
-            rows.push({ area, rol, userId, nombre, monto });
-          });
-          return rows;
-        };
+      try {
+        const res  = await apiFetch(`/modulos`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formValues)
+        });
+        const data = await res.json();
 
-        const asignaciones = [
-          ...collectAsignaciones('fono_coord', 'Fonoaudiología', 'coordinador'),
-          ...collectAsignaciones('fono_prof',  'Fonoaudiología', 'profesional'),
-          ...collectAsignaciones('psico_coord','Psicología',     'coordinador'),
-          ...collectAsignaciones('psico_prof', 'Psicología',     'profesional'),
-        ];
-
-        // Áreas externas
-        const areasExternas = {
-          paciente:    getNumberOrZero('ae_paciente'),
-          porcentaje:  getNumberOrZero('ae_porcentaje'),
-          profesional: getNumberOrZero('ae_profesional')
-        };
-
-        return {
-          numero,
-          pagaPaciente,
-          asignaciones,    // detalle por persona con su monto en $ARS
-          areasExternas    // igual que antes
-        };
+        if (res.ok) {
+          Swal.fire('Éxito', 'Módulo guardado correctamente', 'success');
+          cargarListadoModulos(); // refrescar listado
+        } else {
+          Swal.fire('Error', data.error || 'No se pudo guardar', 'error');
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        Swal.fire('Error', 'Ocurrió un error al guardar', 'error');
       }
     });
-
-    if (!formValues) return;
-
-    try {
-      const res = await apiFetch(`/modulos`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formValues)
-      });
-      const data = await res.json();
-
-      if (res.ok) {
-        Swal.fire('Éxito', 'Módulo guardado correctamente', 'success');
-        cargarListadoModulos();
-      } else {
-        Swal.fire('Error', data.error || 'No se pudo guardar', 'error');
-      }
-    } catch (error) {
-      console.error('Error:', error);
-      Swal.fire('Error', 'Ocurrió un error al guardar', 'error');
-    }
-  });
-}
-
+  }
 
   // ---------- Render ficha (detalle de un módulo) ----------
   function mostrarFichaModulo(modulo) {
