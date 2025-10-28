@@ -128,7 +128,7 @@ function renderListado(mods) {
     });
   }
 
-  // ---------- Crear módulo (una sola columna | Fonoaudiología + Psicopedagogía | con área al lado) ----------
+  // ---------- Crear módulo (una sola columna | Fonoaudiología + Psicopedagogía | área + nivel) ----------
 if (botonCargar) {
   botonCargar.addEventListener('click', async () => {
     // Traer usuarios
@@ -138,7 +138,7 @@ if (botonCargar) {
       if (res.ok) usuarios = await res.json();
     } catch (e) { console.warn('No se pudieron obtener usuarios:', e); }
 
-    // Helpers
+    // ===== Helpers =====
     const fullName = (u) => {
       const cands = [
         u.nombreApellido, u.apellidoNombre, u.nombreCompleto,
@@ -148,31 +148,67 @@ if (botonCargar) {
       ].map(x => (x || '').toString().trim()).filter(Boolean);
       return cands[0] || 'Sin nombre';
     };
-    const getArr = (v) => Array.isArray(v) ? v : (v ? [v] : []);
-    const getAreas = (u) =>
-      [u.areasProfesional, u.areasCoordinadas, u.areas, u.area, u.areaPrincipal]
-        .flatMap(getArr).map(a => (a || '').toString().trim()).filter(Boolean);
 
-    // ⬇️ Filtro por Fonoaudiología + Psicopedagogía
+    const getArr = (v) => Array.isArray(v) ? v : (v ? [v] : []);
+
+    // Normaliza una entrada de área a {name, level}
+    const normAreaEntry = (x) => {
+      if (!x) return null;
+      if (typeof x === 'string') return { name: x.trim(), level: '' };
+      if (typeof x === 'object') {
+        const name = (x.nombre || x.name || x.titulo || x.area || '').toString().trim();
+        const level = (x.nivel || x.nivelProfesional || x.grado || x.categoria || '').toString().trim();
+        if (!name) return null;
+        return { name, level };
+      }
+      return null;
+    };
+
+    // Obtiene TODAS las áreas del usuario como [{name, level}]
+    const getAreasDetailed = (u) => {
+      const pools = [
+        u.areasProfesional, u.areasCoordinadas, u.areas, u.area, u.areaPrincipal
+      ];
+      return pools
+        .flatMap(getArr)
+        .map(normAreaEntry)
+        .filter(Boolean);
+    };
+
+    // Filtro por Fonoaudiología + Psicopedagogía (con/sin acentos)
+    const isFono = (s='') => /fonoaudiolog[ií]a/i.test(s);
+    const isPsicoPed = (s='') => /psicopedagog[ií]a/i.test(s);
+
     const hasAreaFP = (u) => {
-      const text = getAreas(u).join(' ').toLowerCase();
+      const areas = getAreasDetailed(u).map(a => a.name);
+      const text = areas.join(' ');
       return /(fonoaudiolog[ií]a|psicopedagog[ií]a)/i.test(text);
     };
 
-    // Área principal a mostrar (elige la que coincida; si hay varias, prioriza Fonoaudiología > Psicopedagogía)
-    const getAreaPrincipal = (u) => {
-      const areas = getAreas(u);
-      if (!areas.length) return '';
-      // normaliza
-      const norm = areas.map(a => a.toLowerCase());
-      const idxFono = norm.findIndex(a => /fonoaudiolog[ií]a/.test(a));
-      const idxPsicoPed = norm.findIndex(a => /psicopedagog[ií]a/.test(a));
-      if (idxFono !== -1) return areas[idxFono];
-      if (idxPsicoPed !== -1) return areas[idxPsicoPed];
-      return areas[0]; // fallback: primera
+    // Principal (prioriza Fonoaudiología, luego Psicopedagogía). Si no hay nivel en el área, usa u.nivel*.
+    const getAreaPrincipalWithLevel = (u) => {
+      const list = getAreasDetailed(u);
+      if (!list.length) {
+        const fallbackLevel = (u.nivel || u.nivelProfesional || u.categoria || '').toString().trim();
+        return { name: '', level: fallbackLevel };
+      }
+      const byFono = list.find(a => isFono(a.name));
+      const byPsic = list.find(a => isPsicoPed(a.name));
+      const chosen = byFono || byPsic || list[0];
+
+      let level = chosen.level ||
+                  (u.nivel || u.nivelProfesional || u.categoria || '').toString().trim();
+      return { name: chosen.name, level };
     };
 
-    // Roles canónicos según tu lista
+    // Texto para tooltip con todas las áreas y niveles
+    const formatAllAreas = (u) => {
+      const list = getAreasDetailed(u);
+      if (!list.length) return '';
+      return list.map(a => a.level ? `${a.name} — ${a.level}` : a.name).join(' | ');
+    };
+
+    // Roles canónicos (según tu ROLES)
     const mapRolCanonical = (r = '') => {
       const s = String(r).trim().toLowerCase();
       switch (s) {
@@ -204,7 +240,7 @@ if (botonCargar) {
     const coordinadores = candidatos.filter(u => hasRolCanon(u, 'coordinador', 'directora'));
     const pasantes      = candidatos.filter(u => hasRolCanon(u, 'pasante'));
 
-    // Render rows (una sola columna) con área badge
+    // Render rows (una sola columna) con área + nivel
     const renderRows = (arr, rolKey, titulo) => {
       if (!arr.length) return `<div class="empty">No hay ${titulo} en esas áreas</div>`;
       return `
@@ -212,13 +248,16 @@ if (botonCargar) {
         ${arr
           .sort((a,b)=>fullName(a).localeCompare(fullName(b), 'es'))
           .map(u => {
-            const areaPrincipal = getAreaPrincipal(u);
-            const todasLasAreas = getAreas(u).join(' | ');
+            const principal = getAreaPrincipalWithLevel(u);
+            const allAreas  = formatAllAreas(u);
+            const badge = principal.name
+              ? (principal.level ? `${principal.name} — ${principal.level}` : principal.name)
+              : (principal.level ? principal.level : '');
             return `
               <div class="person-row">
                 <div class="name">
                   ${fullName(u)}
-                  ${areaPrincipal ? `<span class="area-badge" title="${todasLasAreas}">${areaPrincipal}</span>` : ''}
+                  ${badge ? `<span class="area-badge" title="${allAreas}">${badge}</span>` : ''}
                 </div>
                 <input type="number" min="0" step="0.01"
                        class="monto-input"
@@ -244,8 +283,8 @@ if (botonCargar) {
           .area-badge{
             display:inline-block; margin-left:8px; padding:2px 6px;
             font-size:11px; line-height:1; border:1px solid #e5e7eb; border-radius:999px;
-            background:#f8fafc; color:#334155;
-            vertical-align:middle;
+            background:#f8fafc; color:#334155; vertical-align:middle;
+            max-width: 260px; text-overflow: ellipsis; overflow: hidden;
           }
           .empty{color:#888;font-style:italic;padding:6px}
           .swal2-input{width:100%}
