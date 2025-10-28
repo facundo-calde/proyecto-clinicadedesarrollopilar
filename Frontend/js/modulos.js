@@ -128,10 +128,10 @@ function renderListado(mods) {
     });
   }
 
-  // ---------- Crear módulo (una sola columna | Fonoaudiología + Psicopedagogía | área + nivel) ----------
+  // ---------- Crear módulo (una columna | Fonoaudiología + Psicopedagogía | área + nivel visible) ----------
 if (botonCargar) {
   botonCargar.addEventListener('click', async () => {
-    // Traer usuarios
+    // 1) Traer usuarios
     let usuarios = [];
     try {
       const res = await apiFetch('/usuarios', { method: 'GET' });
@@ -157,54 +157,59 @@ if (botonCargar) {
       if (typeof x === 'string') return { name: x.trim(), level: '' };
       if (typeof x === 'object') {
         const name = (x.nombre || x.name || x.titulo || x.area || '').toString().trim();
-        const level = (x.nivel || x.nivelProfesional || x.grado || x.categoria || '').toString().trim();
-        if (!name) return null;
+        const level =
+          (x.nivel ?? x.Nivel ?? x.nivelArea ?? x.nivel_area ?? x.nivelProfesional ??
+           x.grado ?? x.categoria ?? x.seniority ?? '')
+          .toString().trim();
+        if (!name && !level) return null;
         return { name, level };
       }
       return null;
     };
 
-    // Obtiene TODAS las áreas del usuario como [{name, level}]
+    // Todas las áreas del usuario en forma [{name, level}]
     const getAreasDetailed = (u) => {
-      const pools = [
-        u.areasProfesional, u.areasCoordinadas, u.areas, u.area, u.areaPrincipal
-      ];
-      return pools
-        .flatMap(getArr)
-        .map(normAreaEntry)
-        .filter(Boolean);
+      const pools = [u.areasProfesional, u.areasCoordinadas, u.areas, u.area, u.areaPrincipal];
+      const list = pools.flatMap(getArr).map(normAreaEntry).filter(Boolean);
+      // Si no hay niveles en áreas, intentamos tomar nivel global del usuario
+      if (list.length) {
+        const userLevel = (u.nivel ?? u.Nivel ?? u.nivelProfesional ?? u.categoria ?? u.grado ?? u.seniority ?? '').toString().trim();
+        if (userLevel) {
+          return list.map(a => ({ name: a.name, level: a.level || userLevel }));
+        }
+      }
+      return list;
     };
 
-    // Filtro por Fonoaudiología + Psicopedagogía (con/sin acentos)
-    const isFono = (s='') => /fonoaudiolog[ií]a/i.test(s);
+    // Filtro por Fonoaudiología + Psicopedagogía
+    const isFono     = (s='') => /fonoaudiolog[ií]a/i.test(s);
     const isPsicoPed = (s='') => /psicopedagog[ií]a/i.test(s);
 
     const hasAreaFP = (u) => {
-      const areas = getAreasDetailed(u).map(a => a.name);
-      const text = areas.join(' ');
-      return /(fonoaudiolog[ií]a|psicopedagog[ií]a)/i.test(text);
+      const names = getAreasDetailed(u).map(a => a.name);
+      return names.some(n => isFono(n) || isPsicoPed(n));
     };
 
-    // Principal (prioriza Fonoaudiología, luego Psicopedagogía). Si no hay nivel en el área, usa u.nivel*.
+    // Principal (prioriza Fonoaudiología > Psicopedagogía; completa nivel con fallback si falta)
     const getAreaPrincipalWithLevel = (u) => {
       const list = getAreasDetailed(u);
+      const userLevel = (u.nivel ?? u.Nivel ?? u.nivelProfesional ?? u.categoria ?? u.grado ?? u.seniority ?? '').toString().trim();
       if (!list.length) {
-        const fallbackLevel = (u.nivel || u.nivelProfesional || u.categoria || '').toString().trim();
-        return { name: '', level: fallbackLevel };
+        return { name: '', level: userLevel };
       }
       const byFono = list.find(a => isFono(a.name));
       const byPsic = list.find(a => isPsicoPed(a.name));
       const chosen = byFono || byPsic || list[0];
-
-      let level = chosen.level ||
-                  (u.nivel || u.nivelProfesional || u.categoria || '').toString().trim();
-      return { name: chosen.name, level };
+      return { name: chosen.name, level: chosen.level || userLevel };
     };
 
-    // Texto para tooltip con todas las áreas y niveles
+    // Tooltip con todas las áreas y niveles
     const formatAllAreas = (u) => {
       const list = getAreasDetailed(u);
-      if (!list.length) return '';
+      if (!list.length) {
+        const userLevel = (u.nivel ?? u.Nivel ?? u.nivelProfesional ?? u.categoria ?? u.grado ?? u.seniority ?? '').toString().trim();
+        return userLevel || '';
+      }
       return list.map(a => a.level ? `${a.name} — ${a.level}` : a.name).join(' | ');
     };
 
@@ -234,13 +239,13 @@ if (botonCargar) {
       return wanted.some(w => R.has(w));
     };
 
-    // Filtrar candidatos
+    // 2) Filtrar candidatos y buckets
     const candidatos    = usuarios.filter(u => hasAreaFP(u));
     const profesionales = candidatos.filter(u => hasRolCanon(u, 'profesional'));
     const coordinadores = candidatos.filter(u => hasRolCanon(u, 'coordinador', 'directora'));
     const pasantes      = candidatos.filter(u => hasRolCanon(u, 'pasante'));
 
-    // Render rows (una sola columna) con área + nivel
+    // 3) UI: una sola columna con Área — Nivel visible
     const renderRows = (arr, rolKey, titulo) => {
       if (!arr.length) return `<div class="empty">No hay ${titulo} en esas áreas</div>`;
       return `
@@ -250,14 +255,16 @@ if (botonCargar) {
           .map(u => {
             const principal = getAreaPrincipalWithLevel(u);
             const allAreas  = formatAllAreas(u);
-            const badge = principal.name
-              ? (principal.level ? `${principal.name} — ${principal.level}` : principal.name)
-              : (principal.level ? principal.level : '');
+            // Badge: "Área — Nivel" si hay ambos; solo uno si falta el otro
+            const parts = [];
+            if (principal.name)  parts.push(principal.name);
+            if (principal.level) parts.push(principal.level);
+            const badgeText = parts.join(' — ');
             return `
               <div class="person-row">
                 <div class="name">
                   ${fullName(u)}
-                  ${badge ? `<span class="area-badge" title="${allAreas}">${badge}</span>` : ''}
+                  ${badgeText ? `<span class="area-badge" title="${allAreas}">${badgeText}</span>` : ''}
                 </div>
                 <input type="number" min="0" step="0.01"
                        class="monto-input"
@@ -284,7 +291,7 @@ if (botonCargar) {
             display:inline-block; margin-left:8px; padding:2px 6px;
             font-size:11px; line-height:1; border:1px solid #e5e7eb; border-radius:999px;
             background:#f8fafc; color:#334155; vertical-align:middle;
-            max-width: 260px; text-overflow: ellipsis; overflow: hidden;
+            max-width: 280px; text-overflow: ellipsis; overflow: hidden;
           }
           .empty{color:#888;font-style:italic;padding:6px}
           .swal2-input{width:100%}
@@ -347,7 +354,7 @@ if (botonCargar) {
 
     if (!formValues) return;
 
-    // Guardar
+    // 4) Guardar
     try {
       const res = await apiFetch(`/modulos`, {
         method: 'POST',
