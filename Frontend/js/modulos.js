@@ -127,34 +127,135 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function mostrarFichaModulo(modulo) {
-  contenedorFicha.innerHTML = `
-    <div class="table-container">
-      <table class="modulo-detalle">
-        <thead>
-          <tr>
-            <th>Módulo</th>
-            <th>Valor padres</th>
-            <th># Profesionales</th>
-            <th># Coordinadores</th>
-            <th>Acción</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>${modulo.numero}</td>
-            <td>$${Number(modulo.valorPadres ?? 0).toLocaleString()}</td>
-            <td>${(modulo.profesionales?.length ?? 0)}</td>
-            <td>${(modulo.coordinadores?.length ?? 0)}</td>
-            <td>
-              <button class="btn-modificar" onclick="modificarModulo(${modulo.numero})">✏️</button>
-              <button class="btn-borrar"    onclick="borrarModulo(${modulo.numero})">🗑️</button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  `;
+  // ---------- Crear módulo ----------
+if (botonCargar) {
+  botonCargar.addEventListener('click', async () => {
+    const AREAS_FP = /(fonoaudiolog[íi]a|psicolog[íi]a)/i;
+
+    // Traer usuarios (no rompas el modal si falla)
+    let usuarios = [];
+    try {
+      const res = await apiFetch('/usuarios', { method: 'GET' });
+      if (res.ok) usuarios = await res.json();
+    } catch (e) {
+      console.warn('No se pudieron obtener usuarios:', e);
+    }
+
+    const getArr   = v => Array.isArray(v) ? v : (v ? [v] : []);
+    const fullName = u => [u.apellido, u.nombre].filter(Boolean).join(', ') || u.nombre || 'Sin nombre';
+    const hasArea  = (u) =>
+      getArr(u.areasProfesional).some(a => AREAS_FP.test(String(a||''))) ||
+      getArr(u.areasCoordinadas).some(a => AREAS_FP.test(String(a||''))) ||
+      getArr(u.areas).some(a => AREAS_FP.test(String(a||'')));
+    const hasRol = (u, rol) => {
+      const r1 = (u.rol || u.role || '').toLowerCase();
+      const r2 = getArr(u.roles).map(x => String(x||'').toLowerCase());
+      const target = rol.toLowerCase();
+      return r1 === target || r2.includes(target);
+    };
+
+    const profesionales = usuarios.filter(u => hasArea(u) && (hasRol(u, 'profesional') || hasRol(u, 'terapeuta')));
+    const coordinadores = usuarios.filter(u => hasArea(u) && (hasRol(u, 'coordinador') || hasRol(u, 'coordinadora')));
+
+    const renderLista = (arr, name) => {
+      if (!arr.length) return `<div class="empty">No hay ${name} en esas áreas</div>`;
+      return arr
+        .sort((a,b)=>fullName(a).localeCompare(fullName(b), 'es'))
+        .map(u => `
+          <label class="person-item">
+            <input type="checkbox" name="${name}" value="${u._id}">
+            <span>${fullName(u)}</span>
+          </label>
+        `).join('');
+    };
+
+    const { value: formValues } = await Swal.fire({
+      title: 'Cargar nuevo módulo',
+      width: '900px',
+      html: `
+        <style>
+          .form-grid{display:grid;gap:12px}
+          .row{display:grid;gap:10px}
+          .cols-2{grid-template-columns:1fr 1fr}
+          .person-list{max-height:260px;overflow:auto;border:1px solid #e5e7eb;border-radius:10px;padding:8px}
+          .person-item{display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px dashed #eee}
+          .person-item:last-child{border-bottom:none}
+          .section-title{font-weight:700;margin:4px 0 6px}
+          .empty{color:#888;font-style:italic;padding:6px}
+          .swal2-input{width:100%}
+        </style>
+
+        <div class="form-grid">
+          <div class="row cols-2">
+            <div>
+              <label for="modulo_numero"><strong>Número del módulo:</strong></label>
+              <input id="modulo_numero" type="number" min="0" step="1" class="swal2-input">
+            </div>
+            <div>
+              <label for="valor_padres"><strong>Pagan los padres (valor del módulo):</strong></label>
+              <input id="valor_padres" type="number" min="0" step="0.01" class="swal2-input">
+            </div>
+          </div>
+
+          <div>
+            <div class="section-title">VALORES FONOAUDIOLOGÍA - PSICOLOGÍA</div>
+            <div class="row cols-2">
+              <div>
+                <div class="section-title">Profesionales</div>
+                <div class="person-list" id="listaProfesionales">
+                  ${renderLista(profesionales, 'profesionales')}
+                </div>
+              </div>
+              <div>
+                <div class="section-title">Coordinadores</div>
+                <div class="person-list" id="listaCoordinadores">
+                  ${renderLista(coordinadores, 'coordinadores')}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `,
+      showCancelButton: true,
+      confirmButtonText: 'Guardar',
+      cancelButtonText: 'Cancelar',
+      preConfirm: () => {
+        const numero = parseInt(document.getElementById('modulo_numero').value, 10);
+        const valorPadres = Number(document.getElementById('valor_padres').value);
+
+        if (isNaN(numero)) return Swal.showValidationMessage('⚠️ El número del módulo es obligatorio');
+        if (Number.isNaN(valorPadres)) return Swal.showValidationMessage('⚠️ Ingresá un valor válido para “Pagan los padres”');
+
+        const sel = (name) => [...document.querySelectorAll(`input[name="${name}"]:checked`)].map(i => i.value);
+
+        return {
+          numero,
+          valorPadres,
+          profesionales: sel('profesionales'),
+          coordinadores: sel('coordinadores'),
+        };
+      }
+    });
+
+    if (!formValues) return;
+
+    // Guardar
+    try {
+      const res = await apiFetch(`/modulos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formValues)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'No se pudo guardar');
+
+      Swal.fire('Éxito', 'Módulo guardado correctamente', 'success');
+      cargarListadoModulos();
+    } catch (error) {
+      console.error('Error guardando módulo:', error);
+      Swal.fire('Error', error?.message || 'Ocurrió un error al guardar', 'error');
+    }
+  });
 }
 
   // ---------- Handlers globales (usados por onclick en la tabla) ----------
