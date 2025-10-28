@@ -128,7 +128,7 @@ function renderListado(mods) {
     });
   }
 
-  // ---------- Crear módulo (una sola columna | Fonoaudiología + Psicopedagogía) ----------
+  // ---------- Crear módulo (una sola columna | Fonoaudiología + Psicopedagogía | con área al lado) ----------
 if (botonCargar) {
   botonCargar.addEventListener('click', async () => {
     // Traer usuarios
@@ -153,10 +153,23 @@ if (botonCargar) {
       [u.areasProfesional, u.areasCoordinadas, u.areas, u.area, u.areaPrincipal]
         .flatMap(getArr).map(a => (a || '').toString().trim()).filter(Boolean);
 
-    // ⬇️ Filtro por Fonoaudiología + Psicopedagogía (con y sin acentos)
+    // ⬇️ Filtro por Fonoaudiología + Psicopedagogía
     const hasAreaFP = (u) => {
       const text = getAreas(u).join(' ').toLowerCase();
       return /(fonoaudiolog[ií]a|psicopedagog[ií]a)/i.test(text);
+    };
+
+    // Área principal a mostrar (elige la que coincida; si hay varias, prioriza Fonoaudiología > Psicopedagogía)
+    const getAreaPrincipal = (u) => {
+      const areas = getAreas(u);
+      if (!areas.length) return '';
+      // normaliza
+      const norm = areas.map(a => a.toLowerCase());
+      const idxFono = norm.findIndex(a => /fonoaudiolog[ií]a/.test(a));
+      const idxPsicoPed = norm.findIndex(a => /psicopedagog[ií]a/.test(a));
+      if (idxFono !== -1) return areas[idxFono];
+      if (idxPsicoPed !== -1) return areas[idxPsicoPed];
+      return areas[0]; // fallback: primera
     };
 
     // Roles canónicos según tu lista
@@ -191,23 +204,30 @@ if (botonCargar) {
     const coordinadores = candidatos.filter(u => hasRolCanon(u, 'coordinador', 'directora'));
     const pasantes      = candidatos.filter(u => hasRolCanon(u, 'pasante'));
 
-    // Render rows en una sola columna
+    // Render rows (una sola columna) con área badge
     const renderRows = (arr, rolKey, titulo) => {
       if (!arr.length) return `<div class="empty">No hay ${titulo} en esas áreas</div>`;
       return `
         <div class="section-title">${titulo}</div>
         ${arr
           .sort((a,b)=>fullName(a).localeCompare(fullName(b), 'es'))
-          .map(u => `
-            <div class="person-row">
-              <div class="name">${fullName(u)}</div>
-              <input type="number" min="0" step="0.01"
-                     class="monto-input"
-                     data-rol="${rolKey}"
-                     data-user="${u._id}"
-                     placeholder="0" />
-            </div>
-          `).join('')}
+          .map(u => {
+            const areaPrincipal = getAreaPrincipal(u);
+            const todasLasAreas = getAreas(u).join(' | ');
+            return `
+              <div class="person-row">
+                <div class="name">
+                  ${fullName(u)}
+                  ${areaPrincipal ? `<span class="area-badge" title="${todasLasAreas}">${areaPrincipal}</span>` : ''}
+                </div>
+                <input type="number" min="0" step="0.01"
+                       class="monto-input"
+                       data-rol="${rolKey}"
+                       data-user="${u._id}"
+                       placeholder="0" />
+              </div>
+            `;
+          }).join('')}
       `;
     };
 
@@ -221,6 +241,12 @@ if (botonCargar) {
           .person-row{display:grid;grid-template-columns:1fr 120px;gap:8px;align-items:center;border-bottom:1px dashed #eee;padding:4px 0}
           .person-row:last-child{border-bottom:none}
           .name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+          .area-badge{
+            display:inline-block; margin-left:8px; padding:2px 6px;
+            font-size:11px; line-height:1; border:1px solid #e5e7eb; border-radius:999px;
+            background:#f8fafc; color:#334155;
+            vertical-align:middle;
+          }
           .empty{color:#888;font-style:italic;padding:6px}
           .swal2-input{width:100%}
           .notice{font-size:12px;color:#555}
