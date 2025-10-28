@@ -1,40 +1,28 @@
-// backend/models/modulos.js
 const mongoose = require('mongoose');
 const { Schema } = mongoose;
 
+const ItemAsignacion = new Schema({
+  usuario: { type: Schema.Types.ObjectId, ref: 'Usuario', required: true },
+  monto:   { type: Number, default: 0 }
+}, { _id: false });
+
 const moduloSchema = new Schema({
-  // Número del módulo (único y obligatorio)
-  numero: {
-    type: Number,
-    required: true,
-    unique: true,
-    index: true,
-  },
+  numero: { type: Number, required: true, unique: true, index: true },
 
-  // Valor que pagan los padres (valor del módulo)
-  valorPadres: {
-    type: Number,
-    default: 0,
-  },
+  // Total abonado por padres
+  valorPadres: { type: Number, default: 0 },
 
-  // Listas de personas vinculadas al módulo
-  profesionales: [{
-    type: Schema.Types.ObjectId,
-    ref: 'Usuario',
-  }],
+  // Asignaciones por persona
+  profesionales: [ItemAsignacion],
+  coordinadores: [ItemAsignacion],
+  pasantes:      [ItemAsignacion],
 
-  coordinadores: [{
-    type: Schema.Types.ObjectId,
-    ref: 'Usuario',
-  }],
-
-  // Campos que ya tenías y mantenemos
+  // Campos existentes que mantenés
   areasExternas: {
     paciente: Number,
     porcentaje: Number,
     profesional: Number,
   },
-
   habilidadesSociales: {
     paciente: Number,
     porcentaje: Number,
@@ -42,14 +30,11 @@ const moduloSchema = new Schema({
   },
 }, { timestamps: true });
 
-// Limpieza de salida JSON
 moduloSchema.set('toJSON', {
   virtuals: true,
   versionKey: false,
-  transform: (_, ret) => {
-    ret.id = ret._id;
-    delete ret._id;
-  }
+  transform: (_, ret) => { ret.id = ret._id; delete ret._id; }
 });
 
 module.exports = mongoose.model('Modulo', moduloSchema);
+

@@ -128,12 +128,10 @@ function renderListado(mods) {
     });
   }
 
-  // ---------- Crear módulo ----------
+  // ---------- Crear módulo (con monto por persona) ----------
 if (botonCargar) {
   botonCargar.addEventListener('click', async () => {
-    const AREAS_FP = /(fonoaudiolog[íi]a|psicolog[íi]a)/i;
-
-    // Traer usuarios (no rompas el modal si falla)
+    // 1) Traer usuarios
     let usuarios = [];
     try {
       const res = await apiFetch('/usuarios', { method: 'GET' });
@@ -142,48 +140,70 @@ if (botonCargar) {
       console.warn('No se pudieron obtener usuarios:', e);
     }
 
-    const getArr   = v => Array.isArray(v) ? v : (v ? [v] : []);
-    const fullName = u => [u.apellido, u.nombre].filter(Boolean).join(', ') || u.nombre || 'Sin nombre';
-    const hasArea  = (u) =>
-      getArr(u.areasProfesional).some(a => AREAS_FP.test(String(a||''))) ||
-      getArr(u.areasCoordinadas).some(a => AREAS_FP.test(String(a||''))) ||
-      getArr(u.areas).some(a => AREAS_FP.test(String(a||'')));
-    const hasRol = (u, rol) => {
-      const r1 = (u.rol || u.role || '').toLowerCase();
-      const r2 = getArr(u.roles).map(x => String(x||'').toLowerCase());
-      const target = rol.toLowerCase();
-      return r1 === target || r2.includes(target);
+    // ---- helpers robustos ----
+    const getArr = (v) => Array.isArray(v) ? v : (v ? [v] : []);
+    const fullName = (u) => {
+      const cands = [
+        u.nombreApellido, u.apellidoNombre, u.nombreCompleto,
+        [u.apellido, u.nombre].filter(Boolean).join(', '),
+        [u.nombre, u.apellido].filter(Boolean).join(' '),
+        u.nombre, u.apellido, u.displayName, u.usuario, u.email
+      ].map(x => (x || '').toString().trim()).filter(Boolean);
+      return cands[0] || 'Sin nombre';
+    };
+    const getAreas = (u) =>
+      [u.areasProfesional, u.areasCoordinadas, u.areas, u.area, u.areaPrincipal]
+        .flatMap(getArr).map(a => (a || '').toString().trim()).filter(Boolean);
+    const hasAreaFP = (u) => /(fonoaudiolog[íi]a|psicolog[íi]a)/i.test(getAreas(u).join(' '));
+    const rolesOf = (u) => {
+      const base = [u.rol, u.role, ...(Array.isArray(u.roles) ? u.roles : [])]
+        .filter(Boolean).map(r => r.toString().toLowerCase().trim());
+      return new Set(base);
+    };
+    const hasRol = (u, ...rols) => {
+      const R = rolesOf(u);
+      return rols.some(r => R.has(r.toLowerCase()));
     };
 
-    const profesionales = usuarios.filter(u => hasArea(u) && (hasRol(u, 'profesional') || hasRol(u, 'terapeuta')));
-    const coordinadores = usuarios.filter(u => hasArea(u) && (hasRol(u, 'coordinador') || hasRol(u, 'coordinadora')));
+    // 2) Filtrar por áreas y agrupar por rol
+    const candidatos = usuarios.filter(u => hasAreaFP(u));
+    const profesionales = candidatos.filter(u => hasRol(u, 'profesional', 'terapeuta'));
+    const coordinadores = candidatos.filter(u => hasRol(u, 'coordinador', 'coordinadora'));
+    const pasantes      = candidatos.filter(u => hasRol(u, 'pasante', 'practicante', 'interno'));
 
-    const renderLista = (arr, name) => {
-      if (!arr.length) return `<div class="empty">No hay ${name} en esas áreas</div>`;
+    const renderRows = (arr, rolKey) => {
+      if (!arr.length) return `<div class="empty">No hay ${rolKey} en esas áreas</div>`;
       return arr
         .sort((a,b)=>fullName(a).localeCompare(fullName(b), 'es'))
         .map(u => `
-          <label class="person-item">
-            <input type="checkbox" name="${name}" value="${u._id}">
-            <span>${fullName(u)}</span>
-          </label>
+          <div class="person-row">
+            <div class="name">${fullName(u)}</div>
+            <input type="number" min="0" step="0.01"
+                   class="monto-input"
+                   data-rol="${rolKey}"
+                   data-user="${u._id}"
+                   placeholder="0" />
+          </div>
         `).join('');
     };
 
     const { value: formValues } = await Swal.fire({
       title: 'Cargar nuevo módulo',
-      width: '900px',
+      width: '980px',
       html: `
         <style>
-          .form-grid{display:grid;gap:12px}
+          .form-grid{display:grid;gap:14px}
           .row{display:grid;gap:10px}
           .cols-2{grid-template-columns:1fr 1fr}
-          .person-list{max-height:260px;overflow:auto;border:1px solid #e5e7eb;border-radius:10px;padding:8px}
-          .person-item{display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px dashed #eee}
-          .person-item:last-child{border-bottom:none}
-          .section-title{font-weight:700;margin:4px 0 6px}
+          .cols-3{grid-template-columns:1fr 1fr 1fr}
+          .section-title{font-weight:700;margin:6px 0}
+          .panel{border:1px solid #e5e7eb;border-radius:10px;padding:10px;max-height:260px;overflow:auto}
+          .person-row{display:grid;grid-template-columns:1fr 140px;gap:8px;align-items:center;border-bottom:1px dashed #eee;padding:6px 0}
+          .person-row:last-child{border-bottom:none}
+          .name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
           .empty{color:#888;font-style:italic;padding:6px}
           .swal2-input{width:100%}
+          .notice{font-size:12px;color:#555}
         </style>
 
         <div class="form-grid">
@@ -195,24 +215,23 @@ if (botonCargar) {
             <div>
               <label for="valor_padres"><strong>Pagan los padres (valor del módulo):</strong></label>
               <input id="valor_padres" type="number" min="0" step="0.01" class="swal2-input">
+              <div class="notice">Luego distribuí este total entre las personas de abajo.</div>
             </div>
           </div>
 
-          <div>
-            <div class="section-title">VALORES FONOAUDIOLOGÍA - PSICOLOGÍA</div>
-            <div class="row cols-2">
-              <div>
-                <div class="section-title">Profesionales</div>
-                <div class="person-list" id="listaProfesionales">
-                  ${renderLista(profesionales, 'profesionales')}
-                </div>
-              </div>
-              <div>
-                <div class="section-title">Coordinadores</div>
-                <div class="person-list" id="listaCoordinadores">
-                  ${renderLista(coordinadores, 'coordinadores')}
-                </div>
-              </div>
+          <div class="section-title">VALORES FONOAUDIOLOGÍA - PSICOLOGÍA</div>
+          <div class="row cols-3">
+            <div>
+              <div class="section-title">Profesionales</div>
+              <div class="panel">${renderRows(profesionales, 'profesional')}</div>
+            </div>
+            <div>
+              <div class="section-title">Coordinadores</div>
+              <div class="panel">${renderRows(coordinadores, 'coordinador')}</div>
+            </div>
+            <div>
+              <div class="section-title">Pasantes</div>
+              <div class="panel">${renderRows(pasantes, 'pasante')}</div>
             </div>
           </div>
         </div>
@@ -223,24 +242,37 @@ if (botonCargar) {
       preConfirm: () => {
         const numero = parseInt(document.getElementById('modulo_numero').value, 10);
         const valorPadres = Number(document.getElementById('valor_padres').value);
-
         if (isNaN(numero)) return Swal.showValidationMessage('⚠️ El número del módulo es obligatorio');
-        if (Number.isNaN(valorPadres)) return Swal.showValidationMessage('⚠️ Ingresá un valor válido para “Pagan los padres”');
+        if (Number.isNaN(valorPadres) || valorPadres < 0) return Swal.showValidationMessage('⚠️ Ingresá un valor válido para “Pagan los padres”');
 
-        const sel = (name) => [...document.querySelectorAll(`input[name="${name}"]:checked`)].map(i => i.value);
+        const take = (rol) => [...document.querySelectorAll(`.monto-input[data-rol="${rol}"]`)]
+          .map(i => ({ usuario: i.dataset.user, monto: Number(i.value) || 0 }))
+          .filter(x => x.usuario && x.monto > 0);
+
+        const profesionalesAsignaciones = take('profesional');
+        const coordinadoresAsignaciones = take('coordinador');
+        const pasantesAsignaciones      = take('pasante');
+
+        const totalAsignado = [...profesionalesAsignaciones, ...coordinadoresAsignaciones, ...pasantesAsignaciones]
+          .reduce((acc, x) => acc + x.monto, 0);
+
+        if (totalAsignado > valorPadres + 0.0001) {
+          return Swal.showValidationMessage(`⚠️ El total asignado ($${totalAsignado.toFixed(2)}) supera el valor de padres ($${valorPadres.toFixed(2)}).`);
+        }
 
         return {
           numero,
           valorPadres,
-          profesionales: sel('profesionales'),
-          coordinadores: sel('coordinadores'),
+          profesionales: profesionalesAsignaciones,
+          coordinadores: coordinadoresAsignaciones,
+          pasantes: pasantesAsignaciones
         };
       }
     });
 
     if (!formValues) return;
 
-    // Guardar
+    // 3) Guardar
     try {
       const res = await apiFetch(`/modulos`, {
         method: 'POST',
@@ -258,6 +290,7 @@ if (botonCargar) {
     }
   });
 }
+
 
   // ---------- Handlers globales (usados por onclick en la tabla) ----------
   window.borrarModulo = async (numero) => {
