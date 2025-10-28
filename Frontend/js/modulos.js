@@ -347,7 +347,6 @@ if (botonCargar) {
           <div>
             <label for="valor_padres"><strong>Pagan los padres (valor del módulo):</strong></label>
             <input id="valor_padres" type="number" min="0" step="0.01" class="swal2-input" placeholder="${formatARS(0)}">
-            <div class="money-hint">Se mostrará como ${formatARS(12345.67)}.</div>
           </div>
 
           <div class="section-title">VALORES FONOAUDIOLOGÍA - PSICOPEDAGOGÍA</div>
