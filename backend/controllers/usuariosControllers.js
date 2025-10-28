@@ -138,6 +138,77 @@ function mapDocsForView(docs) {
   });
 }
 
+/* ---------- Helpers extra: áreas con nivel (para exponer al front) ---------- */
+const arr = (v) => Array.isArray(v) ? v : (v ? [v] : []);
+
+function normAreaEntry(x){
+  if (!x) return null;
+  if (typeof x === 'string') return { nombre: x.trim(), nivel: '' };
+  if (typeof x === 'object'){
+    const nombre =
+      (x.nombre || x.name || x.titulo || x.area || '').toString().trim();
+    const nivel =
+      (x.nivel ?? x.Nivel ?? x.nivelArea ?? x.nivel_area ??
+       x.nivelProfesional ?? x.grado ?? x.categoria ?? x.seniority ?? '')
+      .toString().trim();
+    if (!nombre && !nivel) return null;
+    return { nombre, nivel };
+  }
+  return null;
+}
+
+function pairAreasLevels(areas = [], niveles = []) {
+  return areas.map((a, i) => {
+    const nombre = (typeof a === 'string'
+      ? a
+      : (a?.nombre || a?.name || a?.area || '')
+    ).toString().trim();
+    const nivel = (niveles[i] ?? a?.nivel ?? a?.nivelProfesional ?? '')
+      .toString().trim();
+    if (!nombre && !nivel) return null;
+    return { nombre, nivel };
+  }).filter(Boolean);
+}
+
+// Devuelve [{nombre, nivel}] robusto para PROF / COORD
+function buildAreasDetalladas(u, tipo = 'Profesional') {
+  const userLevel = (
+    u.nivel ?? u.Nivel ?? u.nivelProfesional ?? u.categoria ?? u.grado ?? u.seniority ?? ''
+  ).toString().trim();
+
+  const Akey = (tipo === 'Profesional') ? 'areasProfesional'   : 'areasCoordinadas';
+  const Nkey = (tipo === 'Profesional') ? 'nivelesProfesional' : 'nivelesCoordinadas';
+
+  let list = [];
+
+  // 1) Objetos con {nombre/nombre, nivel}
+  list = list.concat(arr(u[Akey]).map(normAreaEntry).filter(Boolean));
+
+  // 2) Arrays paralelos (si existen)
+  if (u[Akey] && u[Nkey]) {
+    list = list.concat(pairAreasLevels(arr(u[Akey]), arr(u[Nkey])));
+  }
+
+  // 3) Compat y extras
+  list = list.concat(arr(u.areas).map(normAreaEntry).filter(Boolean));
+  list = list.concat(arr(u.area).map(normAreaEntry).filter(Boolean));
+  list = list.concat(arr(u.areaPrincipal).map(normAreaEntry).filter(Boolean));
+
+  // Completar nivel faltante con el nivel del usuario
+  if (userLevel) list = list.map(a => ({ ...a, nivel: a.nivel || userLevel }));
+
+  // Quitar duplicados simples
+  const seen = new Set();
+  list = list.filter(a => {
+    const k = `${a.nombre}|${a.nivel}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+
+  return list;
+}
+
 /* ------------------------ Crear ------------------------ */
 exports.crearUsuario = async (req, res) => {
   try {
@@ -175,7 +246,10 @@ exports.crearUsuario = async (req, res) => {
     return res.status(201).json({
       ...nuevoObj,
       pasanteNivel: nuevoObj.nivelPasante,               // espejo para el front
-      documentos: mapDocsForView(nuevoObj.documentos)
+      documentos: mapDocsForView(nuevoObj.documentos),
+      // añadimos también el derivado por conveniencia
+      areasProfesionalDetalladas: buildAreasDetalladas(nuevoObj, 'Profesional'),
+      areasCoordinadasDetalladas: buildAreasDetalladas(nuevoObj, 'Coordinador')
     });
   } catch (err) {
     console.error("crearUsuario error:", err?.stack || err);
@@ -186,16 +260,19 @@ exports.crearUsuario = async (req, res) => {
 /* ------------------------ Listar ------------------------ */
 exports.obtenerUsuarios = async (_req, res) => {
   try {
-    const lista = await Usuario.find().select("-contrasena");
-    res.status(200).json(lista.map(u => {
-      const o = u.toObject();
-      return {
-        ...o,
-        pasanteNivel: o.nivelPasante,                     // espejo para el front en listados
-        documentos: mapDocsForView(o.documentos)
-      };
+    const lista = await Usuario.find().select("-contrasena").lean();
+
+    const resp = lista.map(u => ({
+      ...u,
+      pasanteNivel: u.nivelPasante,                     // espejo para el front en listados
+      documentos: mapDocsForView(u.documentos),
+      areasProfesionalDetalladas: buildAreasDetalladas(u, 'Profesional'),
+      areasCoordinadasDetalladas: buildAreasDetalladas(u, 'Coordinador')
     }));
+
+    res.status(200).json(resp);
   } catch (err) {
+    console.error('obtenerUsuarios error:', err);
     res.status(500).json({ error: "Error al obtener usuarios" });
   }
 };
@@ -203,14 +280,15 @@ exports.obtenerUsuarios = async (_req, res) => {
 /* ------------------------ Obtener por ID ------------------------ */
 exports.getUsuarioPorId = async (req, res) => {
   try {
-    const usuario = await Usuario.findById(req.params.id).select("-contrasena");
-    if (!usuario) return res.status(404).json({ error: "No encontrado" });
+    const u = await Usuario.findById(req.params.id).select("-contrasena").lean();
+    if (!u) return res.status(404).json({ error: "No encontrado" });
 
-    const uObj = usuario.toObject();
     res.json({
-      ...uObj,
-      pasanteNivel: uObj.nivelPasante,                    // espejo para el front
-      documentos: mapDocsForView(uObj.documentos)
+      ...u,
+      pasanteNivel: u.nivelPasante,                    // espejo para el front
+      documentos: mapDocsForView(u.documentos),
+      areasProfesionalDetalladas: buildAreasDetalladas(u, 'Profesional'),
+      areasCoordinadasDetalladas: buildAreasDetalladas(u, 'Coordinador')
     });
   } catch (err) {
     res.status(500).json({ error: "Error al obtener usuario" });
@@ -257,7 +335,9 @@ exports.actualizarUsuario = async (req, res) => {
     return res.json({
       ...uObj,
       pasanteNivel: uObj.nivelPasante,                     // espejo para el front
-      documentos: mapDocsForView(uObj.documentos)
+      documentos: mapDocsForView(uObj.documentos),
+      areasProfesionalDetalladas: buildAreasDetalladas(uObj, 'Profesional'),
+      areasCoordinadasDetalladas: buildAreasDetalladas(uObj, 'Coordinador')
     });
   } catch (err) {
     console.error("actualizarUsuario error:", err?.stack || err);
@@ -377,5 +457,3 @@ exports.authMiddleware = (req, res, next) => {
     return res.status(401).json({ error: "Token no válido o expirado" });
   }
 };
-
-
