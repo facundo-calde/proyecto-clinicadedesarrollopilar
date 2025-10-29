@@ -423,7 +423,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
             </div>
 
             <label><strong>Documentos:</strong></label>
-            <input type="file" id="documentos" class="swal2-input" multiple accept=".pdf,image/*,.doc,.docx,.txt">
+            <input type="file" id="documentos" name="documentos" class="swal2-input" multiple accept=".pdf,image/*,.doc,.docx,.txt">
 
             <div id="docsExistentes" class="block" style="display:none; margin-top:8px;">
               <label><strong>Documentos existentes:</strong></label>
@@ -641,81 +641,116 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
       const get = id => document.getElementById(id)?.value?.trim();
       const onlyDigits = s => (s || "").replace(/\D+/g, "");
 
-      const rol = get("rol");
+      // helpers para preservar valores previos al editar
+      const valOrPrev = (id, prev) => {
+        const v = get(id);
+        return (v !== undefined && v !== "") ? v : prev;
+      };
+      const numOrPrev = (id, prev) => {
+        const raw = get(id);
+        if (raw === undefined || raw === "") return prev;
+        const n = onlyDigits(raw);
+        return n === "" ? prev : n;
+      };
 
-      const areasProfesional = Array.from(document.querySelectorAll("#proList .pro-row"))
-        .map(row => {
-          const areaNombre = row.querySelector(".pro-area")?.value?.trim() || "";
-          const nivel      = row.querySelector(".pro-nivel")?.value?.trim() || "";
-          if (!areaNombre || !nivel) return null;
-          return { areaNombre, nivel };
-        }).filter(Boolean);
+      const rol = valOrPrev("rol", u.rol);
 
-      const areasCoordinadas = Array.from(document.querySelectorAll("#coordList .coord-row"))
-        .map(row => {
-          const areaNombre = row.querySelector(".coord-area")?.value?.trim() || "";
-          if (!areaNombre) return null;
-          return { areaNombre };
-        }).filter(Boolean);
+      const proSectionVisible   = document.getElementById("proSection")?.style.display !== "none";
+      const coordSectionVisible = document.getElementById("coordSection")?.style.display !== "none";
+      const pasanteVisible      = document.getElementById("pasanteSection")?.style.display !== "none";
+
+      const areasProfesional = proSectionVisible
+        ? Array.from(document.querySelectorAll("#proList .pro-row"))
+            .map(row => {
+              const areaNombre = row.querySelector(".pro-area")?.value?.trim() || "";
+              const nivel      = row.querySelector(".pro-nivel")?.value?.trim() || "";
+              if (!areaNombre || !nivel) return null;
+              return { areaNombre, nivel };
+            })
+            .filter(Boolean)
+        : (Array.isArray(u.areasProfesional) ? u.areasProfesional : []);
+
+      const areasCoordinadas = coordSectionVisible
+        ? Array.from(document.querySelectorAll("#coordList .coord-row"))
+            .map(row => {
+              const areaNombre = row.querySelector(".coord-area")?.value?.trim() || "";
+              if (!areaNombre) return null;
+              return { areaNombre };
+            })
+            .filter(Boolean)
+        : (Array.isArray(u.areasCoordinadas) ? u.areasCoordinadas : []);
 
       const ROLES_PROF  = new Set(["Profesional", "Coordinador y profesional"]);
       const ROLES_COORD = new Set(["Coordinador de área", "Coordinador y profesional"]);
 
-      // Validaciones por rol
-      if (ROLES_PROF.has(rol) && areasProfesional.length === 0) {
+      if (proSectionVisible && ROLES_PROF.has(rol) && areasProfesional.length === 0) {
         Swal.showValidationMessage("Agregá al menos un área con nivel para el rol profesional.");
         return false;
       }
-      if (ROLES_COORD.has(rol) && areasCoordinadas.length === 0) {
+      if (coordSectionVisible && ROLES_COORD.has(rol) && areasCoordinadas.length === 0) {
         Swal.showValidationMessage("Agregá al menos un área para coordinación.");
         return false;
       }
-      if (rol === "Pasante") {
-        const pasanteAreaSel = get("pasanteArea");
-        if (!pasanteAreaSel) {
+
+      // Pasante: si la sección está visible, tomar lo nuevo; si no, conservar lo previo
+      const pasanteNivel = pasanteVisible ? valOrPrev("pasanteNivel", u.pasanteNivel) : u.pasanteNivel;
+      const pasanteArea  = pasanteVisible
+        ? (() => {
+            const v = get("pasanteArea");
+            if (!v && u.pasanteArea) return u.pasanteArea;
+            return v ? { areaNombre: v } : undefined;
+          })()
+        : (u.pasanteArea ?? undefined);
+
+      const payload = {
+        nombreApellido:      valOrPrev("nombreApellido", u.nombreApellido),
+        fechaNacimiento:     valOrPrev("fechaNacimiento",  u.fechaNacimiento),
+        domicilio:           valOrPrev("domicilio",        u.domicilio),
+        dni:                 valOrPrev("dni",              u.dni),
+        cuit:                valOrPrev("cuit",             u.cuit),
+        matricula:           valOrPrev("matricula",        u.matricula),
+        jurisdiccion:        valOrPrev("jurisdiccion",     u.jurisdiccion),
+        registroNacionalDePrestadores: valOrPrev("registroNacionalDePrestadores", u.registroNacionalDePrestadores),
+        whatsapp:            valOrPrev("whatsapp",         u.whatsapp),
+        mail:                valOrPrev("mail",             u.mail),
+        salarioAcuerdo:      numOrPrev("salarioAcuerdo",   u.salarioAcuerdo),
+        salarioAcuerdoObs:   valOrPrev("salarioAcuerdoObs",u.salarioAcuerdoObs),
+        fijoAcuerdo:         numOrPrev("fijoAcuerdo",      u.fijoAcuerdo),
+        fijoAcuerdoObs:      valOrPrev("fijoAcuerdoObs",   u.fijoAcuerdoObs),
+        banco:               valOrPrev("banco",            u.banco),
+        cbu:                 valOrPrev("cbu",              u.cbu),
+        numeroCuenta:        valOrPrev("numeroCuenta",     u.numeroCuenta),
+        numeroSucursal:      valOrPrev("numeroSucursal",   u.numeroSucursal),
+        alias:               valOrPrev("alias",            u.alias),
+        nombreFiguraExtracto:valOrPrev("nombreFiguraExtracto", u.nombreFiguraExtracto),
+        tipoCuenta:          valOrPrev("tipoCuenta",       u.tipoCuenta),
+        rol,
+        pasanteNivel,
+        pasanteArea, // puede quedar undefined
+        usuario:             valOrPrev("usuario",          u.usuario),
+        contrasena:          get("contrasena") || undefined, // si está vacío, no cambia
+        seguroMalaPraxis:    valOrPrev("seguroMalaPraxis", u.seguroMalaPraxis),
+        areasProfesional,
+        areasCoordinadas
+      };
+
+      // borrar undefined para no pisar en backend
+      Object.keys(payload).forEach(k => {
+        if (payload[k] === undefined) delete payload[k];
+      });
+
+      // Validación extra: si rol es Pasante y la sección está visible,
+      // exigimos un área (si no había antes y no se selecciona ahora).
+      if (rol === "Pasante" && pasanteVisible) {
+        const hadBefore = !!u.pasanteArea;
+        const nowVal = document.getElementById("pasanteArea")?.value?.trim();
+        if (!hadBefore && !nowVal) {
           Swal.showValidationMessage("Seleccioná el área a la que pertenece el pasante.");
           return false;
         }
       }
 
-      const pasanteAreaObj = (() => {
-        const val = get("pasanteArea");
-        if (!val) return undefined;
-        return { areaNombre: val };
-      })();
-
-      return {
-        nombreApellido: get("nombreApellido"),
-        fechaNacimiento: get("fechaNacimiento"),
-        domicilio: get("domicilio"),
-        dni: get("dni"),
-        cuit: get("cuit"),
-        matricula: get("matricula"),
-        jurisdiccion: get("jurisdiccion"),
-        registroNacionalDePrestadores: get("registroNacionalDePrestadores"),
-        whatsapp: get("whatsapp"),
-        mail: get("mail"),
-        salarioAcuerdo: onlyDigits(get("salarioAcuerdo")),
-        salarioAcuerdoObs: get("salarioAcuerdoObs"),
-        fijoAcuerdo: onlyDigits(get("fijoAcuerdo")),
-        fijoAcuerdoObs: get("fijoAcuerdoObs"),
-        banco: get("banco"),
-        cbu: get("cbu"),
-        numeroCuenta: get("numeroCuenta"),
-        numeroSucursal: get("numeroSucursal"),
-        alias: get("alias"),
-        nombreFiguraExtracto: get("nombreFiguraExtracto"),
-        tipoCuenta: get("tipoCuenta"),
-        rol,
-        pasanteNivel: get("pasanteNivel"),
-        pasanteArea: pasanteAreaObj,
-        usuario: get("usuario"),
-        contrasena: get("contrasena"),
-        // Seguro: opcional para profesional y coordinador
-        seguroMalaPraxis: get("seguroMalaPraxis") || undefined,
-        areasProfesional,
-        areasCoordinadas
-      };
+      return payload;
     }
   }).then(async result => {
     if (!result.isConfirmed) return;
@@ -723,14 +758,12 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
     const path = modoEdicion ? `/usuarios/${u._id}` : `/usuarios`;
     const method = modoEdicion ? "PUT" : "POST";
 
-    const archivos = (document.getElementById("documentos")?.files) || [];
+    const archivosInput = document.getElementById("documentos");
+    const archivos = archivosInput && archivosInput.files ? Array.from(archivosInput.files) : [];
     let res;
 
     if (!archivos.length) {
-      res = await apiFetch(path, {
-        method,
-        body: JSON.stringify(result.value)
-      });
+      res = await apiFetch(path, { method, body: JSON.stringify(result.value) });
     } else {
       const fd = new FormData();
       for (const [key, val] of Object.entries(result.value)) {
@@ -741,8 +774,8 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
           fd.append(key, val);
         }
       }
-      for (let i = 0; i < archivos.length; i++) {
-        fd.append("documentos", archivos[i]);
+      for (const file of archivos) {
+        fd.append("documentos", file, file.name);
       }
       res = await apiFetch(path, { method, body: fd });
     }
