@@ -94,11 +94,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // helpers
       const escapeHTML = (s) => String(s ?? "")
-        .replace(/&/g,"&amp;")
-        .replace(/</g,"&lt;")
-        .replace(/>/g,"&gt;")
-        .replace(/"/g,"&quot;")
-        .replace(/'/g,"&#39;");
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
 
       const ROLE_ORDER = {
         "Coordinador y profesional": 0,
@@ -175,9 +175,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const sep = document.createElement('tr');
         sep.className = 'area-sep';
         sep.innerHTML = `
-          <td colspan="6" style="background:#f0f4f8; font-weight:700; padding:8px 10px; border-top:2px solid #d9e2ec;">
-            Área: ${escapeHTML(area)}
-          </td>`;
+  <td colspan="6" style="background:#f0f4f8; font-weight:700; padding:8px 10px; border-top:2px solid #d9e2ec;">
+    ${escapeHTML(area)}
+  </td>`;
+
         userList.appendChild(sep);
 
         usuarios.forEach(usuario => {
@@ -483,39 +484,39 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         if (u.rol) document.getElementById("rol").value = u.rol;
 
         if (u.pasanteNivel) document.getElementById("pasanteNivel").value = u.pasanteNivel;
-        if (u.pasanteArea)  document.getElementById("pasanteArea").value  =
+        if (u.pasanteArea) document.getElementById("pasanteArea").value =
           (typeof u.pasanteArea === "string" ? u.pasanteArea : (u.pasanteArea?.areaNombre || ""));
         if (u.seguroMalaPraxis) document.getElementById("seguroMalaPraxis").value = u.seguroMalaPraxis;
       } else {
         const usuarioEl = document.getElementById("usuario");
-        const passEl    = document.getElementById("contrasena");
+        const passEl = document.getElementById("contrasena");
         if (usuarioEl) usuarioEl.value = "";
-        if (passEl)     passEl.value = "";
+        if (passEl) passEl.value = "";
         setTimeout(() => {
           if (usuarioEl) usuarioEl.value = "";
-          if (passEl)    passEl.value = "";
+          if (passEl) passEl.value = "";
         }, 0);
       }
 
       formatInputARS(document.getElementById("salarioAcuerdo"));
       formatInputARS(document.getElementById("fijoAcuerdo"));
 
-      const rolSelect      = document.getElementById("rol");
-      const proSection     = document.getElementById("proSection");
-      const coordSection   = document.getElementById("coordSection");
+      const rolSelect = document.getElementById("rol");
+      const proSection = document.getElementById("proSection");
+      const coordSection = document.getElementById("coordSection");
       const pasanteSection = document.getElementById("pasanteSection");
-      const proList        = document.getElementById("proList");
-      const coordList      = document.getElementById("coordList");
-      const btnAddPro      = document.getElementById("btnAddPro");
-      const btnAddCoord    = document.getElementById("btnAddCoord");
-      const labelSeguro    = document.getElementById("labelSeguro");
-      const inputSeguro    = document.getElementById("seguroMalaPraxis");
+      const proList = document.getElementById("proList");
+      const coordList = document.getElementById("coordList");
+      const btnAddPro = document.getElementById("btnAddPro");
+      const btnAddCoord = document.getElementById("btnAddCoord");
+      const labelSeguro = document.getElementById("labelSeguro");
+      const inputSeguro = document.getElementById("seguroMalaPraxis");
 
       function addProRow(areaNombre = "", nivel = "") {
         proList.insertAdjacentHTML("beforeend", buildProRow(areaNombre, nivel));
         const row = proList.lastElementChild;
         if (areaNombre) row.querySelector(".pro-area").value = areaNombre;
-        if (nivel)      row.querySelector(".pro-nivel").value = nivel;
+        if (nivel) row.querySelector(".pro-nivel").value = nivel;
         row.querySelector(".btn-del-pro").addEventListener("click", () => row.remove());
       }
       function addCoordRow(areaNombre = "") {
@@ -527,13 +528,13 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
       btnAddPro?.addEventListener("click", () => addProRow());
       btnAddCoord?.addEventListener("click", () => addCoordRow());
 
-      const ROLES_PROF  = new Set(["Profesional", "Coordinador y profesional"]);
+      const ROLES_PROF = new Set(["Profesional", "Coordinador y profesional"]);
       const ROLES_COORD = new Set(["Coordinador de área", "Coordinador y profesional"]);
 
       function syncVisibility() {
         const rol = rolSelect.value;
 
-        proSection.style.display   = ROLES_PROF.has(rol)  ? "block" : "none";
+        proSection.style.display = ROLES_PROF.has(rol) ? "block" : "none";
         coordSection.style.display = ROLES_COORD.has(rol) ? "block" : "none";
 
         // Mostrar seguro para profesionales y coordinadores (no obligatorio)
@@ -562,7 +563,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
       rolSelect.addEventListener("change", syncVisibility);
 
       // Render docs + eliminar
-      const docsBox  = document.getElementById("docsExistentes");
+      const docsBox = document.getElementById("docsExistentes");
       const docsList = document.getElementById("docsList");
       function renderDocs(docs = []) {
         if (!Array.isArray(docs) || docs.length === 0) {
@@ -572,8 +573,8 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         }
         docsBox.style.display = "block";
         docsList.innerHTML = docs.map(d => {
-          const href  = d.publicUrl || d.url || "#";
-          const name  = d.nombre || (href.split("/").pop() || "archivo");
+          const href = d.publicUrl || d.url || "#";
+          const name = d.nombre || (href.split("/").pop() || "archivo");
           const fecha = d.fechaSubida ? new Date(d.fechaSubida).toLocaleString() : "";
           const idDoc = d._id || d.id;
           return `<li style="margin:4px 0; display:flex; align-items:center; gap:8px;">
@@ -606,7 +607,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         const res = await apiFetch(`/usuarios/${u._id}/documentos/${docId}`, { method: "DELETE" });
         if (!res.ok) {
           let msg = "No se pudo eliminar el documento";
-          try { const j = await res.json(); msg = j?.error || msg; } catch {}
+          try { const j = await res.json(); msg = j?.error || msg; } catch { }
           Swal.fire("Error", msg, "error");
           return;
         }
@@ -625,8 +626,8 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
       });
 
       // Toggle password
-      const passInput  = document.getElementById("contrasena");
-      const toggleBtn  = document.getElementById("togglePass");
+      const passInput = document.getElementById("contrasena");
+      const toggleBtn = document.getElementById("togglePass");
       const toggleIcon = document.getElementById("togglePassIcon");
       if (toggleBtn && passInput && toggleIcon) {
         toggleBtn.addEventListener("click", () => {
@@ -645,7 +646,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
       const areasProfesional = Array.from(document.querySelectorAll("#proList .pro-row"))
         .map(row => {
           const areaNombre = row.querySelector(".pro-area")?.value?.trim() || "";
-          const nivel      = row.querySelector(".pro-nivel")?.value?.trim() || "";
+          const nivel = row.querySelector(".pro-nivel")?.value?.trim() || "";
           if (!areaNombre || !nivel) return null;
           return { areaNombre, nivel };
         }).filter(Boolean);
@@ -657,7 +658,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
           return { areaNombre };
         }).filter(Boolean);
 
-      const ROLES_PROF  = new Set(["Profesional", "Coordinador y profesional"]);
+      const ROLES_PROF = new Set(["Profesional", "Coordinador y profesional"]);
       const ROLES_COORD = new Set(["Coordinador de área", "Coordinador y profesional"]);
 
       // Validaciones por rol
@@ -748,7 +749,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
 
     if (!res.ok) {
       let msg = "Error al guardar";
-      try { const j = await res.json(); msg = j?.error || msg; } catch {}
+      try { const j = await res.json(); msg = j?.error || msg; } catch { }
       throw new Error(msg);
     }
 
