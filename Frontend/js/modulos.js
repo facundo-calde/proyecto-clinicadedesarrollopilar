@@ -464,13 +464,14 @@ if (botonCargar) {
 // === Editar módulo (compatible con la UI de "Crear módulo") ===
 window.modificarModulo = async (numero) => {
   try {
-    // 0) Helpers base
+    // Helper para formato ARS
     const formatARS = (v) => new Intl.NumberFormat("es-AR", {
       style: "currency",
       currency: "ARS",
       minimumFractionDigits: 2
     }).format(Number.isFinite(v) ? v : 0);
 
+    // Helpers varios (igual que en crearModulo)
     const fullName = (u) => {
       const cands = [
         u.nombreApellido, u.apellidoNombre, u.nombreCompleto,
@@ -496,46 +497,17 @@ window.modificarModulo = async (numero) => {
       }
       return null;
     };
-    const pairAreasLevels = (areas = [], niveles = []) =>
-      areas.map((a, i) => {
-        const nombre = (typeof a === 'string' ? a : (a?.nombre || a?.name || a?.area || '')).toString().trim();
-        const nivel  = (niveles[i] ?? a?.nivel ?? a?.nivelProfesional ?? '').toString().trim();
-        if (!nombre && !nivel) return null;
-        return { nombre, nivel };
-      }).filter(Boolean);
 
     const getAreasDetailed = (u) => {
       const profDet  = Array.isArray(u.areasProfesionalDetalladas) ? u.areasProfesionalDetalladas : [];
       const coordDet = Array.isArray(u.areasCoordinadasDetalladas) ? u.areasCoordinadasDetalladas : [];
       let list = [...profDet, ...coordDet].map(normAreaEntry).filter(Boolean);
       if (list.length) return list;
-
       const pools = [u.areasProfesional, u.areasCoordinadas, u.areas, u.area, u.areaPrincipal];
       list = pools.flatMap(arr).map(normAreaEntry).filter(Boolean);
-
-      const paralelos = [
-        ['areasProfesional', 'nivelesProfesional'],
-        ['areasCoordinadas', 'nivelesCoordinadas'],
-        ['areas', 'nivelesAreas'],
-      ];
-      paralelos.forEach(([aKey, nKey]) => {
-        const A = arr(u?.[aKey]); const N = arr(u?.[nKey]);
-        if (A.length && N.length) list = list.concat(pairAreasLevels(A, N));
-      });
-
-      if (!list.some(a => a.nivel)) {
-        const userLevel = (
-          u.nivelRol || u.nivel || u.nivelProfesional || u.categoria || u.grado || u.seniority || u.pasanteNivel || ''
-        ).toString().trim();
-        if (userLevel) list = list.map(a => ({ ...a, nivel: a.nivel || userLevel }));
-      }
-
-      const seen = new Set();
-      list = list.filter(a => { const k = `${a.nombre}|${a.nivel}`; if (seen.has(k)) return false; seen.add(k); return true; });
       return list;
     };
 
-    // Filtro por Fonoaudiología + Psicopedagogía
     const isFono     = (s='') => /fonoaudiolog[ií]a/i.test(s);
     const isPsicoPed = (s='') => /psicopedagog[ií]a/i.test(s);
     const hasAreaFP  = (u) => getAreasDetailed(u).some(a => isFono(a.nombre) || isPsicoPed(a.nombre));
@@ -551,7 +523,6 @@ window.modificarModulo = async (numero) => {
       return list.map(a => a.nivel ? `${a.nombre} — ${a.nivel}` : a.nombre).join(' | ');
     };
 
-    // Roles canónicos
     const mapRolCanonical = (r = '') => {
       const s = String(r).trim().toLowerCase();
       switch (s) {
@@ -588,21 +559,20 @@ window.modificarModulo = async (numero) => {
     let usuarios = [];
     if (resUsers.ok) usuarios = await resUsers.json();
 
-    // 2) Armar buckets internos/externos (mismo criterio que "crear")
+    // 2) Buckets internos/externos
     const candidatos       = usuarios.filter(u => hasRolCanon(u, 'profesional', 'coordinador', 'directora', 'pasante'));
-    const candidatosFP     = candidatos.filter(u => hasAreaFP(u));     // Internos
-    const candidatosExtern = candidatos.filter(u => !hasAreaFP(u));    // Externos
+    const candidatosFP     = candidatos.filter(u => hasAreaFP(u));
+    const candidatosExtern = candidatos.filter(u => !hasAreaFP(u));
 
-    // Internos
     const profesionales     = candidatosFP.filter(u => hasRolCanon(u, 'profesional'));
     const coordinadores     = candidatosFP.filter(u => hasRolCanon(u, 'coordinador', 'directora'));
     const pasantes          = candidatosFP.filter(u => hasRolCanon(u, 'pasante'));
-    // Externos
+
     const profesionalesExt  = candidatosExtern.filter(u => hasRolCanon(u, 'profesional'));
     const coordinadoresExt  = candidatosExtern.filter(u => hasRolCanon(u, 'coordinador', 'directora'));
     const pasantesExt       = candidatosExtern.filter(u => hasRolCanon(u, 'pasante'));
 
-    // 3) Mapear montos ya guardados para prefills
+    // 3) Mapear montos guardados
     const toMap = (arr=[]) => {
       const m = new Map();
       arr.forEach(x => { if (x?.usuario) m.set(String(x.usuario._id || x.usuario), Number(x.monto)||0); });
@@ -621,7 +591,7 @@ window.modificarModulo = async (numero) => {
     const getMonto = (scope, rol, userId) =>
       (scope === 'interno' ? mapInterno[rol] : mapExterno[rol]).get(String(userId)) || 0;
 
-    // 4) Render rows (con value prellenado)
+    // 4) Render filas con placeholder en ARS
     const renderRows = (arrUsers, rolKey, titulo, scope) => {
       if (!arrUsers.length) return `<div class="empty">No hay ${titulo}</div>`;
       return `
@@ -631,13 +601,7 @@ window.modificarModulo = async (numero) => {
           .map(u => {
             const principal = getAreaPrincipalWithLevel(u);
             const allAreas  = formatAllAreas(u);
-            const nivelFallback = (
-              principal.nivel ||
-              (Array.isArray(u.nivelesProfesional) && u.nivelesProfesional[0]) ||
-              (Array.isArray(u.nivelesCoordinadas) && u.nivelesCoordinadas[0]) ||
-              u.nivelRol || u.nivelProfesional || u.nivel || u.seniority || u.categoria || u.grado || u.pasanteNivel || ''
-            ).toString().trim();
-
+            const nivelFallback = principal.nivel || '';
             const badgeText = [principal.nombre, nivelFallback].filter(Boolean).join(' — ');
             const val = getMonto(scope, rolKey, u._id);
 
@@ -665,28 +629,17 @@ window.modificarModulo = async (numero) => {
       title: `Modificar módulo ${numero}`,
       width: '700px',
       html: `
-        <style>
-          .form-col{display:flex;flex-direction:column;gap:14px}
-          .section-title{font-weight:700;margin:10px 0 4px}
-          .person-row{display:grid;grid-template-columns:1fr 140px;gap:8px;align-items:center;border-bottom:1px dashed #eee;padding:4px 0}
-          .person-row:last-child{border-bottom:none}
-          .name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-          .area-badge{display:inline-block;margin-left:8px;padding:2px 6px;font-size:11px;line-height:1;border:1px solid #e5e7eb;border-radius:999px;background:#f8fafc;color:#334155;vertical-align:middle;max-width:280px;text-overflow:ellipsis;overflow:hidden}
-          .empty{color:#888;font-style:italic;padding:6px}
-          .swal2-input{width:100%}
-          .panel{border:1px solid #e5e7eb;border-radius:10px;padding:10px;max-height:340px;overflow:auto}
-          .divider{height:1px;background:#e5e7eb;margin:14px 0}
-          .block-title{font-size:13px;color:#111;margin:6px 0 4px;font-weight:700}
-        </style>
-
         <div class="form-col">
           <div>
-            <label for="modulo_numero"><strong>Número del módulo:</strong></label>
-            <input id="modulo_numero" type="number" class="swal2-input" value="${modulo.numero}" disabled>
+            <label><strong>Número del módulo:</strong></label>
+            <input type="number" class="swal2-input" value="${modulo.numero}" disabled>
           </div>
           <div>
-            <label for="valor_padres"><strong>Pagan los padres (valor del módulo):</strong></label>
-            <input id="valor_padres" type="number" min="0" step="0.01" class="swal2-input" placeholder="${formatARS(0)}" value="${Number(modulo.valorPadres)||0}">
+            <label><strong>Pagan los padres (valor del módulo):</strong></label>
+            <input id="valor_padres" type="number" min="0" step="0.01"
+              class="swal2-input"
+              placeholder="${formatARS(0)}"
+              value="${Number(modulo.valorPadres)||0}">
           </div>
 
           <div class="block-title">VALORES FONOAUDIOLOGÍA - PSICOPEDAGOGÍA</div>
@@ -695,8 +648,6 @@ window.modificarModulo = async (numero) => {
             ${renderRows(coordinadores, 'coordinador', 'Coordinadores', 'interno')}
             ${renderRows(pasantes, 'pasante', 'Pasantes', 'interno')}
           </div>
-
-          <div class="divider"></div>
 
           <div class="block-title">ÁREAS EXTERNAS (otras áreas)</div>
           <div class="panel">
@@ -720,23 +671,19 @@ window.modificarModulo = async (numero) => {
         return {
           numero,
           valorPadres: Number.isNaN(valorPadres) ? 0 : valorPadres,
-
-          // Internos (Fono/Psico)
           profesionales: take('profesional', 'interno'),
           coordinadores: take('coordinador', 'interno'),
-          pasantes:      take('pasante',     'interno'),
-
-          // Externos
+          pasantes: take('pasante', 'interno'),
           profesionalesExternos: take('profesional', 'externo'),
           coordinadoresExternos: take('coordinador', 'externo'),
-          pasantesExternos:      take('pasante',     'externo'),
+          pasantesExternos: take('pasante', 'externo')
         };
       }
     });
 
     if (!formValues) return;
 
-    // 6) Guardar (PUT por número)
+    // 6) Guardar
     const resUpdate = await apiFetch(`/modulos/${numero}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
