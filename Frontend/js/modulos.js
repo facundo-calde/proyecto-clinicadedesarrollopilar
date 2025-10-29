@@ -33,7 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
     porcentajeInput.addEventListener('input', calcular);
   };
 
-  // ---------- Listado completo ----------
+// ---------- Listado completo ----------
 async function cargarListadoModulos() {
   try {
     const res = await apiFetch('/modulos');
@@ -65,14 +65,14 @@ function renderListado(mods) {
   const rows = mods.map(m => `
     <tr>
       <td>${m.nombre}</td>
-      <td>01-2027</td>
-      <td>$${Number(m.valorPadres ?? 0).toLocaleString('es-AR')}</td>
+      <td>${new Date(m.updatedAt || m.createdAt || Date.now()).toLocaleDateString('es-AR')}</td>
+      <td>${Number(m.valorPadres ?? 0).toLocaleString('es-AR',{style:'currency',currency:'ARS'})}</td>
       <td>${Array.isArray(m.profesionales) ? m.profesionales.length : 0}</td>
       <td>${Array.isArray(m.coordinadores) ? m.coordinadores.length : 0}</td>
       <td>Activo</td>
       <td>
-        <button class="btn-modificar" onclick="modificarModulo('${m.nombre}')">✏️</button>
-        <button class="btn-borrar"    onclick="borrarModulo('${m.nombre}')">🗑️</button>
+        <button class="btn-modificar" onclick="modificarModulo('${encodeURIComponent(m.nombre)}')">✏️</button>
+        <button class="btn-borrar"    onclick="borrarModulo('${encodeURIComponent(m.nombre)}')">🗑️</button>
       </td>
     </tr>
   `).join('');
@@ -97,8 +97,6 @@ function renderListado(mods) {
   `;
 }
 
-
-  // ---------- Autocompletado / búsqueda ----------
 // ---------- Autocompletado / búsqueda ----------
 if (inputBusqueda) {
   inputBusqueda.addEventListener('input', async () => {
@@ -109,7 +107,7 @@ if (inputBusqueda) {
     if (valor.length < 2) return;
 
     try {
-      // ✅ ahora busca por nombre
+      // AHORA busca por nombre
       const res = await apiFetch(`/modulos/buscar?nombre=${encodeURIComponent(valor)}`);
       const modulos = await res.json();
 
@@ -133,13 +131,6 @@ if (inputBusqueda) {
 }
 
 function mostrarFichaModulo(modulo) {
-  const formatARS = (v) =>
-    new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' })
-      .format(Number.isFinite(v) ? v : 0);
-
-  // pequeña ayuda para evitar líos si el nombre tuviera comillas simples
-  const safeNombre = String(modulo.nombre || '').replaceAll("'", "\\'");
-
   contenedorFicha.innerHTML = `
     <div class="table-container">
       <table class="modulo-detalle">
@@ -155,12 +146,12 @@ function mostrarFichaModulo(modulo) {
         <tbody>
           <tr>
             <td>${modulo.nombre}</td>
-            <td>${formatARS(Number(modulo.valorPadres ?? 0))}</td>
+            <td>${Number(modulo.valorPadres ?? 0).toLocaleString('es-AR',{style:'currency',currency:'ARS'})}</td>
             <td>${Array.isArray(modulo.profesionales) ? modulo.profesionales.length : 0}</td>
             <td>${Array.isArray(modulo.coordinadores) ? modulo.coordinadores.length : 0}</td>
             <td>
-              <button class="btn-modificar" onclick="modificarModulo('${safeNombre}')">✏️</button>
-              <button class="btn-borrar"    onclick="borrarModulo('${safeNombre}')">🗑️</button>
+              <button class="btn-modificar" onclick="modificarModulo('${encodeURIComponent(modulo.nombre)}')">✏️</button>
+              <button class="btn-borrar"    onclick="borrarModulo('${encodeURIComponent(modulo.nombre)}')">🗑️</button>
             </td>
           </tr>
         </tbody>
@@ -168,6 +159,32 @@ function mostrarFichaModulo(modulo) {
     </div>
   `;
 }
+
+// ---------- Borrar módulo (usa nombre o id) ----------
+window.borrarModulo = async (idOrNombre) => {
+  try {
+    const { isConfirmed } = await Swal.fire({
+      title: '¿Eliminar módulo?',
+      text: 'Esta acción no se puede deshacer.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, eliminar',
+      cancelButtonText: 'Cancelar'
+    });
+    if (!isConfirmed) return;
+
+    const res = await apiFetch(`/modulos/${idOrNombre}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error || 'No se pudo eliminar');
+
+    await Swal.fire('Eliminado', 'Módulo eliminado correctamente', 'success');
+    cargarListadoModulos();
+  } catch (e) {
+    console.error('Error eliminando módulo:', e);
+    Swal.fire('Error', e.message || 'No se pudo eliminar el módulo', 'error');
+  }
+};
+
 
 
  /// ---------- Crear módulo (una columna | Fonoaudiología + Psicopedagogía | muestra Área — Nivel + ARS) ----------
@@ -447,33 +464,6 @@ if (botonCargar) {
 
 
 
-  // ---------- Handlers globales (usados por onclick en la tabla) ----------
-  window.borrarModulo = async (numero) => {
-    const confirmacion = await Swal.fire({
-      title: `¿Eliminar módulo ${numero}?`,
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonText: 'Sí, borrar',
-      cancelButtonText: 'Cancelar'
-    });
-
-    if (!confirmacion.isConfirmed) return;
-
-    try {
-      const res = await apiFetch(`/modulos/${numero}`, { method: 'DELETE' });
-      if (res.ok) {
-        Swal.fire('Borrado', 'El módulo fue eliminado.', 'success');
-        if (contenedorFicha) contenedorFicha.innerHTML = '';
-        cargarListadoModulos();
-      } else {
-        const data = await res.json();
-        Swal.fire('Error', data.error || 'No se pudo borrar el módulo.', 'error');
-      }
-    } catch (error) {
-      console.error('Error al borrar módulo:', error);
-      Swal.fire('Error', 'Error al eliminar el módulo.', 'error');
-    }
-  };
 
 // === Editar módulo (compatible con la UI de "Crear módulo") ===
 window.modificarModulo = async (nombre) => {
