@@ -2,6 +2,7 @@
 const Usuario = require("../models/usuarios");
 const bcrypt  = require("bcrypt");
 const jwt     = require("jsonwebtoken");
+const fs      = require("fs"); // << añadido: por si multer usa diskStorage
 
 // === R2 (Cloudflare) ===
 const { uploadBuffer, deleteKey, buckets, toWorkerViewUrl } = require("../lib/storageR2");
@@ -36,16 +37,31 @@ function collectFilesFromReq(req) {
 async function uploadUserDocsR2(files, ownerId) {
   const out = [];
   for (const file of files) {
-    const key = `${ownerId}/${Date.now()}_${file.originalname}`;
+    // Soportar memoryStorage y diskStorage
+    const name = file.originalname || file.filename || "archivo";
+    const contentType = file.mimetype || "application/octet-stream";
+
+    let buffer = file.buffer;
+    if (!buffer && file.path) {
+      // Multer diskStorage: leer el archivo del disco
+      buffer = fs.readFileSync(file.path);
+    }
+    if (!buffer) {
+      // Si por alguna razón no hay buffer ni path, salteamos ese archivo
+      continue;
+    }
+
+    const key = `${ownerId}/${Date.now()}_${name}`;
     const internalUrl = await uploadBuffer({
       bucket: buckets.usuarios,
       key,
-      buffer: file.buffer,
-      contentType: file.mimetype
+      buffer,
+      contentType
     });
+
     out.push({
       tipo: "general",
-      nombre: file.originalname,
+      nombre: name,
       url: internalUrl,                        // interno
       publicUrl: toWorkerViewUrl(internalUrl), // público para frontend
       fechaSubida: new Date()
@@ -67,7 +83,7 @@ function normalizeBody(body) {
   if (body.areasProfesional == null || body.areasProfesional === "") body.areasProfesional = [];
   if (body.areasCoordinadas == null || body.areasCoordinadas === "") body.areasCoordinadas = [];
 
-  // 🔧 PASANTE: puede venir como JSON string, string plano u objeto
+  // PASANTE: puede venir como JSON string, string plano u objeto
   let pa = _parse(body.pasanteArea);
   if (pa == null || pa === "" || (typeof pa === "object" && Object.keys(pa).length === 0)) {
     body.pasanteArea = undefined;
@@ -113,7 +129,6 @@ function normalizeBody(body) {
 
 // Reglas por rol
 function applyRoleCleaning(rol, body, currentDoc = null) {
-  // alias defensivo
   if (body.pasanteNivel && !body.nivelPasante) {
     body.nivelPasante = body.pasanteNivel;
   }
@@ -131,7 +146,6 @@ function applyRoleCleaning(rol, body, currentDoc = null) {
   } else {
     if (!esProfesional) body.areasProfesional = [];
     if (!esCoordinador) body.areasCoordinadas = [];
-    // si NO es pasante, no debe guardarse pasanteArea ni nivelPasante
     body.pasanteArea = undefined;
     body.nivelPasante = undefined;
   }
@@ -177,7 +191,6 @@ function normAreaEntry(x){
   if (!x) return null;
   if (typeof x === 'string') return { nombre: x.trim(), nivel: '' };
   if (typeof x === 'object'){
-    // ⬇️ incluye areaNombre
     const nombre =
       (x.nombre || x.name || x.titulo || x.area || x.areaNombre || '')
       .toString().trim();
@@ -215,23 +228,18 @@ function buildAreasDetalladas(u, tipo = "Profesional") {
 
   let list = [];
 
-  // 1) Objetos con {nombre/nivel}
   list = list.concat(arr(u[Akey]).map(normAreaEntry).filter(Boolean));
 
-  // 2) Arrays paralelos (si existen)
   if (u[Akey] && u[Nkey]) {
     list = list.concat(pairAreasLevels(arr(u[Akey]), arr(u[Nkey])));
   }
 
-  // 3) Compat y extras
   list = list.concat(arr(u.areas).map(normAreaEntry).filter(Boolean));
   list = list.concat(arr(u.area).map(normAreaEntry).filter(Boolean));
   list = list.concat(arr(u.areaPrincipal).map(normAreaEntry).filter(Boolean));
 
-  // Completar nivel faltante con nivel del usuario
   if (userLevel) list = list.map(a => ({ ...a, nivel: a.nivel || userLevel }));
 
-  // Quitar duplicados simples
   const seen = new Set();
   list = list.filter(a => {
     const k = `${a.nombre}|${a.nivel}`;
@@ -273,13 +281,12 @@ exports.crearUsuario = async (req, res) => {
       await nuevo.save();
     }
 
-    // salida
     const nuevoObj = nuevo.toObject();
     delete nuevoObj.contrasena;
 
     return res.status(201).json({
       ...nuevoObj,
-      pasanteNivel: nuevoObj.nivelPasante,               // espejo para el front
+      pasanteNivel: nuevoObj.nivelPasante,
       documentos: mapDocsForView(nuevoObj.documentos),
       areasProfesionalDetalladas: buildAreasDetalladas(nuevoObj, "Profesional"),
       areasCoordinadasDetalladas: buildAreasDetalladas(nuevoObj, "Coordinador")
@@ -296,8 +303,7 @@ exports.obtenerUsuarios = async (_req, res) => {
     const lista = await Usuario.find().select("-contrasena").lean();
     const out = lista.map(u => ({
       ...u,
-      pasanteNivel: u.nivelPasante, // espejo
-      // Para pasantes es útil un nivel “global”
+      pasanteNivel: u.nivelPasante,
       nivelRol: u.rol === "Pasante" ? (u.nivelPasante || "") : "",
       documentos: mapDocsForView(u.documentos),
       areasProfesionalDetalladas: buildAreasDetalladas(u, "Profesional"),
@@ -388,7 +394,6 @@ exports.eliminarDocumentoUsuario = async (req, res) => {
     const doc = usuario.documentos.id(docId);
     if (!doc) return res.status(404).json({ error: "Documento no encontrado" });
 
-    // Borrar en R2 si hay URL interna
     if (doc.url) {
       const key = extractUsuariosKeyFromUrl(doc.url);
       if (key) {
@@ -396,7 +401,6 @@ exports.eliminarDocumentoUsuario = async (req, res) => {
       }
     }
 
-    // Quitar subdocumento y guardar
     doc.deleteOne();
     await usuario.save();
 
@@ -435,7 +439,7 @@ exports.eliminarUsuario = async (req, res) => {
 exports.login = async (req, res) => {
   try {
     const usuarioBody = (req.body?.usuario || "").toLowerCase().trim();
-    const emailBody   = (req.body?.email   || "").toLowerCase().trim();
+       const emailBody   = (req.body?.email   || "").toLowerCase().trim();
     const loginUsuario = usuarioBody || emailBody;
 
     const password = (req.body?.contrasena || req.body?.password || "").trim();
