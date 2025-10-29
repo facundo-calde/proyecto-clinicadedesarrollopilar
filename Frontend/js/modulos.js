@@ -34,64 +34,69 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   // ---------- Listado completo ----------
-  async function cargarListadoModulos() {
-    try {
-      const res = await apiFetch('/modulos');
-      const mods = await res.json();
+async function cargarListadoModulos() {
+  try {
+    const res = await apiFetch('/modulos');
+    const mods = await res.json();
 
-      if (!Array.isArray(mods) || mods.length === 0) {
-        contenedorLista.innerHTML = `
-          <div class="table-container">
-            <div style="padding:12px;color:#666;font-style:italic;">No hay módulos cargados todavía.</div>
-          </div>`;
-        return;
-      }
-
-      renderListado(mods);
-    } catch (e) {
-      console.error('Error listando módulos:', e);
+    if (!Array.isArray(mods) || mods.length === 0) {
       contenedorLista.innerHTML = `
         <div class="table-container">
-          <div style="padding:12px;color:#b91c1c;">Error al cargar el listado de módulos.</div>
+          <div style="padding:12px;color:#666;font-style:italic;">
+            No hay módulos cargados todavía.
+          </div>
         </div>`;
+      return;
     }
-  }
 
-  function renderListado(mods) {
-    const rows = mods.map(m => `
-      <tr>
-        <td>${m.numero}</td>
-        <td>01-2027</td>
-        <td>$${Number(m.valorPadres ?? 0).toLocaleString()}</td>
-        <td>${Array.isArray(m.profesionales) ? m.profesionales.length : 0}</td>
-        <td>${Array.isArray(m.coordinadores) ? m.coordinadores.length : 0}</td>
-        <td>Activo</td>
-        <td>
-          <button class="btn-modificar" onclick="modificarModulo(${m.numero})">✏️</button>
-          <button class="btn-borrar"    onclick="borrarModulo(${m.numero})">🗑️</button>
-        </td>
-      </tr>
-    `).join('');
-
+    renderListado(mods);
+  } catch (e) {
+    console.error('Error listando módulos:', e);
     contenedorLista.innerHTML = `
       <div class="table-container">
-        <table class="modulo-detalle">
-          <thead>
-            <tr>
-              <th>Módulo</th>
-              <th>Última modificación</th>
-              <th>Valor padres</th>
-              <th># Profesionales</th>
-              <th># Coordinadores</th>
-              <th>Estado</th>
-              <th>Acción</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
-    `;
+        <div style="padding:12px;color:#b91c1c;">
+          Error al cargar el listado de módulos.
+        </div>
+      </div>`;
   }
+}
+
+function renderListado(mods) {
+  const rows = mods.map(m => `
+    <tr>
+      <td>${m.nombre}</td>
+      <td>01-2027</td>
+      <td>$${Number(m.valorPadres ?? 0).toLocaleString('es-AR')}</td>
+      <td>${Array.isArray(m.profesionales) ? m.profesionales.length : 0}</td>
+      <td>${Array.isArray(m.coordinadores) ? m.coordinadores.length : 0}</td>
+      <td>Activo</td>
+      <td>
+        <button class="btn-modificar" onclick="modificarModulo('${m.nombre}')">✏️</button>
+        <button class="btn-borrar"    onclick="borrarModulo('${m.nombre}')">🗑️</button>
+      </td>
+    </tr>
+  `).join('');
+
+  contenedorLista.innerHTML = `
+    <div class="table-container">
+      <table class="modulo-detalle">
+        <thead>
+          <tr>
+            <th>Módulo</th>
+            <th>Última modificación</th>
+            <th>Valor padres</th>
+            <th># Profesionales</th>
+            <th># Coordinadores</th>
+            <th>Estado</th>
+            <th>Acción</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
 
   // ---------- Autocompletado / búsqueda ----------
   if (inputBusqueda) {
