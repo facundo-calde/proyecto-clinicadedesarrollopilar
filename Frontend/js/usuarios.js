@@ -382,6 +382,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         if (u.pasanteNivel) document.getElementById("pasanteNivel").value = u.pasanteNivel;
         if (u.pasanteArea)  document.getElementById("pasanteArea").value  =
           (typeof u.pasanteArea === "string" ? u.pasanteArea : (u.pasanteArea?.areaNombre || ""));
+        if (u.seguroMalaPraxis) document.getElementById("seguroMalaPraxis").value = u.seguroMalaPraxis;
       } else {
         const usuarioEl = document.getElementById("usuario");
         const passEl    = document.getElementById("contrasena");
@@ -428,10 +429,12 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
 
       function syncVisibility() {
         const rol = rolSelect.value;
+
         proSection.style.display   = ROLES_PROF.has(rol)  ? "block" : "none";
         coordSection.style.display = ROLES_COORD.has(rol) ? "block" : "none";
 
-        const showSeguro = ROLES_PROF.has(rol);
+        // 🔁 Mostrar seguro para profesionales **y** coordinadores (no obligatorio)
+        const showSeguro = ROLES_PROF.has(rol) || ROLES_COORD.has(rol);
         labelSeguro.style.display = showSeguro ? "block" : "none";
         inputSeguro.style.display = showSeguro ? "block" : "none";
 
@@ -450,9 +453,6 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         if (Array.isArray(u.areasCoordinadas) && u.areasCoordinadas.length) {
           coordList.innerHTML = "";
           u.areasCoordinadas.forEach(ac => addCoordRow(ac.areaNombre || ""));
-        }
-        if (u.seguroMalaPraxis && (u.rol === "Profesional" || u.rol === "Coordinador y profesional")) {
-          inputSeguro.value = u.seguroMalaPraxis;
         }
       }
 
@@ -574,7 +574,6 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         }
       }
 
-      // Armar objeto pasanteArea acorde al esquema
       const pasanteAreaObj = (() => {
         const val = get("pasanteArea");
         if (!val) return undefined;
@@ -605,9 +604,10 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         tipoCuenta: get("tipoCuenta"),
         rol,
         pasanteNivel: get("pasanteNivel"),
-        pasanteArea: pasanteAreaObj, // 👈 ahora es objeto { areaNombre }
+        pasanteArea: pasanteAreaObj,
         usuario: get("usuario"),
         contrasena: get("contrasena"),
+        // Seguro: siempre opcional; el backend debe aceptarlo también para coordinadores
         seguroMalaPraxis: get("seguroMalaPraxis") || undefined,
         areasProfesional,
         areasCoordinadas
@@ -632,7 +632,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
       for (const [key, val] of Object.entries(result.value)) {
         if (val == null) continue;
         if (key === "areasProfesional" || key === "areasCoordinadas" || key === "pasanteArea") {
-          fd.append(key, JSON.stringify(val)); // 👈 stringify objetos/arrays
+          fd.append(key, JSON.stringify(val));
         } else {
           fd.append(key, val);
         }
@@ -657,6 +657,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
     Swal.fire("Error", "No se pudo guardar el usuario", "error");
   });
 }
+
 
 
 
