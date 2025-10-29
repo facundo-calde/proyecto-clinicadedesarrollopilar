@@ -1,8 +1,8 @@
-// backend/controllers/usuariosControllers.js
+// backend/controllers/usuariosControllers.js 
 const Usuario = require("../models/usuarios");
 const bcrypt  = require("bcrypt");
 const jwt     = require("jsonwebtoken");
-const fs      = require("fs"); // << añadido: por si multer usa diskStorage
+const fs      = require("fs"); // por si multer usa diskStorage
 
 // === R2 (Cloudflare) ===
 const { uploadBuffer, deleteKey, buckets, toWorkerViewUrl } = require("../lib/storageR2");
@@ -304,6 +304,7 @@ exports.obtenerUsuarios = async (_req, res) => {
     const out = lista.map(u => ({
       ...u,
       pasanteNivel: u.nivelPasante,
+      // Para pasantes es útil un nivel “global”
       nivelRol: u.rol === "Pasante" ? (u.nivelPasante || "") : "",
       documentos: mapDocsForView(u.documentos),
       areasProfesionalDetalladas: buildAreasDetalladas(u, "Profesional"),
@@ -394,6 +395,7 @@ exports.eliminarDocumentoUsuario = async (req, res) => {
     const doc = usuario.documentos.id(docId);
     if (!doc) return res.status(404).json({ error: "Documento no encontrado" });
 
+    // Borrar en R2 si hay URL interna
     if (doc.url) {
       const key = extractUsuariosKeyFromUrl(doc.url);
       if (key) {
@@ -401,6 +403,7 @@ exports.eliminarDocumentoUsuario = async (req, res) => {
       }
     }
 
+    // Quitar subdocumento y guardar
     doc.deleteOne();
     await usuario.save();
 
@@ -439,7 +442,7 @@ exports.eliminarUsuario = async (req, res) => {
 exports.login = async (req, res) => {
   try {
     const usuarioBody = (req.body?.usuario || "").toLowerCase().trim();
-       const emailBody   = (req.body?.email   || "").toLowerCase().trim();
+    const emailBody   = (req.body?.email   || "").toLowerCase().trim();
     const loginUsuario = usuarioBody || emailBody;
 
     const password = (req.body?.contrasena || req.body?.password || "").trim();
