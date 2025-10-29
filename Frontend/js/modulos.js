@@ -155,7 +155,7 @@ document.addEventListener('DOMContentLoaded', () => {
     `;
   }
 
- // ---------- Crear módulo (una columna | Fonoaudiología + Psicopedagogía | muestra Área — Nivel + ARS) ----------
+ /// ---------- Crear módulo (una columna | Fonoaudiología + Psicopedagogía | muestra Área — Nivel + ARS) ----------
 if (botonCargar) {
   botonCargar.addEventListener('click', async () => {
     // 0) Helper ARS
@@ -281,14 +281,22 @@ if (botonCargar) {
     };
 
     // 2) Filtrar candidatos / buckets
-    const candidatos    = usuarios.filter(u => hasAreaFP(u));
-    const profesionales = candidatos.filter(u => hasRolCanon(u, 'profesional'));
-    const coordinadores = candidatos.filter(u => hasRolCanon(u, 'coordinador', 'directora'));
-    const pasantes      = candidatos.filter(u => hasRolCanon(u, 'pasante'));
+    const candidatos       = usuarios.filter(u => hasRolCanon(u, 'profesional', 'coordinador', 'directora', 'pasante'));
+    const candidatosFP     = candidatos.filter(u => hasAreaFP(u));     // Internos (Fonoaudiología / Psicopedagogía)
+    const candidatosExtern = candidatos.filter(u => !hasAreaFP(u));    // Externos (todas las demás áreas)
+
+    // Internos
+    const profesionales     = candidatosFP.filter(u => hasRolCanon(u, 'profesional'));
+    const coordinadores     = candidatosFP.filter(u => hasRolCanon(u, 'coordinador', 'directora'));
+    const pasantes          = candidatosFP.filter(u => hasRolCanon(u, 'pasante'));
+    // Externos
+    const profesionalesExt  = candidatosExtern.filter(u => hasRolCanon(u, 'profesional'));
+    const coordinadoresExt  = candidatosExtern.filter(u => hasRolCanon(u, 'coordinador', 'directora'));
+    const pasantesExt       = candidatosExtern.filter(u => hasRolCanon(u, 'pasante'));
 
     // 3) UI: una sola columna con Área — Nivel visible (con fallback de nivel)
-    const renderRows = (arr, rolKey, titulo) => {
-      if (!arr.length) return `<div class="empty">No hay ${titulo} en esas áreas</div>`;
+    const renderRows = (arr, rolKey, titulo, scope) => {
+      if (!arr.length) return `<div class="empty">No hay ${titulo}</div>`;
       return `
         <div class="section-title">${titulo}</div>
         ${arr
@@ -314,6 +322,7 @@ if (botonCargar) {
                 <input type="number" min="0" step="0.01"
                        class="monto-input"
                        data-rol="${rolKey}"
+                       data-scope="${scope}"
                        data-user="${u._id}"
                        placeholder="${formatARS(0)}" />
               </div>
@@ -337,6 +346,8 @@ if (botonCargar) {
           .swal2-input{width:100%}
           .panel{border:1px solid #e5e7eb;border-radius:10px;padding:10px;max-height:340px;overflow:auto}
           .money-hint{font-size:12px;color:#555;margin-top:4px}
+          .divider{height:1px;background:#e5e7eb;margin:14px 0}
+          .block-title{font-size:13px;color:#111;margin:6px 0 4px;font-weight:700}
         </style>
 
         <div class="form-col">
@@ -349,11 +360,20 @@ if (botonCargar) {
             <input id="valor_padres" type="number" min="0" step="0.01" class="swal2-input" placeholder="${formatARS(0)}">
           </div>
 
-          <div class="section-title">VALORES FONOAUDIOLOGÍA - PSICOPEDAGOGÍA</div>
+          <div class="block-title">VALORES FONOAUDIOLOGÍA - PSICOPEDAGOGÍA</div>
           <div class="panel">
-            ${renderRows(profesionales, 'profesional', 'Profesionales')}
-            ${renderRows(coordinadores, 'coordinador', 'Coordinadores')}
-            ${renderRows(pasantes, 'pasante', 'Pasantes')}
+            ${renderRows(profesionales, 'profesional', 'Profesionales', 'interno')}
+            ${renderRows(coordinadores, 'coordinador', 'Coordinadores', 'interno')}
+            ${renderRows(pasantes, 'pasante', 'Pasantes', 'interno')}
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="block-title">ÁREAS EXTERNAS (otras áreas)</div>
+          <div class="panel">
+            ${renderRows(profesionalesExt, 'profesional', 'Profesionales', 'externo')}
+            ${renderRows(coordinadoresExt, 'coordinador', 'Coordinadores', 'externo')}
+            ${renderRows(pasantesExt, 'pasante', 'Pasantes', 'externo')}
           </div>
         </div>
       `,
@@ -368,7 +388,7 @@ if (botonCargar) {
         const valorPadres = Number(padresEl.value);
         if (Number.isNaN(numero)) return Swal.showValidationMessage('⚠️ El número del módulo es obligatorio');
 
-        const take = (rol) => [...document.querySelectorAll(`.monto-input[data-rol="${rol}"]`)]
+        const take = (rol, scope) => [...document.querySelectorAll(`.monto-input[data-rol="${rol}"][data-scope="${scope}"]`)]
           .map(i => ({ usuario: i.dataset.user, monto: Number(i.value) || 0 }))
           .filter(x => x.usuario && x.monto > 0);
 
@@ -376,9 +396,16 @@ if (botonCargar) {
         return {
           numero,
           valorPadres: Number.isNaN(valorPadres) ? 0 : valorPadres,
-          profesionales: take('profesional'),
-          coordinadores: take('coordinador'),
-          pasantes: take('pasante')
+
+          // Internos (Fono / PsicoPed)
+          profesionales: take('profesional', 'interno'),
+          coordinadores: take('coordinador', 'interno'),
+          pasantes:      take('pasante',     'interno'),
+
+          // Externos (otras áreas)
+          profesionalesExternos: take('profesional', 'externo'),
+          coordinadoresExternos: take('coordinador', 'externo'),
+          pasantesExternos:      take('pasante',     'externo'),
         };
       }
     });
@@ -403,6 +430,7 @@ if (botonCargar) {
     }
   });
 }
+
 
 
 

@@ -4,23 +4,41 @@ const { Schema } = mongoose;
 
 const ItemAsignacion = new Schema({
   usuario: { type: Schema.Types.ObjectId, ref: 'Usuario', required: true },
-  monto:   { type: Number, default: 0 }
+  monto:   { type: Number, min: 0, default: 0 }
 }, { _id: false });
 
 const moduloSchema = new Schema({
-  numero: { type: Number, required: true, unique: true, index: true },
+  numero: {
+    type: Number,
+    required: true,
+    unique: true,   // si querés permitir mismo número en distintos ciclos, quitá "unique"
+    index: true
+  },
 
-  // total pagado por padres
-  valorPadres: { type: Number, default: 0 },
+  // Total que pagan los padres
+  valorPadres: { type: Number, min: 0, default: 0 },
 
-  // asignaciones por persona
-  profesionales: [ItemAsignacion],
-  coordinadores: [ItemAsignacion],
-  pasantes:      [ItemAsignacion],
+  // Asignaciones internas (Fono / Psico)
+  profesionales: { type: [ItemAsignacion], default: [] },
+  coordinadores: { type: [ItemAsignacion], default: [] },
+  pasantes:      { type: [ItemAsignacion], default: [] },
 
-  // campos que ya tenías
-  areasExternas: { paciente: Number, porcentaje: Number, profesional: Number },
-  habilidadesSociales: { paciente: Number, porcentaje: Number, profesional: Number }
+  // NUEVO: Asignaciones externas (otras áreas)
+  profesionalesExternos: { type: [ItemAsignacion], default: [] },
+  coordinadoresExternos: { type: [ItemAsignacion], default: [] },
+  pasantesExternos:      { type: [ItemAsignacion], default: [] },
+
+  // Campos que ya tenías (los dejo igual)
+  areasExternas: {
+    paciente:   { type: Number, default: 0 },
+    porcentaje: { type: Number, default: 0 },
+    profesional:{ type: Number, default: 0 }
+  },
+  habilidadesSociales: {
+    paciente:   { type: Number, default: 0 },
+    porcentaje: { type: Number, default: 0 },
+    profesional:{ type: Number, default: 0 }
+  }
 }, { timestamps: true });
 
 moduloSchema.set('toJSON', {
