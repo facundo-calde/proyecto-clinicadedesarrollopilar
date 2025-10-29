@@ -8,7 +8,7 @@ const ItemAsignacion = new Schema({
 }, { _id: false });
 
 const moduloSchema = new Schema({
-  // 🔁 NUEVO: nombre como identificador (alfa-numérico)
+  // 🔑 Identificador: nombre alfanumérico
   nombre: {
     type: String,
     required: true,
@@ -17,7 +17,7 @@ const moduloSchema = new Schema({
     index: true,
     minlength: 1,
     maxlength: 120,
-    match: /^[\p{L}\p{N}\s._\-#]+$/u  // letras, números, espacios y _.-#
+    match: /^[\p{L}\p{N}\s._\-#]+$/u  // letras, números, espacios y símbolos básicos
   },
 
   // Total que pagan los padres
@@ -33,7 +33,7 @@ const moduloSchema = new Schema({
   coordinadoresExternos: { type: [ItemAsignacion], default: [] },
   pasantesExternos:      { type: [ItemAsignacion], default: [] },
 
-  // Campos que ya tenías (los dejo igual)
+  // Campos extra (pueden quedar o eliminarse si no los usás)
   areasExternas: {
     paciente:   { type: Number, default: 0 },
     porcentaje: { type: Number, default: 0 },
