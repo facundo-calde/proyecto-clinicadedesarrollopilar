@@ -8,11 +8,16 @@ const ItemAsignacion = new Schema({
 }, { _id: false });
 
 const moduloSchema = new Schema({
-  numero: {
-    type: Number,
+  // 🔁 NUEVO: nombre como identificador (alfa-numérico)
+  nombre: {
+    type: String,
     required: true,
-    unique: true,   // si querés permitir mismo número en distintos ciclos, quitá "unique"
-    index: true
+    trim: true,
+    unique: true,     // si querés permitir duplicados, sacá esto
+    index: true,
+    minlength: 1,
+    maxlength: 120,
+    match: /^[\p{L}\p{N}\s._\-#]+$/u  // letras, números, espacios y _.-#
   },
 
   // Total que pagan los padres
@@ -23,7 +28,7 @@ const moduloSchema = new Schema({
   coordinadores: { type: [ItemAsignacion], default: [] },
   pasantes:      { type: [ItemAsignacion], default: [] },
 
-  // NUEVO: Asignaciones externas (otras áreas)
+  // Asignaciones externas (otras áreas)
   profesionalesExternos: { type: [ItemAsignacion], default: [] },
   coordinadoresExternos: { type: [ItemAsignacion], default: [] },
   pasantesExternos:      { type: [ItemAsignacion], default: [] },

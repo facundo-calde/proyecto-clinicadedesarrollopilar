@@ -352,8 +352,8 @@ if (botonCargar) {
 
         <div class="form-col">
           <div>
-            <label for="modulo_numero"><strong>Número del módulo:</strong></label>
-            <input id="modulo_numero" type="number" min="0" step="1" class="swal2-input" placeholder="Ej: 101">
+            <label for="modulo_nombre"><strong>Nombre del módulo:</strong></label>
+            <input id="modulo_nombre" type="text" class="swal2-input" placeholder="Ej: 101, Lengua 1, Taller A">
           </div>
           <div>
             <label for="valor_padres"><strong>Pagan los padres (valor del módulo):</strong></label>
@@ -381,12 +381,12 @@ if (botonCargar) {
       confirmButtonText: 'Guardar',
       cancelButtonText: 'Cancelar',
       preConfirm: () => {
-        const numeroEl = document.getElementById('modulo_numero');
+        const nombreEl = document.getElementById('modulo_nombre');
         const padresEl = document.getElementById('valor_padres');
 
-        const numero = parseInt(numeroEl.value, 10);
+        const nombre = (nombreEl.value || '').trim();
         const valorPadres = Number(padresEl.value);
-        if (Number.isNaN(numero)) return Swal.showValidationMessage('⚠️ El número del módulo es obligatorio');
+        if (!nombre) return Swal.showValidationMessage('⚠️ El nombre del módulo es obligatorio');
 
         const take = (rol, scope) => [...document.querySelectorAll(`.monto-input[data-rol="${rol}"][data-scope="${scope}"]`)]
           .map(i => ({ usuario: i.dataset.user, monto: Number(i.value) || 0 }))
@@ -394,7 +394,7 @@ if (botonCargar) {
 
         // SIN validación de suma vs. valorPadres (se puede cargar 100%, parcial o 0)
         return {
-          numero,
+          nombre,
           valorPadres: Number.isNaN(valorPadres) ? 0 : valorPadres,
 
           // Internos (Fono / PsicoPed)
@@ -430,6 +430,7 @@ if (botonCargar) {
     }
   });
 }
+
 
 
 
