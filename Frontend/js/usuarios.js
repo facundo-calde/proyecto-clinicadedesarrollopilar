@@ -175,10 +175,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const sep = document.createElement('tr');
         sep.className = 'area-sep';
         sep.innerHTML = `
-  <td colspan="6" style="background:#f0f4f8; font-weight:700; padding:8px 10px; border-top:2px solid #d9e2ec;">
-    ${escapeHTML(area)}
-  </td>`;
-
+          <td colspan="6" style="background:#f0f4f8; font-weight:700; padding:8px 10px; border-top:2px solid #d9e2ec;">
+            Área: ${escapeHTML(area)}
+          </td>`;
         userList.appendChild(sep);
 
         usuarios.forEach(usuario => {
