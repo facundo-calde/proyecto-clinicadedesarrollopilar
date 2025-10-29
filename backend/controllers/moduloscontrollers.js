@@ -1,4 +1,4 @@
-// backend/controllers/modulosControllers.js
+// backend/controllers/moduloscontrollers.js
 const mongoose = require('mongoose');
 const Modulo = require('../models/modulos');
 
@@ -97,8 +97,24 @@ const populateAsignaciones = (q) =>
     { path: 'pasantesExternos.usuario',      select: 'nombre nombreApellido apellido rol roles areasProfesional areasCoordinadas' },
   ]);
 
+// Toma el valor del parámetro de ruta, sea cual sea el nombre
+function getIdParam(req) {
+  // intenta nombres conocidos y, si no, toma el primer valor de params
+  const raw =
+    req.params.idOrNombre ??
+    req.params.id ??
+    req.params.nombre ??
+    req.params.key ??
+    req.params.numero ??
+    Object.values(req.params || {})[0];
+
+  return raw ? decodeURIComponent(String(raw)) : '';
+}
+
 // Resolver por id/nombre (para GET/PUT/DELETE :param)
 async function findByIdOrNombre(idParam) {
+  if (!idParam) return null;
+
   // 1) ObjectId directo
   if (isValidId(idParam)) {
     const byId = await Modulo.findById(idParam);
@@ -156,7 +172,7 @@ const buscarModulos = async (req, res) => {
     const regex = new RegExp(
       String(nombre).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
       'i'
-    ); // case-insensitive, escapa especiales
+    );
 
     const docs = await Modulo.find({ nombre: { $regex: regex } })
       .sort({ nombre: 1 })
@@ -173,10 +189,10 @@ const buscarModulos = async (req, res) => {
   }
 };
 
-// GET /modulos/:idParam  (id Mongo | nombre)
+// GET /modulos/:idOrNombre  (id Mongo | nombre)
 const obtenerModulo = async (req, res) => {
   try {
-    const idParam = req.params.id || req.params.nombre || req.params.key;
+    const idParam = getIdParam(req);
     if (!idParam) return res.status(400).json({ error: 'Parámetro faltante' });
 
     const moduloBase = await findByIdOrNombre(idParam);
@@ -190,10 +206,10 @@ const obtenerModulo = async (req, res) => {
   }
 };
 
-// PUT /modulos/:idParam  (id Mongo | nombre)
+// PUT /modulos/:idOrNombre  (id Mongo | nombre)
 const actualizarModulo = async (req, res) => {
   try {
-    const idParam = req.params.id || req.params.nombre || req.params.key;
+    const idParam = getIdParam(req);
     if (!idParam) return res.status(400).json({ error: 'Parámetro faltante' });
 
     const current = await findByIdOrNombre(idParam);
@@ -201,21 +217,16 @@ const actualizarModulo = async (req, res) => {
 
     const data = sanitizeBody(req.body);
 
-    // $set sólo con lo presente
     const $set = {};
     [
       'nombre', 'valorPadres',
-      // internos
       'profesionales', 'coordinadores', 'pasantes',
-      // externos
       'profesionalesExternos', 'coordinadoresExternos', 'pasantesExternos',
-      // anidados
       'areasExternas', 'habilidadesSociales'
     ].forEach(k => {
       if (data[k] !== undefined && data[k] !== null && data[k] !== '') $set[k] = data[k];
     });
 
-    // Validación mínima
     if ($set.nombre !== undefined && !String($set.nombre).trim()) {
       return res.status(400).json({ error: 'El campo "nombre" no puede quedar vacío.' });
     }
@@ -234,10 +245,10 @@ const actualizarModulo = async (req, res) => {
   }
 };
 
-// DELETE /modulos/:idParam  (id Mongo | nombre)
+// DELETE /modulos/:idOrNombre  (id Mongo | nombre)
 const eliminarModulo = async (req, res) => {
   try {
-    const idParam = req.params.id || req.params.nombre || req.params.key;
+    const idParam = getIdParam(req);
     if (!idParam) return res.status(400).json({ error: 'Parámetro faltante' });
 
     const current = await findByIdOrNombre(idParam);
@@ -255,7 +266,7 @@ module.exports = {
   crearModulo,
   obtenerModulos,
   buscarModulos,
-  obtenerModulo,      // (renombrado coherente)
+  obtenerModulo,
   actualizarModulo,
   eliminarModulo,
 };
