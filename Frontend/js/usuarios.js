@@ -71,40 +71,131 @@ if (btnLogout) {
 }
 
 
-// ==========================
+/// ==========================
 // 📋 Listado inicial
 // ==========================
 document.addEventListener('DOMContentLoaded', () => {
   const botonAgregar = document.getElementById('btnAgregarUsuario');
   const userList = document.getElementById('user-list');
 
-  // Mostrar usuarios existentes (con token)
+  // Mostrar usuarios existentes (agrupados por área)
   apiFetch(`/usuarios`)
     .then(res => res.json())
     .then(data => {
+      const sinInfo = document.querySelector('.sin-info');
       if (!Array.isArray(data) || data.length === 0) {
-        const sinInfo = document.querySelector('.sin-info');
         if (sinInfo) sinInfo.style.display = 'block';
         return;
       }
-
-      const sinInfo = document.querySelector('.sin-info');
       if (sinInfo) sinInfo.style.display = 'none';
 
-      data.forEach(usuario => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${usuario.nombreApellido || ''}</td>
-          <td>${(usuario.areas || []).join(', ')}</td>
-          <td>${usuario.mail || ''}</td>
-          <td>${usuario.whatsapp || ''}</td>
-          <td>${usuario.activo ? 'Activo' : 'Inactivo'}</td>
-          <td>
-            <button onclick="editarUsuario('${usuario._id}')">Editar</button>
-            <button onclick="borrarUsuario('${usuario._id}')">Borrar</button>
-          </td>
-        `;
-        userList.appendChild(tr);
+      // limpiar tabla antes de renderizar
+      userList.innerHTML = "";
+
+      // helpers
+      const escapeHTML = (s) => String(s ?? "")
+        .replace(/&/g,"&amp;")
+        .replace(/</g,"&lt;")
+        .replace(/>/g,"&gt;")
+        .replace(/"/g,"&quot;")
+        .replace(/'/g,"&#39;");
+
+      const ROLE_ORDER = {
+        "Coordinador y profesional": 0,
+        "Coordinador de área": 1,
+        "Profesional": 2,
+        "Pasante": 3,
+        "Administrativo": 4,
+        "Recepcionista": 5,
+        "Área": 6,
+        "Directoras": 7,
+        "Administrador": 8
+      };
+      const getRoleRank = (rol) => (rol in ROLE_ORDER ? ROLE_ORDER[rol] : 999);
+
+      const extractAreas = (u) => {
+        const set = new Set();
+
+        if (Array.isArray(u.areas)) {
+          u.areas.forEach(a => { if (a) set.add(String(a)); });
+        }
+        if (Array.isArray(u.areasProfesional)) {
+          u.areasProfesional.forEach(ap => {
+            const nm = ap?.areaNombre || ap?.area || ap?.nombre;
+            if (nm) set.add(String(nm));
+          });
+        }
+        if (Array.isArray(u.areasCoordinadas)) {
+          u.areasCoordinadas.forEach(ac => {
+            const nm = ac?.areaNombre || ac?.area || ac?.nombre;
+            if (nm) set.add(String(nm));
+          });
+        }
+        if (u.pasanteArea) {
+          if (typeof u.pasanteArea === "string") {
+            set.add(u.pasanteArea);
+          } else {
+            const nm = u.pasanteArea?.areaNombre || u.pasanteArea?.area || u.pasanteArea?.nombre;
+            if (nm) set.add(String(nm));
+          }
+        }
+        if (set.size === 0) set.add("Sin área");
+        return Array.from(set);
+      };
+
+      // agrupar
+      const groups = new Map();
+      data.forEach(u => {
+        const areas = extractAreas(u);
+        areas.forEach(area => {
+          const key = area.trim() || "Sin área";
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(u);
+        });
+      });
+
+      const areaNames = Array.from(groups.keys()).sort((a, b) => {
+        if (a === "Sin área" && b !== "Sin área") return 1;
+        if (b === "Sin área" && a !== "Sin área") return -1;
+        return a.localeCompare(b, 'es', { sensitivity: 'base' });
+      });
+
+      // render
+      areaNames.forEach(area => {
+        const usuarios = groups.get(area) || [];
+        usuarios.sort((u1, u2) => {
+          const r = getRoleRank(u1.rol) - getRoleRank(u2.rol);
+          if (r !== 0) return r;
+          const n1 = (u1.nombreApellido || "").toLowerCase();
+          const n2 = (u2.nombreApellido || "").toLowerCase();
+          return n1.localeCompare(n2, 'es', { sensitivity: 'base' });
+        });
+
+        // fila separadora
+        const sep = document.createElement('tr');
+        sep.className = 'area-sep';
+        sep.innerHTML = `
+          <td colspan="6" style="background:#f0f4f8; font-weight:700; padding:8px 10px; border-top:2px solid #d9e2ec;">
+            Área: ${escapeHTML(area)}
+          </td>`;
+        userList.appendChild(sep);
+
+        usuarios.forEach(usuario => {
+          const areasCol = extractAreas(usuario).join(', ');
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${escapeHTML(usuario.nombreApellido || '')}</td>
+            <td>${escapeHTML(areasCol)}</td>
+            <td>${escapeHTML(usuario.mail || '')}</td>
+            <td>${escapeHTML(usuario.whatsapp || '')}</td>
+            <td>${usuario.activo ? 'Activo' : 'Inactivo'}</td>
+            <td>
+              <button onclick="editarUsuario('${usuario._id}')">Editar</button>
+              <button onclick="borrarUsuario('${usuario._id}')">Borrar</button>
+            </td>
+          `;
+          userList.appendChild(tr);
+        });
       });
     })
     .catch(err => console.error(err));
@@ -113,6 +204,7 @@ document.addEventListener('DOMContentLoaded', () => {
     botonAgregar.addEventListener('click', () => mostrarFormularioUsuario());
   }
 });
+
 
 // ==========================
 // 🧾 Formulario (SweetAlert)
