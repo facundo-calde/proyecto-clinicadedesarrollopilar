@@ -4,11 +4,10 @@ const {
   crearModulo,
   obtenerModulos,
   buscarModulos,
-  obtenerModuloPorNumero,
+  obtenerModuloPorNumero, // sigue funcionando pero ahora resuelve id/nombre/numero
   actualizarModulo,
-  eliminarModulo // ✅ <--- AÑADILO ACÁ
+  eliminarModulo
 } = require('../controllers/moduloscontrollers');
-
 
 // Crear módulo
 router.post('/', crearModulo);
@@ -16,17 +15,17 @@ router.post('/', crearModulo);
 // Obtener todos
 router.get('/', obtenerModulos);
 
-// Buscar por coincidencia de número
+// Buscar por coincidencia (?nombre=... o ?numero=...)
 router.get('/buscar', buscarModulos);
 
-// Obtener por número exacto (para modificar)
-router.get('/:numero', obtenerModuloPorNumero);
+// Obtener uno (por id de Mongo, nombre o número legacy)
+router.get('/:idOrNombre', obtenerModuloPorNumero);
 
 // Actualizar módulo existente
-router.put('/:numero', actualizarModulo);
-//Eliminar modulo
-router.delete('/:numero', eliminarModulo);
+router.put('/:idOrNombre', actualizarModulo);
 
+// Eliminar módulo
+router.delete('/:idOrNombre', eliminarModulo);
 
 module.exports = router;
 

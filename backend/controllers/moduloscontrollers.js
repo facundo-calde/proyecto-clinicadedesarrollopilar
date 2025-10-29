@@ -47,23 +47,11 @@ const normAsignaciones = (v) => {
     .filter(x => isValidId(x.usuario));
 };
 
-// ✅ Ahora priorizamos `nombre` (string). `numero` queda como legacy opcional.
+// Sanitiza body según nuevo esquema (solo NOMBRE)
 const sanitizeBody = (body = {}) => {
   const out = {};
 
-  // Principal
   if (body.nombre !== undefined) out.nombre = toStr(body.nombre, '');
-  // Legacy: si vino numero y no vino nombre, lo usamos para nombre
-  if (out.nombre == null || out.nombre === '') {
-    if (body.numero !== undefined && body.numero !== null && body.numero !== '') {
-      const n = toNum(body.numero, NaN);
-      if (!Number.isNaN(n)) out.nombre = String(n);
-    }
-  }
-
-  // Legacy: también dejamos pasar numero si lo querés seguir guardando durante la transición
-  if (body.numero !== undefined) out.numero = toNum(body.numero, NaN);
-
   if (body.valorPadres !== undefined) out.valorPadres = toNum(body.valorPadres, 0);
 
   // Internos
@@ -109,25 +97,17 @@ const populateAsignaciones = (q) =>
     { path: 'pasantesExternos.usuario',      select: 'nombre nombreApellido apellido rol roles areasProfesional areasCoordinadas' },
   ]);
 
-// Resolver por id/nombre/numero (para GET/PUT/DELETE :param)
-async function findByIdOrNombreOrNumero(idParam) {
+// Resolver por id/nombre (para GET/PUT/DELETE :param)
+async function findByIdOrNombre(idParam) {
   // 1) ObjectId directo
   if (isValidId(idParam)) {
     const byId = await Modulo.findById(idParam);
     if (byId) return byId;
   }
-  // 2) nombre exacto (string)
+  // 2) nombre exacto
   const byNombre = await Modulo.findOne({ nombre: idParam });
   if (byNombre) return byNombre;
 
-  // 3) legacy numero exacto si idParam es numérico
-  if (/^\d+$/.test(String(idParam))) {
-    const numero = parseInt(idParam, 10);
-    if (!Number.isNaN(numero)) {
-      const byNumero = await Modulo.findOne({ numero });
-      if (byNumero) return byNumero;
-    }
-  }
   return null;
 }
 
@@ -137,7 +117,6 @@ const crearModulo = async (req, res) => {
   try {
     const data = sanitizeBody(req.body);
 
-    // Validación principal ahora es "nombre"
     if (!data.nombre || !String(data.nombre).trim()) {
       return res.status(400).json({ error: 'El campo "nombre" es obligatorio.' });
     }
@@ -147,7 +126,6 @@ const crearModulo = async (req, res) => {
     return res.status(201).json(saved);
   } catch (error) {
     if (error?.code === 11000) {
-      // índice único en nombre
       return res.status(409).json({ error: 'Ya existe un módulo con ese nombre.' });
     }
     console.error('❌ crearModulo:', error);
@@ -166,71 +144,67 @@ const obtenerModulos = async (_req, res) => {
   }
 };
 
-// GET /modulos/buscar?nombre=...   (preferido)
-//     /modulos/buscar?numero=...   (legacy)
+// GET /modulos/buscar?nombre=...
 const buscarModulos = async (req, res) => {
   try {
-    const { nombre, numero } = req.query;
+    const { nombre } = req.query;
 
-    if (nombre && String(nombre).trim().length >= 1) {
-      const regex = new RegExp(String(nombre).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'); // case-insensitive
-      const docs = await Modulo.find({ nombre: { $regex: regex } })
-        .sort({ nombre: 1 })
-        .limit(10);
-      const full = await populateAsignaciones(Modulo.find({ _id: { $in: docs.map(d => d._id) } }).sort({ nombre: 1 }));
-      return res.json(await full);
+    if (!nombre || !String(nombre).trim()) {
+      return res.status(400).json({ error: 'Parámetro "nombre" inválido' });
     }
 
-    // Legacy por numero (prefijo)
-    if (numero && /^\d+$/.test(String(numero))) {
-      const regex = new RegExp('^' + String(numero));
-      const ids = (await Modulo.aggregate([
-        { $addFields: { numeroStr: { $toString: '$numero' } } },
-        { $match: { numeroStr: { $regex: regex } } },
-        { $sort: { numero: 1 } },
-        { $limit: 10 },
-        { $project: { _id: 1 } }
-      ])).map(m => m._id);
+    const regex = new RegExp(
+      String(nombre).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+      'i'
+    ); // case-insensitive, escapa especiales
 
-      const full = await populateAsignaciones(Modulo.find({ _id: { $in: ids } }).sort({ numero: 1 }));
-      return res.json(await full);
-    }
+    const docs = await Modulo.find({ nombre: { $regex: regex } })
+      .sort({ nombre: 1 })
+      .limit(10);
 
-    return res.status(400).json({ error: 'Parámetro de búsqueda inválido (use ?nombre=... o ?numero=...).' });
+    const full = await populateAsignaciones(
+      Modulo.find({ _id: { $in: docs.map(d => d._id) } }).sort({ nombre: 1 })
+    );
+
+    return res.json(await full);
   } catch (error) {
     console.error('❌ buscarModulos:', error);
     return res.status(500).json({ error: 'Error en la búsqueda de módulos' });
   }
 };
 
-// GET /modulos/:idParam  (id Mongo | nombre | numero[legacy])
-const obtenerModuloPorNumero = async (req, res) => {
+// GET /modulos/:idParam  (id Mongo | nombre)
+const obtenerModulo = async (req, res) => {
   try {
-    const { idParam } = { idParam: req.params.numero ?? req.params.id ?? req.params.nombre ?? req.params.key };
-    const moduloBase = await findByIdOrNombreOrNumero(idParam);
+    const idParam = req.params.id || req.params.nombre || req.params.key;
+    if (!idParam) return res.status(400).json({ error: 'Parámetro faltante' });
+
+    const moduloBase = await findByIdOrNombre(idParam);
     if (!moduloBase) return res.status(404).json({ error: 'Módulo no encontrado' });
 
     const modulo = await populateAsignaciones(Modulo.findById(moduloBase._id));
     return res.json(await modulo);
   } catch (error) {
-    console.error('❌ obtenerModuloPorNumero:', error);
+    console.error('❌ obtenerModulo:', error);
     return res.status(500).json({ error: 'Error al obtener módulo' });
   }
 };
 
-// PUT /modulos/:idParam  (id Mongo | nombre | numero[legacy])
+// PUT /modulos/:idParam  (id Mongo | nombre)
 const actualizarModulo = async (req, res) => {
   try {
-    const { idParam } = { idParam: req.params.numero ?? req.params.id ?? req.params.nombre ?? req.params.key };
-    const current = await findByIdOrNombreOrNumero(idParam);
+    const idParam = req.params.id || req.params.nombre || req.params.key;
+    if (!idParam) return res.status(400).json({ error: 'Parámetro faltante' });
+
+    const current = await findByIdOrNombre(idParam);
     if (!current) return res.status(404).json({ error: 'Módulo no encontrado' });
 
     const data = sanitizeBody(req.body);
 
-    // Armamos $set sólo con lo presente
+    // $set sólo con lo presente
     const $set = {};
     [
-      'nombre', 'numero', 'valorPadres',
+      'nombre', 'valorPadres',
       // internos
       'profesionales', 'coordinadores', 'pasantes',
       // externos
@@ -241,7 +215,7 @@ const actualizarModulo = async (req, res) => {
       if (data[k] !== undefined && data[k] !== null && data[k] !== '') $set[k] = data[k];
     });
 
-    // Validación mínima: si cambia nombre, no vacío
+    // Validación mínima
     if ($set.nombre !== undefined && !String($set.nombre).trim()) {
       return res.status(400).json({ error: 'El campo "nombre" no puede quedar vacío.' });
     }
@@ -249,6 +223,7 @@ const actualizarModulo = async (req, res) => {
     const moduloActualizado = await populateAsignaciones(
       Modulo.findByIdAndUpdate(current._id, { $set }, { new: true })
     );
+
     return res.json({ mensaje: 'Módulo actualizado correctamente', modulo: await moduloActualizado });
   } catch (error) {
     if (error?.code === 11000) {
@@ -259,11 +234,13 @@ const actualizarModulo = async (req, res) => {
   }
 };
 
-// DELETE /modulos/:idParam  (id Mongo | nombre | numero[legacy])
+// DELETE /modulos/:idParam  (id Mongo | nombre)
 const eliminarModulo = async (req, res) => {
   try {
-    const { idParam } = { idParam: req.params.numero ?? req.params.id ?? req.params.nombre ?? req.params.key };
-    const current = await findByIdOrNombreOrNumero(idParam);
+    const idParam = req.params.id || req.params.nombre || req.params.key;
+    if (!idParam) return res.status(400).json({ error: 'Parámetro faltante' });
+
+    const current = await findByIdOrNombre(idParam);
     if (!current) return res.status(404).json({ error: 'Módulo no encontrado' });
 
     await Modulo.findByIdAndDelete(current._id);
@@ -278,7 +255,7 @@ module.exports = {
   crearModulo,
   obtenerModulos,
   buscarModulos,
-  obtenerModuloPorNumero, // mantiene el nombre exportado para no romper tus routes
+  obtenerModulo,      // (renombrado coherente)
   actualizarModulo,
   eliminarModulo,
 };

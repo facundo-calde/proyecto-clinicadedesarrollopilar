@@ -99,85 +99,92 @@ function renderListado(mods) {
 
 
   // ---------- Autocompletado / búsqueda ----------
-  if (inputBusqueda) {
-    inputBusqueda.addEventListener('input', async () => {
-      const valor = inputBusqueda.value.trim();
-      if (sugerencias) sugerencias.innerHTML = '';
-      if (contenedorFicha) contenedorFicha.innerHTML = '';
+// ---------- Autocompletado / búsqueda ----------
+if (inputBusqueda) {
+  inputBusqueda.addEventListener('input', async () => {
+    const valor = inputBusqueda.value.trim();
+    if (sugerencias) sugerencias.innerHTML = '';
+    if (contenedorFicha) contenedorFicha.innerHTML = '';
 
-      if (valor.length < 2) return;
+    if (valor.length < 2) return;
 
-      try {
-        const res = await apiFetch(`/modulos?numero=${encodeURIComponent(valor)}`);
-        const modulos = await res.json();
+    try {
+      // ✅ ahora busca por nombre
+      const res = await apiFetch(`/modulos/buscar?nombre=${encodeURIComponent(valor)}`);
+      const modulos = await res.json();
 
-        if (Array.isArray(modulos) && sugerencias) {
-          modulos.forEach(mod => {
-            const li = document.createElement('li');
-            li.textContent = `Módulo ${mod.numero}`;
-            li.style.cursor = 'pointer';
-            li.addEventListener('click', () => {
-              inputBusqueda.value = mod.numero;
-              sugerencias.innerHTML = '';
-              mostrarFichaModulo(mod);
-            });
-            sugerencias.appendChild(li);
+      if (Array.isArray(modulos) && sugerencias) {
+        modulos.forEach(mod => {
+          const li = document.createElement('li');
+          li.textContent = `Módulo ${mod.nombre}`;
+          li.style.cursor = 'pointer';
+          li.addEventListener('click', () => {
+            inputBusqueda.value = mod.nombre;
+            sugerencias.innerHTML = '';
+            mostrarFichaModulo(mod);
           });
-        }
-      } catch (error) {
-        console.error('Error al buscar módulos:', error);
+          sugerencias.appendChild(li);
+        });
       }
-    });
-  }
+    } catch (error) {
+      console.error('Error al buscar módulos:', error);
+    }
+  });
+}
 
-  function mostrarFichaModulo(modulo) {
-    contenedorFicha.innerHTML = `
-      <div class="table-container">
-        <table class="modulo-detalle">
-          <thead>
-            <tr>
-              <th>Módulo</th>
-              <th>Valor padres</th>
-              <th># Profesionales</th>
-              <th># Coordinadores</th>
-              <th>Acción</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>${modulo.numero}</td>
-              <td>$${Number(modulo.valorPadres ?? 0).toLocaleString()}</td>
-              <td>${Array.isArray(modulo.profesionales) ? modulo.profesionales.length : 0}</td>
-              <td>${Array.isArray(modulo.coordinadores) ? modulo.coordinadores.length : 0}</td>
-              <td>
-                <button class="btn-modificar" onclick="modificarModulo(${modulo.numero})">✏️</button>
-                <button class="btn-borrar"    onclick="borrarModulo(${modulo.numero})">🗑️</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    `;
-  }
+function mostrarFichaModulo(modulo) {
+  const formatARS = (v) =>
+    new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' })
+      .format(Number.isFinite(v) ? v : 0);
+
+  // pequeña ayuda para evitar líos si el nombre tuviera comillas simples
+  const safeNombre = String(modulo.nombre || '').replaceAll("'", "\\'");
+
+  contenedorFicha.innerHTML = `
+    <div class="table-container">
+      <table class="modulo-detalle">
+        <thead>
+          <tr>
+            <th>Módulo</th>
+            <th>Valor padres</th>
+            <th># Profesionales</th>
+            <th># Coordinadores</th>
+            <th>Acción</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>${modulo.nombre}</td>
+            <td>${formatARS(Number(modulo.valorPadres ?? 0))}</td>
+            <td>${Array.isArray(modulo.profesionales) ? modulo.profesionales.length : 0}</td>
+            <td>${Array.isArray(modulo.coordinadores) ? modulo.coordinadores.length : 0}</td>
+            <td>
+              <button class="btn-modificar" onclick="modificarModulo('${safeNombre}')">✏️</button>
+              <button class="btn-borrar"    onclick="borrarModulo('${safeNombre}')">🗑️</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
 
  /// ---------- Crear módulo (una columna | Fonoaudiología + Psicopedagogía | muestra Área — Nivel + ARS) ----------
 if (botonCargar) {
   botonCargar.addEventListener('click', async () => {
-    // 0) Helper ARS
     const formatARS = (v) => new Intl.NumberFormat("es-AR", {
       style: "currency",
       currency: "ARS",
       minimumFractionDigits: 2
     }).format(Number.isFinite(v) ? v : 0);
 
-    // 1) Traer usuarios
     let usuarios = [];
     try {
       const res = await apiFetch('/usuarios', { method: 'GET' });
       if (res.ok) usuarios = await res.json();
     } catch (e) { console.warn('No se pudieron obtener usuarios:', e); }
 
-    // ===== Helpers =====
     const fullName = (u) => {
       const cands = [
         u.nombreApellido, u.apellidoNombre, u.nombreCompleto,
@@ -189,7 +196,6 @@ if (botonCargar) {
     };
     const arr = (v) => Array.isArray(v) ? v : (v ? [v] : []);
 
-    // --- Áreas (usa backend si lo manda, si no reconstruye) ---
     const normAreaEntry = (x) => {
       if (!x) return null;
       if (typeof x === 'string') return { nombre: x.trim(), nivel: '' };
@@ -243,7 +249,6 @@ if (botonCargar) {
       return list;
     };
 
-    // Filtro por Fonoaudiología + Psicopedagogía
     const isFono     = (s='') => /fonoaudiolog[ií]a/i.test(s);
     const isPsicoPed = (s='') => /psicopedagog[ií]a/i.test(s);
     const hasAreaFP  = (u) => getAreasDetailed(u).some(a => isFono(a.nombre) || isPsicoPed(a.nombre));
@@ -259,7 +264,6 @@ if (botonCargar) {
       return list.map(a => a.nivel ? `${a.nombre} — ${a.nivel}` : a.nombre).join(' | ');
     };
 
-    // Roles canónicos
     const mapRolCanonical = (r = '') => {
       const s = String(r).trim().toLowerCase();
       switch (s) {
@@ -285,21 +289,17 @@ if (botonCargar) {
       return wanted.some(w => R.has(w));
     };
 
-    // 2) Filtrar candidatos / buckets
     const candidatos       = usuarios.filter(u => hasRolCanon(u, 'profesional', 'coordinador', 'directora', 'pasante'));
-    const candidatosFP     = candidatos.filter(u => hasAreaFP(u));     // Internos (Fonoaudiología / Psicopedagogía)
-    const candidatosExtern = candidatos.filter(u => !hasAreaFP(u));    // Externos (todas las demás áreas)
+    const candidatosFP     = candidatos.filter(u => hasAreaFP(u));
+    const candidatosExtern = candidatos.filter(u => !hasAreaFP(u));
 
-    // Internos
     const profesionales     = candidatosFP.filter(u => hasRolCanon(u, 'profesional'));
     const coordinadores     = candidatosFP.filter(u => hasRolCanon(u, 'coordinador', 'directora'));
     const pasantes          = candidatosFP.filter(u => hasRolCanon(u, 'pasante'));
-    // Externos
     const profesionalesExt  = candidatosExtern.filter(u => hasRolCanon(u, 'profesional'));
     const coordinadoresExt  = candidatosExtern.filter(u => hasRolCanon(u, 'coordinador', 'directora'));
     const pasantesExt       = candidatosExtern.filter(u => hasRolCanon(u, 'pasante'));
 
-    // 3) UI: una sola columna con Área — Nivel visible (con fallback de nivel)
     const renderRows = (arr, rolKey, titulo, scope) => {
       if (!arr.length) return `<div class="empty">No hay ${titulo}</div>`;
       return `
@@ -307,8 +307,8 @@ if (botonCargar) {
         ${arr
           .sort((a,b)=>fullName(a).localeCompare(fullName(b), 'es'))
           .map(u => {
-            const principal = getAreaPrincipalWithLevel(u);           // {nombre, nivel}
-            const allAreas  = formatAllAreas(u);                       // tooltip
+            const principal = getAreaPrincipalWithLevel(u);
+            const allAreas  = formatAllAreas(u);
             const nivelFallback = (
               principal.nivel ||
               (Array.isArray(u.nivelesProfesional) && u.nivelesProfesional[0]) ||
@@ -391,23 +391,28 @@ if (botonCargar) {
 
         const nombre = (nombreEl.value || '').trim();
         const valorPadres = Number(padresEl.value);
+
         if (!nombre) return Swal.showValidationMessage('⚠️ El nombre del módulo es obligatorio');
+
+        // ✅ Validación igual al schema: letras, números, espacios y _.-#
+        const reNombre = /^[\p{L}\p{N}\s._\-#]+$/u;
+        if (!reNombre.test(nombre)) {
+          return Swal.showValidationMessage('⚠️ El nombre solo admite letras, números, espacios y _.-#');
+        }
+        if (nombre.length > 120) {
+          return Swal.showValidationMessage('⚠️ Máximo 120 caracteres para el nombre');
+        }
 
         const take = (rol, scope) => [...document.querySelectorAll(`.monto-input[data-rol="${rol}"][data-scope="${scope}"]`)]
           .map(i => ({ usuario: i.dataset.user, monto: Number(i.value) || 0 }))
           .filter(x => x.usuario && x.monto > 0);
 
-        // SIN validación de suma vs. valorPadres (se puede cargar 100%, parcial o 0)
         return {
           nombre,
           valorPadres: Number.isNaN(valorPadres) ? 0 : valorPadres,
-
-          // Internos (Fono / PsicoPed)
           profesionales: take('profesional', 'interno'),
           coordinadores: take('coordinador', 'interno'),
           pasantes:      take('pasante',     'interno'),
-
-          // Externos (otras áreas)
           profesionalesExternos: take('profesional', 'externo'),
           coordinadoresExternos: take('coordinador', 'externo'),
           pasantesExternos:      take('pasante',     'externo'),
@@ -417,7 +422,6 @@ if (botonCargar) {
 
     if (!formValues) return;
 
-    // 4) Guardar
     try {
       const res = await apiFetch(`/modulos`, {
         method: 'POST',
@@ -425,7 +429,11 @@ if (botonCargar) {
         body: JSON.stringify(formValues)
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || 'No se pudo guardar');
+      if (!res.ok) {
+        // 👇 Mensaje claro si ya existe
+        if (res.status === 409) throw new Error('Ya existe un módulo con ese nombre.');
+        throw new Error(data?.error || 'No se pudo guardar');
+      }
 
       Swal.fire('Éxito', 'Módulo guardado correctamente', 'success');
       cargarListadoModulos();
@@ -435,7 +443,6 @@ if (botonCargar) {
     }
   });
 }
-
 
 
 
