@@ -300,12 +300,8 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         }
         .prefix-wrapper > input{ padding-left:28px; }
 
-        /* ✅ Fix visual para Pasante */
+        /* ✅ Pasante con mismo layout que Profesional */
         #pasanteSection{ display:none; grid-column:1 / -1; max-width:100%; }
-        #pasanteSection .row{ display:grid; grid-template-columns:1fr; gap:10px; }
-        @media (min-width:1024px){
-          #pasanteSection .row{ grid-template-columns:1fr 1fr; }
-        }
       </style>
 
       <div class="swal-body">
@@ -370,24 +366,20 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
               <option value="Área">Área</option>
             </select>
 
-            <!-- Sección Pasante con fix visual -->
+            <!-- Pasante con mismo layout que Profesional -->
             <div id="pasanteSection" class="block" style="display:none;">
-              <div class="row">
-                <div>
-                  <label><strong>Nivel de pasante:</strong></label>
-                  <select id="pasanteNivel" class="swal2-select">
-                    <option value="">Seleccionar...</option>
-                    <option value="Junior">Junior</option>
-                    <option value="Senior">Senior</option>
-                  </select>
-                </div>
-                <div>
-                  <label><strong>Área de pasante:</strong></label>
-                  <select id="pasanteArea" class="swal2-select">
-                    <option value="">-- Área --</option>
-                    ${AREA_OPTS}
-                  </select>
-                </div>
+              <label><strong>Áreas de pasantía (con nivel):</strong></label>
+              <div class="pro-row">
+                <select id="pasanteArea" class="swal2-select pro-area">
+                  <option value="">-- Área --</option>
+                  ${AREA_OPTS}
+                </select>
+                <select id="pasanteNivel" class="swal2-select pro-nivel">
+                  <option value="">Nivel...</option>
+                  <option value="Junior">Junior</option>
+                  <option value="Senior">Senior</option>
+                </select>
+                <button type="button" class="icon-btn" title="Quitar" disabled>✕</button>
               </div>
             </div>
 
@@ -423,7 +415,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
             </div>
 
             <label><strong>Documentos:</strong></label>
-            <input type="file" id="documentos" class="swal2-input" multiple accept=".pdf,image/*,.doc,.docx,.txt">
+            <input type="file" id="documentos" name="documentos" class="swal2-input" multiple accept=".pdf,image/*,.doc,.docx,.txt">
 
             <div id="docsExistentes" class="block" style="display:none; margin-top:8px;">
               <label><strong>Documentos existentes:</strong></label>
@@ -484,39 +476,39 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         if (u.rol) document.getElementById("rol").value = u.rol;
 
         if (u.pasanteNivel) document.getElementById("pasanteNivel").value = u.pasanteNivel;
-        if (u.pasanteArea) document.getElementById("pasanteArea").value =
+        if (u.pasanteArea)  document.getElementById("pasanteArea").value  =
           (typeof u.pasanteArea === "string" ? u.pasanteArea : (u.pasanteArea?.areaNombre || ""));
         if (u.seguroMalaPraxis) document.getElementById("seguroMalaPraxis").value = u.seguroMalaPraxis;
       } else {
         const usuarioEl = document.getElementById("usuario");
-        const passEl = document.getElementById("contrasena");
+        const passEl    = document.getElementById("contrasena");
         if (usuarioEl) usuarioEl.value = "";
-        if (passEl) passEl.value = "";
+        if (passEl)     passEl.value = "";
         setTimeout(() => {
           if (usuarioEl) usuarioEl.value = "";
-          if (passEl) passEl.value = "";
+          if (passEl)    passEl.value = "";
         }, 0);
       }
 
       formatInputARS(document.getElementById("salarioAcuerdo"));
       formatInputARS(document.getElementById("fijoAcuerdo"));
 
-      const rolSelect = document.getElementById("rol");
-      const proSection = document.getElementById("proSection");
-      const coordSection = document.getElementById("coordSection");
+      const rolSelect      = document.getElementById("rol");
+      const proSection     = document.getElementById("proSection");
+      const coordSection   = document.getElementById("coordSection");
       const pasanteSection = document.getElementById("pasanteSection");
-      const proList = document.getElementById("proList");
-      const coordList = document.getElementById("coordList");
-      const btnAddPro = document.getElementById("btnAddPro");
-      const btnAddCoord = document.getElementById("btnAddCoord");
-      const labelSeguro = document.getElementById("labelSeguro");
-      const inputSeguro = document.getElementById("seguroMalaPraxis");
+      const proList        = document.getElementById("proList");
+      const coordList      = document.getElementById("coordList");
+      const btnAddPro      = document.getElementById("btnAddPro");
+      const btnAddCoord    = document.getElementById("btnAddCoord");
+      const labelSeguro    = document.getElementById("labelSeguro");
+      const inputSeguro    = document.getElementById("seguroMalaPraxis");
 
       function addProRow(areaNombre = "", nivel = "") {
         proList.insertAdjacentHTML("beforeend", buildProRow(areaNombre, nivel));
         const row = proList.lastElementChild;
         if (areaNombre) row.querySelector(".pro-area").value = areaNombre;
-        if (nivel) row.querySelector(".pro-nivel").value = nivel;
+        if (nivel)      row.querySelector(".pro-nivel").value = nivel;
         row.querySelector(".btn-del-pro").addEventListener("click", () => row.remove());
       }
       function addCoordRow(areaNombre = "") {
@@ -528,13 +520,13 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
       btnAddPro?.addEventListener("click", () => addProRow());
       btnAddCoord?.addEventListener("click", () => addCoordRow());
 
-      const ROLES_PROF = new Set(["Profesional", "Coordinador y profesional"]);
+      const ROLES_PROF  = new Set(["Profesional", "Coordinador y profesional"]);
       const ROLES_COORD = new Set(["Coordinador de área", "Coordinador y profesional"]);
 
       function syncVisibility() {
         const rol = rolSelect.value;
 
-        proSection.style.display = ROLES_PROF.has(rol) ? "block" : "none";
+        proSection.style.display   = ROLES_PROF.has(rol)  ? "block" : "none";
         coordSection.style.display = ROLES_COORD.has(rol) ? "block" : "none";
 
         // Mostrar seguro para profesionales y coordinadores (no obligatorio)
@@ -563,7 +555,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
       rolSelect.addEventListener("change", syncVisibility);
 
       // Render docs + eliminar
-      const docsBox = document.getElementById("docsExistentes");
+      const docsBox  = document.getElementById("docsExistentes");
       const docsList = document.getElementById("docsList");
       function renderDocs(docs = []) {
         if (!Array.isArray(docs) || docs.length === 0) {
@@ -573,8 +565,8 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         }
         docsBox.style.display = "block";
         docsList.innerHTML = docs.map(d => {
-          const href = d.publicUrl || d.url || "#";
-          const name = d.nombre || (href.split("/").pop() || "archivo");
+          const href  = d.publicUrl || d.url || "#";
+          const name  = d.nombre || (href.split("/").pop() || "archivo");
           const fecha = d.fechaSubida ? new Date(d.fechaSubida).toLocaleString() : "";
           const idDoc = d._id || d.id;
           return `<li style="margin:4px 0; display:flex; align-items:center; gap:8px;">
@@ -607,7 +599,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         const res = await apiFetch(`/usuarios/${u._id}/documentos/${docId}`, { method: "DELETE" });
         if (!res.ok) {
           let msg = "No se pudo eliminar el documento";
-          try { const j = await res.json(); msg = j?.error || msg; } catch { }
+          try { const j = await res.json(); msg = j?.error || msg; } catch {}
           Swal.fire("Error", msg, "error");
           return;
         }
@@ -626,8 +618,8 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
       });
 
       // Toggle password
-      const passInput = document.getElementById("contrasena");
-      const toggleBtn = document.getElementById("togglePass");
+      const passInput  = document.getElementById("contrasena");
+      const toggleBtn  = document.getElementById("togglePass");
       const toggleIcon = document.getElementById("togglePassIcon");
       if (toggleBtn && passInput && toggleIcon) {
         toggleBtn.addEventListener("click", () => {
@@ -646,7 +638,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
       const areasProfesional = Array.from(document.querySelectorAll("#proList .pro-row"))
         .map(row => {
           const areaNombre = row.querySelector(".pro-area")?.value?.trim() || "";
-          const nivel = row.querySelector(".pro-nivel")?.value?.trim() || "";
+          const nivel      = row.querySelector(".pro-nivel")?.value?.trim() || "";
           if (!areaNombre || !nivel) return null;
           return { areaNombre, nivel };
         }).filter(Boolean);
@@ -658,7 +650,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
           return { areaNombre };
         }).filter(Boolean);
 
-      const ROLES_PROF = new Set(["Profesional", "Coordinador y profesional"]);
+      const ROLES_PROF  = new Set(["Profesional", "Coordinador y profesional"]);
       const ROLES_COORD = new Set(["Coordinador de área", "Coordinador y profesional"]);
 
       // Validaciones por rol
@@ -723,7 +715,8 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
     const path = modoEdicion ? `/usuarios/${u._id}` : `/usuarios`;
     const method = modoEdicion ? "PUT" : "POST";
 
-    const archivos = (document.getElementById("documentos")?.files) || [];
+    const archivosInput = document.getElementById("documentos");
+    const archivos = archivosInput && archivosInput.files ? Array.from(archivosInput.files) : [];
     let res;
 
     if (!archivos.length) {
@@ -741,15 +734,15 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
           fd.append(key, val);
         }
       }
-      for (let i = 0; i < archivos.length; i++) {
-        fd.append("documentos", archivos[i]);
+      for (const f of archivos) {
+        fd.append("documentos", f, f.name);
       }
       res = await apiFetch(path, { method, body: fd });
     }
 
     if (!res.ok) {
       let msg = "Error al guardar";
-      try { const j = await res.json(); msg = j?.error || msg; } catch { }
+      try { const j = await res.json(); msg = j?.error || msg; } catch {}
       throw new Error(msg);
     }
 
@@ -761,6 +754,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
     Swal.fire("Error", "No se pudo guardar el usuario", "error");
   });
 }
+
 
 
 
