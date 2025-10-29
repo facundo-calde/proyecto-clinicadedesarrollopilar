@@ -15,11 +15,20 @@ function parseMaybeJSON(v) {
   try { return JSON.parse(v); } catch { return v; }
 }
 
-// Junta archivos sin importar si vino req.file, req.files[], "documentos", "archivo", etc.
+// Junta archivos sin importar si vino req.file, req.files[], o req.files.{campo}
 function collectFilesFromReq(req) {
   const files = [];
   if (req.file) files.push(req.file);
-  if (Array.isArray(req.files)) files.push(...req.files);
+
+  if (Array.isArray(req.files)) {
+    files.push(...req.files);
+  } else if (req.files && typeof req.files === "object") {
+    for (const k of Object.keys(req.files)) {
+      const v = req.files[k];
+      if (Array.isArray(v)) files.push(...v);
+      else if (v) files.push(v);
+    }
+  }
   return files;
 }
 
@@ -47,10 +56,27 @@ async function uploadUserDocsR2(files, ownerId) {
 
 // Normaliza body cuando viene por multipart/form-data o JSON
 function normalizeBody(body) {
-  body.areasProfesional = parseMaybeJSON(body.areasProfesional);
-  body.areasCoordinadas = parseMaybeJSON(body.areasCoordinadas);
+  const _parse = (v) => {
+    if (v == null) return v;
+    if (typeof v !== "string") return v;
+    try { return JSON.parse(v); } catch { return v; }
+  };
+
+  body.areasProfesional = _parse(body.areasProfesional);
+  body.areasCoordinadas = _parse(body.areasCoordinadas);
   if (body.areasProfesional == null || body.areasProfesional === "") body.areasProfesional = [];
   if (body.areasCoordinadas == null || body.areasCoordinadas === "") body.areasCoordinadas = [];
+
+  // 🔧 PASANTE: puede venir como JSON string, string plano u objeto
+  let pa = _parse(body.pasanteArea);
+  if (pa == null || pa === "" || (typeof pa === "object" && Object.keys(pa).length === 0)) {
+    body.pasanteArea = undefined;
+  } else if (typeof pa === "string") {
+    body.pasanteArea = { areaNombre: pa.trim() };
+  } else if (typeof pa === "object") {
+    const areaNombre = (pa.areaNombre || pa.area || pa.nombre || "").toString().trim();
+    body.pasanteArea = areaNombre ? { areaNombre } : undefined;
+  }
 
   [
     "jurisdiccion","registroNacionalDePrestadores",
@@ -77,6 +103,11 @@ function normalizeBody(body) {
     body.nivelPasante = body.pasanteNivel || undefined;
   }
 
+  // Limpieza de números por si vienen con $ . , de la UI
+  const onlyDigits = s => (typeof s === "string" ? s.replace(/\D+/g, "") : s);
+  if (body.salarioAcuerdo) body.salarioAcuerdo = onlyDigits(body.salarioAcuerdo);
+  if (body.fijoAcuerdo)    body.fijoAcuerdo    = onlyDigits(body.fijoAcuerdo);
+
   return body;
 }
 
@@ -96,13 +127,14 @@ function applyRoleCleaning(rol, body, currentDoc = null) {
   if (esPasante) {
     body.areasProfesional = [];
     body.areasCoordinadas = [];
+    // mantener pasanteArea/nivelPasante
   } else {
     if (!esProfesional) body.areasProfesional = [];
     if (!esCoordinador) body.areasCoordinadas = [];
+    // si NO es pasante, no debe guardarse pasanteArea ni nivelPasante
+    body.pasanteArea = undefined;
+    body.nivelPasante = undefined;
   }
-
-  // Si NO es pasante, borrar nivel de pasante
-  if (!esPasante) body.nivelPasante = undefined;
 
   if (currentDoc) {
     if (!Array.isArray(body.areasProfesional) && currentDoc.areasProfesional) {
@@ -158,7 +190,6 @@ function normAreaEntry(x){
   }
   return null;
 }
-
 
 function pairAreasLevels(areas = [], niveles = []) {
   return areas.map((a, i) => {
@@ -457,4 +488,3 @@ exports.authMiddleware = (req, res, next) => {
     return res.status(401).json({ error: "Token no válido o expirado" });
   }
 };
-
