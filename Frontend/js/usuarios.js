@@ -131,7 +131,7 @@ function buildAreasCheckboxes(areas = [], seleccionadas = new Set()) {
     .join("");
 }
 
-async function mostrarFormularioUsuario(u = {}, modoEdicion = false) { 
+async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
   // 1) Traer áreas
   let AREAS = [];
   try {
@@ -485,9 +485,9 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
           const fecha = d.fechaSubida ? new Date(d.fechaSubida).toLocaleString() : "";
           const idDoc = d._id || d.id;
           return `<li style="margin:4px 0; display:flex; align-items:center; gap:8px;">
-            <a href="\${href}" target="_blank" rel="noopener" style="flex:1">\${name}</a>
+            <a href="${href}" target="_blank" rel="noopener" style="flex:1">${name}</a>
             ${fecha ? `<small style="color:#666;">${fecha}</small>` : ""}
-            <button type="button" class="mini-btn btn-del-doc" data-docid="\${idDoc}" \${!idDoc ? "disabled" : ""}>Eliminar</button>
+            <button type="button" class="mini-btn btn-del-doc" data-docid="${idDoc}" ${!idDoc ? "disabled" : ""}>Eliminar</button>
           </li>`;
         }).join("");
       }
