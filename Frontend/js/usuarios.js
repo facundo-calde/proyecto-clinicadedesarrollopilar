@@ -187,7 +187,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         .swal-body{ max-height:72vh; overflow-y:auto; overflow-x:auto; }
         .form-container{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:24px; }
         .form-column{ display:flex; flex-direction:column; }
-        .form-column label{ font-weight:600;font-size:14px;margin-top:8px;color:#333; }
+        .form-column label{ font-weight:600;font-size:14px;margin-top:8px;color:#333; text-align:left; }
         .swal2-input,.swal2-select{ width:100%; padding:10px; margin-top:6px; margin-bottom:10px;
           border:1px solid #ccc;border-radius:8px;background:#f9f9f9;font-size:14px; }
         .mini-btn{ padding:6px 10px;border:1px solid #ccc;border-radius:8px;background:#eee;cursor:pointer;font-size:12px; }
@@ -206,6 +206,13 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
           color:#333; font-weight:600;
         }
         .prefix-wrapper > input{ padding-left:28px; }
+
+        /* ✅ Fix visual para Pasante */
+        #pasanteSection{ display:none; grid-column:1 / -1; max-width:100%; }
+        #pasanteSection .row{ display:grid; grid-template-columns:1fr; gap:10px; }
+        @media (min-width:1024px){
+          #pasanteSection .row{ grid-template-columns:1fr 1fr; }
+        }
       </style>
 
       <div class="swal-body">
@@ -270,19 +277,25 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
               <option value="Área">Área</option>
             </select>
 
+            <!-- Sección Pasante con fix visual -->
             <div id="pasanteSection" class="block" style="display:none;">
-              <label><strong>Nivel de pasante:</strong></label>
-              <select id="pasanteNivel" class="swal2-select">
-                <option value="">Seleccionar...</option>
-                <option value="Junior">Junior</option>
-                <option value="Senior">Senior</option>
-              </select>
-
-              <label><strong>Área de pasante:</strong></label>
-              <select id="pasanteArea" class="swal2-select">
-                <option value="">-- Área --</option>
-                ${AREA_OPTS}
-              </select>
+              <div class="row">
+                <div>
+                  <label><strong>Nivel de pasante:</strong></label>
+                  <select id="pasanteNivel" class="swal2-select">
+                    <option value="">Seleccionar...</option>
+                    <option value="Junior">Junior</option>
+                    <option value="Senior">Senior</option>
+                  </select>
+                </div>
+                <div>
+                  <label><strong>Área de pasante:</strong></label>
+                  <select id="pasanteArea" class="swal2-select">
+                    <option value="">-- Área --</option>
+                    ${AREA_OPTS}
+                  </select>
+                </div>
+              </div>
             </div>
 
             <div id="proSection" class="block" style="display:none;">
@@ -333,10 +346,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
     didOpen: () => {
       // Helpers moneda
       const nfARS = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 });
-      const cleanNumber = (s) => {
-        if (!s) return "";
-        return (s + "").replace(/\D+/g, "");
-      };
+      const cleanNumber = (s) => (s ? String(s).replace(/\D+/g, "") : "");
       const formatInputARS = (input) => {
         if (!input) return;
         const apply = () => {
@@ -379,6 +389,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         set("tipoCuenta", u.tipoCuenta);
         set("usuario", u.usuario);
         if (u.rol) document.getElementById("rol").value = u.rol;
+
         if (u.pasanteNivel) document.getElementById("pasanteNivel").value = u.pasanteNivel;
         if (u.pasanteArea)  document.getElementById("pasanteArea").value  =
           (typeof u.pasanteArea === "string" ? u.pasanteArea : (u.pasanteArea?.areaNombre || ""));
@@ -433,7 +444,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         proSection.style.display   = ROLES_PROF.has(rol)  ? "block" : "none";
         coordSection.style.display = ROLES_COORD.has(rol) ? "block" : "none";
 
-        // 🔁 Mostrar seguro para profesionales **y** coordinadores (no obligatorio)
+        // Mostrar seguro para profesionales y coordinadores (no obligatorio)
         const showSeguro = ROLES_PROF.has(rol) || ROLES_COORD.has(rol);
         labelSeguro.style.display = showSeguro ? "block" : "none";
         inputSeguro.style.display = showSeguro ? "block" : "none";
@@ -521,7 +532,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         Swal.fire("Listo", "Documento eliminado", "success");
       });
 
-      // toggle password
+      // Toggle password
       const passInput  = document.getElementById("contrasena");
       const toggleBtn  = document.getElementById("togglePass");
       const toggleIcon = document.getElementById("togglePassIcon");
@@ -607,7 +618,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         pasanteArea: pasanteAreaObj,
         usuario: get("usuario"),
         contrasena: get("contrasena"),
-        // Seguro: siempre opcional; el backend debe aceptarlo también para coordinadores
+        // Seguro: opcional para profesional y coordinador
         seguroMalaPraxis: get("seguroMalaPraxis") || undefined,
         areasProfesional,
         areasCoordinadas
@@ -657,6 +668,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
     Swal.fire("Error", "No se pudo guardar el usuario", "error");
   });
 }
+
 
 
 
