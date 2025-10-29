@@ -462,8 +462,9 @@ if (botonCargar) {
       Swal.fire('Error', 'Error al eliminar el módulo.', 'error');
     }
   };
+
 // === Editar módulo (compatible con la UI de "Crear módulo") ===
-window.modificarModulo = async (numero) => {
+window.modificarModulo = async (nombre) => {
   try {
     // 0) Helpers base
     const formatARS = (v) => new Intl.NumberFormat("es-AR", {
@@ -578,9 +579,9 @@ window.modificarModulo = async (numero) => {
       return wanted.some(w => R.has(w));
     };
 
-    // 1) Traer módulo y usuarios
+    // 1) Traer módulo y usuarios (por NOMBRE)
     const [resModulo, resUsers] = await Promise.all([
-      apiFetch(`/modulos/${numero}`),
+      apiFetch(`/modulos/${encodeURIComponent(nombre)}`),
       apiFetch(`/usuarios`, { method: 'GET' })
     ]);
     const modulo   = await resModulo.json();
@@ -589,7 +590,7 @@ window.modificarModulo = async (numero) => {
     let usuarios = [];
     if (resUsers.ok) usuarios = await resUsers.json();
 
-    // 2) Armar buckets internos/externos (mismo criterio que "crear")
+    // 2) Buckets internos/externos
     const candidatos       = usuarios.filter(u => hasRolCanon(u, 'profesional', 'coordinador', 'directora', 'pasante'));
     const candidatosFP     = candidatos.filter(u => hasAreaFP(u));     // Internos
     const candidatosExtern = candidatos.filter(u => !hasAreaFP(u));    // Externos
@@ -603,7 +604,7 @@ window.modificarModulo = async (numero) => {
     const coordinadoresExt  = candidatosExtern.filter(u => hasRolCanon(u, 'coordinador', 'directora'));
     const pasantesExt       = candidatosExtern.filter(u => hasRolCanon(u, 'pasante'));
 
-    // 3) Mapear montos ya guardados para prefills
+    // 3) Prefills
     const toMap = (arr=[]) => {
       const m = new Map();
       arr.forEach(x => { if (x?.usuario) m.set(String(x.usuario._id || x.usuario), Number(x.monto)||0); });
@@ -663,7 +664,7 @@ window.modificarModulo = async (numero) => {
 
     // 5) Modal edición
     const { value: formValues } = await Swal.fire({
-      title: `Modificar módulo ${numero}`,
+      title: `Modificar módulo ${modulo.nombre ?? nombre}`,
       width: '700px',
       html: `
         <style>
@@ -682,8 +683,8 @@ window.modificarModulo = async (numero) => {
 
         <div class="form-col">
           <div>
-            <label for="modulo_numero"><strong>Número del módulo:</strong></label>
-            <input id="modulo_numero" type="number" class="swal2-input" value="${modulo.numero}" disabled>
+            <label for="modulo_nombre"><strong>Nombre del módulo:</strong></label>
+            <input id="modulo_nombre" type="text" class="swal2-input" value="${(modulo.nombre ?? nombre).replace(/"/g,'&quot;')}" disabled>
           </div>
           <div>
             <label for="valor_padres"><strong>Pagan los padres (valor del módulo):</strong></label>
@@ -703,7 +704,7 @@ window.modificarModulo = async (numero) => {
           <div class="panel">
             ${renderRows(profesionalesExt, 'profesional', 'Profesionales', 'externo')}
             ${renderRows(coordinadoresExt, 'coordinador', 'Coordinadores', 'externo')}
-            ${renderRows(pasantesExt, 'pasante', 'Pasantes', 'externo')}
+            ${renderRows(pasantesExt, 'pasante', 'externo')}
           </div>
         </div>
       `,
@@ -719,7 +720,7 @@ window.modificarModulo = async (numero) => {
           .filter(x => x.usuario && x.monto > 0);
 
         return {
-          numero,
+          nombre: modulo.nombre ?? nombre, // mantener el identificador
           valorPadres: Number.isNaN(valorPadres) ? 0 : valorPadres,
 
           // Internos (Fono/Psico)
@@ -737,8 +738,8 @@ window.modificarModulo = async (numero) => {
 
     if (!formValues) return;
 
-    // 6) Guardar (PUT por número)
-    const resUpdate = await apiFetch(`/modulos/${numero}`, {
+    // 6) Guardar (PUT por NOMBRE)
+    const resUpdate = await apiFetch(`/modulos/${encodeURIComponent(modulo.nombre ?? nombre)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(formValues)
@@ -756,6 +757,7 @@ window.modificarModulo = async (numero) => {
     Swal.fire('Error', 'Ocurrió un error al cargar el módulo.', 'error');
   }
 };
+
 
   // 👉 Al entrar a la pantalla, cargamos el listado
   cargarListadoModulos();
