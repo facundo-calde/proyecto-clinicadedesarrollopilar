@@ -16,6 +16,13 @@ function toStr(x) {
 function onlyDigits(s) {
   return toStr(s).replace(/\D+/g, "");
 }
+function getActor(req) {
+  // Estructura flexible, por si tu middleware usa otros nombres
+  const id = req.user?._id || req.user?.id || req.userId || null;
+  const usuario = req.user?.usuario || req.user?.email || null;
+  const nombre  = req.user?.nombreApellido || req.user?.nombre || null;
+  return { usuarioId: id || undefined, usuario: usuario || undefined, nombre: nombre || undefined };
+}
 
 // Permite repetidos y limita a 3. E-mail opcional y validado. NUEVO: documento opcional (DNI/CUIT)
 function sanitizeResponsables(responsables) {
@@ -149,8 +156,31 @@ const crearPaciente = async (req, res) => {
       return res.status(400).json({ error: "Debe incluir al menos un responsable (padre/madre/tutor)" });
     }
 
+    // Fuerza estado inicial y compone historial
+    const actor = getActor(req);
+    const observacion = toStr(req.body.observacionCreacion || req.body.descripcionEstado).trim();
+
+    // Estado inicial siempre "En espera"
+    data.estado = "En espera";
+
+    // Historial inicial (creación)
+    data.estadoHistorial = [{
+      estadoAnterior: undefined,
+      estadoNuevo: "En espera",
+      estado: "En espera", // snapshot
+      fecha: new Date(),
+      descripcion: observacion || "Estado inicial",
+      cambiadoPor: actor
+    }];
+
+    // Auditoría de creación opcional (si lo agregaste al schema)
+    if ('creadoPor' in Paciente.schema.paths) {
+      data.creadoPor = actor.usuarioId;
+    }
+
     const nuevo = new Paciente(data);
     await nuevo.save();
+
     res.status(201).json(nuevo);
   } catch (err) {
     console.error("❌ Error al crear paciente:", err);
@@ -177,15 +207,9 @@ const actualizarPaciente = async (req, res) => {
     if (!paciente) return res.status(404).json({ error: "No encontrado" });
 
     const data = buildPacienteData(req.body, paciente);
+    const actor = getActor(req);
 
-    // Auditoría básica del usuario (token)
-    const actor = {
-      usuarioId: req.user?.id || null,
-      usuario: req.user?.usuario || null,
-      nombre: req.user?.nombreApellido || null
-    };
-
-    // Cambio de estado → agregar a historial
+    // Cambio de estado → agregar a historial con estadoAnterior/estadoNuevo
     const nuevoEstado = req.body.estado;
     const descripcionEstado = toStr(req.body.descripcionEstado || req.body.estadoDescripcion).trim();
 
@@ -194,14 +218,26 @@ const actualizarPaciente = async (req, res) => {
       ESTADOS.has(String(nuevoEstado)) &&
       String(nuevoEstado) !== String(paciente.estado || "")
     ) {
-      paciente.estado = String(nuevoEstado);
+      const anterior = paciente.estado || undefined;
+      const nuevo    = String(nuevoEstado);
+
       if (!Array.isArray(paciente.estadoHistorial)) paciente.estadoHistorial = [];
       paciente.estadoHistorial.push({
-        estado: String(nuevoEstado),
+        estadoAnterior: anterior,
+        estadoNuevo: nuevo,
+        estado: nuevo, // snapshot del estado resultante
         fecha: new Date(),
         descripcion: descripcionEstado || undefined,
         cambiadoPor: actor
       });
+
+      paciente.estado = nuevo;
+
+      // Si pasó a Baja, persiste extras si vienen
+      if (nuevo === "Baja") {
+        if (req.body.fechaBaja)  paciente.fechaBaja  = toStr(req.body.fechaBaja).trim();
+        if (req.body.motivoBaja) paciente.motivoBaja = toStr(req.body.motivoBaja).trim();
+      }
     }
 
     // Asignar resto (dni y estado ya tratados)

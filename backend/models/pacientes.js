@@ -13,25 +13,20 @@ const responsableSchema = new mongoose.Schema({
     required: true,
     match: [/^\d{10,15}$/, 'El WhatsApp debe tener entre 10 y 15 dígitos'],
   },
-  // Email opcional por responsable
   email: { type: String, trim: true, lowercase: true, match: emailRule },
-  // NUEVO: DNI/CUIT opcional
-  documento: { type: String, trim: true }
+  documento: { type: String, trim: true } // ✅ nuevo campo opcional
 }, { _id: false });
 
 const estadoHistorialSchema = new mongoose.Schema({
-  estado: {
-    type: String,
-    enum: ['Alta', 'Baja', 'En espera'],
-    required: true
-  },
+  estadoAnterior: { type: String, enum: ['Alta', 'Baja', 'En espera'] },
+  estadoNuevo:    { type: String, enum: ['Alta', 'Baja', 'En espera'] },
+  estado:         { type: String, enum: ['Alta', 'Baja', 'En espera'] }, // snapshot simple
   fecha: { type: Date, default: Date.now },
   descripcion: { type: String, trim: true },
-  // Quién realizó el cambio (snapshot)
   cambiadoPor: {
     usuarioId: { type: mongoose.Schema.Types.ObjectId, ref: 'Usuario' },
-    nombre: String,   // ej: "Juan Pérez"
-    usuario: String   // ej: "correo/login"
+    nombre: String,
+    usuario: String
   }
 }, { _id: false });
 
@@ -50,7 +45,6 @@ const pacienteSchema = new mongoose.Schema({
 
   fechaNacimiento: { type: String, required: true },
 
-  // Responsables (1..3) con email opcional + documento opcional
   responsables: {
     type: [responsableSchema],
     validate: [{
@@ -61,12 +55,10 @@ const pacienteSchema = new mongoose.Schema({
     }]
   },
 
-  // Colegio + mail del colegio (opcional)
   colegio: String,
   colegioMail: { type: String, trim: true, lowercase: true, match: emailRule },
   curso: String,
 
-  // Estado / facturación
   condicionDePago: {
     type: String,
     enum: ['Obra Social', 'Particular', 'Obra Social + Particular'],
@@ -74,7 +66,6 @@ const pacienteSchema = new mongoose.Schema({
   },
   estado: { type: String, enum: ['Alta', 'Baja', 'En espera'], default: 'En espera' },
 
-  // Historial de cambios de estado
   estadoHistorial: { type: [estadoHistorialSchema], default: [] },
 
   // Obra social
@@ -98,33 +89,38 @@ const pacienteSchema = new mongoose.Schema({
   // Módulos asignados
   modulosAsignados: [{
     moduloId: { type: mongoose.Schema.Types.ObjectId, ref: 'Modulo' },
-    nombre: String, // opcional (snapshot)
+    nombre: String,
     cantidad: { type: Number, min: 0.25, max: 2 },
     profesionales: [{
       profesionalId: { type: mongoose.Schema.Types.ObjectId, ref: 'Usuario', required: true },
-      areaId: { type: mongoose.Schema.Types.ObjectId, ref: 'Area' }, // ref al área
-      area: String,   // legacy: nombre del área en texto
-      nombre: String  // legacy opcional
+      areaId: { type: mongoose.Schema.Types.ObjectId, ref: 'Area' },
+      area: String,
+      nombre: String
     }]
-  }]
+  }],
+
+  // quién lo creó
+  creadoPor: { type: mongoose.Schema.Types.ObjectId, ref: 'Usuario' }
 
 }, { timestamps: true });
 
 /* =========================
  * Hooks
  * ========================= */
-// Estado inicial en historial al crear
 pacienteSchema.pre('save', function(next) {
   if (this.isNew && this.estado && (!Array.isArray(this.estadoHistorial) || this.estadoHistorial.length === 0)) {
     this.estadoHistorial.push({
       estado: this.estado,
-      descripcion: 'Estado inicial'
+      estadoNuevo: this.estado,
+      descripcion: 'Estado inicial',
+      cambiadoPor: this._actorId ? { usuarioId: this._actorId } : undefined
     });
   }
   next();
 });
 
 module.exports = mongoose.model('Paciente', pacienteSchema);
+
 
 
 

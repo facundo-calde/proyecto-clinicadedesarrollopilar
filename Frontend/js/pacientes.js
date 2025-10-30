@@ -38,10 +38,21 @@ async function renderFichaPaciente(p) {
   const _l = document.getElementById('listadoPacientes'); if (_l) _l.style.display = 'none';
   const container = document.getElementById("fichaPacienteContainer");
 
-
   // cache simple de catálogos
   if (!window.__catCache) window.__catCache = {};
   const cache = window.__catCache;
+
+  async function apiFetchJson(path, init = {}) {
+    const token = localStorage.getItem("token") || sessionStorage.getItem("token") || "";
+    const headers = {
+      "Content-Type": "application/json",
+      ...(init.headers || {}),
+      ...(token ? { Authorization: `Bearer ${token}`, "x-access-token": token } : {})
+    };
+    const res = await fetch(`/api${path}`, { ...init, headers });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  }
 
   async function loadCats() {
     if (!cache.modulos || !cache.areas || !cache.usersTried) {
@@ -51,22 +62,19 @@ async function renderFichaPaciente(p) {
           apiFetchJson(`/areas`),
         ]);
         cache.modulos = Array.isArray(modulos) ? modulos : [];
-        cache.areas = Array.isArray(areas) ? areas : [];
+        cache.areas   = Array.isArray(areas)   ? areas   : [];
       } catch {
         cache.modulos = [];
-        cache.areas = [];
+        cache.areas   = [];
       }
 
       cache.users = [];
-      try {
-        // usar apiFetchJson para unificar manejo y token
-        cache.users = await apiFetchJson(`/usuarios`);
-      } catch {
-        cache.users = [];
-      }
+      try { cache.users = await apiFetchJson(`/usuarios`); }
+      catch { cache.users = []; }
+
       cache.usersTried = true;
 
-      cache.modById = new Map(cache.modulos.map(m => [String(m._id), m]));
+      cache.modById  = new Map(cache.modulos.map(m => [String(m._id), m]));
       cache.areaById = new Map(cache.areas.map(a => [String(a._id), a]));
       cache.userById = new Map(cache.users.map(u => [String(u._id), u]));
     }
@@ -96,29 +104,132 @@ async function renderFichaPaciente(p) {
     return String(val);
   };
 
-  // módulos
-  const modulosHTML = Array.isArray(p.modulosAsignados) && p.modulosAsignados.length
-    ? `<ul style="margin:5px 0; padding-left:20px;">
-        ${p.modulosAsignados.map(m => {
-      const mod = cache.modById.get(String(m.moduloId));
-      const modNombre = mod ? `Módulo ${mod.numero}` : (m.nombre || "Módulo");
-      const cant = (m.cantidad ?? "-");
+  const userLabel = (cp) => {
+    if (!cp) return "";
+    if (typeof cp === "object") {
+      if (cp.nombre)  return cp.nombre;
+      if (cp.usuario) return cp.usuario;
+      if (cp.usuarioId) {
+        const u = cache.userById.get(String(cp.usuarioId));
+        return u?.nombreApellido || u?.usuario || `ID:${shortId(cp.usuarioId)}`;
+      }
+    }
+    if (HEX24.test(String(cp))) {
+      const u = cache.userById.get(String(cp));
+      return u?.nombreApellido || u?.usuario || `ID:${shortId(cp)}`;
+    }
+    return String(cp);
+  };
 
-      const det = Array.isArray(m.profesionales) && m.profesionales.length
-        ? `<ul style="margin:4px 0 0 18px;">
-                ${m.profesionales.map(pr => {
-          const u = cache.userById.get(String(pr.profesionalId));
-          const profNom = u ? (u.nombreApellido || u.nombre || u.usuario) : "Profesional";
-          const aVal = pr.areaId ?? pr.area;
-          const aNom = areaName(aVal);
-          return `<li>${profNom}${aNom ? ` — ${aNom}` : ""}</li>`;
-        }).join("")}
-               </ul>`
-        : "";
+  // ── INFO DE ESTADOS: creado (En espera), Alta, Baja ────────────────────────
+  function buildEstadoResumen() {
+    const hist = Array.isArray(p.estadoHistorial) ? [...p.estadoHistorial].filter(h => h && h.fecha) : [];
+    hist.sort((a,b) => new Date(a.fecha) - new Date(b.fecha)); // ascendente
 
-      return `<li>${modNombre} - Cantidad: ${cant}${det}</li>`;
-    }).join("")}
-      </ul>`
+    // creado/en espera: primero que deje el estado en "En espera" o fallback a creadoPor
+    let creado = null;
+    for (const h of hist) {
+      const to = (h.estadoNuevo ?? h.hasta ?? h.estado ?? "").toLowerCase();
+      if (to === "en espera") {
+        creado = {
+          estado: "En espera",
+          actor: userLabel(h.cambiadoPor),
+          fecha: h.fecha,
+          obs:   h.descripcion || ""
+        };
+        break;
+      }
+    }
+    if (!creado && (p.creadoPor || p.createdBy || p.creadoPorId || p.createdAt || p.fechaCreacion)) {
+      creado = {
+        estado: "En espera",
+        actor: userLabel(p.creadoPor || p.createdBy || p.creadoPorId),
+        fecha: p.createdAt || p.fechaCreacion || p.creadoEl || "",
+        obs:   p.observacionCreacion || ""
+      };
+    }
+
+    // última Alta
+    let alta = null;
+    for (let i = hist.length - 1; i >= 0; i--) {
+      const h = hist[i];
+      const to = (h.estadoNuevo ?? h.hasta ?? h.estado ?? "").toLowerCase();
+      if (to === "alta") {
+        alta = {
+          estado: "Alta",
+          actor: userLabel(h.cambiadoPor),
+          fecha: h.fecha,
+          obs:   h.descripcion || ""
+        };
+        break;
+      }
+    }
+
+    // última Baja
+    let baja = null;
+    for (let i = hist.length - 1; i >= 0; i--) {
+      const h = hist[i];
+      const to = (h.estadoNuevo ?? h.hasta ?? h.estado ?? "").toLowerCase();
+      if (to === "baja") {
+        baja = {
+          estado: "Baja",
+          actor: userLabel(h.cambiadoPor),
+          fecha: h.fecha,
+          obs:   h.descripcion || ""
+        };
+        break;
+      }
+    }
+
+    const line = (lbl, data) => {
+      if (!data) return "";
+      const actor = data.actor || "—";
+      const fecha = data.fecha ? ` — <span style="color:#777;">(${fmtDateTime(data.fecha)})</span>` : "";
+      const obs   = data.obs   ? ` — <span style="color:#555;">${data.obs}</span>` : "";
+      return `<p><strong>${lbl}:</strong> ${actor}${fecha}${obs}</p>`;
+    };
+
+    return `
+      ${line("Creado (En espera) por", creado)}
+      ${line("Dado de Alta por",       alta)}
+      ${line("Dado de Baja por",       baja)}
+    `;
+  }
+
+  // ── MÓDULOS (sin “undefined”) ─────────────────────────────────────────────
+  const modulosHTML = (Array.isArray(p.modulosAsignados) && p.modulosAsignados.length)
+    ? (() => {
+        const items = p.modulosAsignados
+          .map(m => {
+            const mod = cache.modById.get(String(m.moduloId));
+            const nombreSeguro =
+              (mod?.nombre) ||
+              (typeof mod?.numero !== "undefined" ? `Módulo ${mod.numero}` : null) ||
+              m.moduloNombre || m.nombre || "Módulo";
+            const cant = (typeof m.cantidad !== "undefined" && m.cantidad !== null) ? m.cantidad : "-";
+
+            const det = (Array.isArray(m.profesionales) && m.profesionales.length)
+              ? `<ul style="margin:4px 0 0 18px;">
+                  ${m.profesionales.map(pr => {
+                    const u = cache.userById.get(String(pr.profesionalId));
+                    const profNom = u ? (u.nombreApellido || u.nombre || u.usuario) : "Profesional";
+                    const aVal = pr.areaId ?? pr.area;
+                    const aNom = areaName(aVal);
+                    return `<li>${profNom}${aNom ? ` — ${aNom}` : ""}</li>`;
+                  }).join("")}
+                </ul>`
+              : "";
+
+            // si NO hay moduloId y tampoco un nombre real, no mostramos
+            if (!m.moduloId && nombreSeguro === "Módulo") return "";
+
+            return `<li>${nombreSeguro} - Cantidad: ${cant}${det}</li>`;
+          })
+          .filter(Boolean);
+
+        if (!items.length) return "Sin módulos asignados";
+        return `<ul style="margin:5px 0; padding-left:20px;">${items.join("")}</ul>`;
+      })()
     : "Sin módulos asignados";
 
   // mails
@@ -127,37 +238,38 @@ async function renderFichaPaciente(p) {
       ? `<a href="mailto:${mail}" style="color:#1a73e8; text-decoration:none;">${mail}</a>`
       : "sin datos";
 
-  // responsables
+  // ── RESPONSABLES (incluye Documento) ──────────────────────────────────────
   const responsablesHTML = (() => {
     if (Array.isArray(p.responsables) && p.responsables.length) {
       return `
         <ul style="margin:5px 0; padding-left:20px;">
           ${p.responsables.slice(0, 3).map(r => {
-        const rel = cap(r.relacion ?? "");
-        const nom = r.nombre ?? "sin nombre";
-        const wspHTML = r.whatsapp
-          ? ` 📱 <a href="https://wa.me/${r.whatsapp}" target="_blank" style="color:#25d366; text-decoration:none;">${r.whatsapp}</a>`
-          : "";
-        const mailHTML = r.email ? ` ✉️ ${clickableMail(r.email)}` : "";
-        return `<li><strong>${rel}:</strong> ${nom}${wspHTML}${mailHTML}</li>`;
-      }).join("")}
+            const rel = cap(r.relacion ?? "");
+            const nom = r.nombre ?? "sin nombre";
+            const wspHTML = r.whatsapp
+              ? ` 📱 <a href="https://wa.me/${r.whatsapp}" target="_blank" style="color:#25d366; text-decoration:none;">${r.whatsapp}</a>`
+              : "";
+            const docHTML = r.documento ? ` 🧾 ${r.documento}` : "";
+            const mailHTML = r.email ? ` ✉️ ${clickableMail(r.email)}` : "";
+            return `<li><strong>${rel}:</strong> ${nom}${wspHTML}${docHTML}${mailHTML}</li>`;
+          }).join("")}
         </ul>`;
     }
     const tutorLinea = (p.tutor?.nombre || p.tutor?.whatsapp)
       ? `<li><strong>Tutor/a:</strong> ${p.tutor?.nombre ?? "sin datos"}${p.tutor?.whatsapp
-        ? ` 📱 <a href="https://wa.me/${p.tutor.whatsapp}" target="_blank" style="color:#25d366; text-decoration:none;">${p.tutor.whatsapp}</a>`
-        : ""}</li>`
+          ? ` 📱 <a href="https://wa.me/${p.tutor.whatsapp}" target="_blank" style="color:#25d366; text-decoration:none;">${p.tutor.whatsapp}</a>`
+          : ""}</li>`
       : "";
     const mpLinea = (p.madrePadre || p.whatsappMadrePadre)
       ? `<li><strong>Padre o Madre:</strong> ${p.madrePadre ?? "sin datos"}${p.whatsappMadrePadre
-        ? ` 📱 <a href="https://wa.me/${p.whatsappMadrePadre}" target="_blank" style="color:#25d366; text-decoration:none;">${p.whatsappMadrePadre}</a>`
-        : ""}</li>`
+          ? ` 📱 <a href="https://wa.me/${p.whatsappMadrePadre}" target="_blank" style="color:#25d366; text-decoration:none;">${p.whatsappMadrePadre}</a>`
+          : ""}</li>`
       : "";
     if (!tutorLinea && !mpLinea) return "Sin responsables cargados";
     return `<ul style="margin:5px 0; padding-left:20px;">${mpLinea}${tutorLinea}</ul>`;
   })();
 
-  // historial
+  // ── HISTORIAL COMPLETO (lista) ────────────────────────────────────────────
   const historialHTML = (() => {
     const hist = Array.isArray(p.estadoHistorial) ? p.estadoHistorial.slice() : [];
     if (!hist.length) return "<em>Sin movimientos</em>";
@@ -167,22 +279,12 @@ async function renderFichaPaciente(p) {
     let prevEstado = null;
     const items = hist.map((h, idx) => {
       const from = (h.estadoAnterior ?? h.desde ?? (idx === 0 ? "—" : prevEstado ?? "—"));
-      const to = (h.estadoNuevo ?? h.hasta ?? h.estado ?? "—");
+      const to   = (h.estadoNuevo ?? h.hasta ?? h.estado ?? "—");
       prevEstado = to;
 
-      let actor = "";
-      const cp = h.cambiadoPor || {};
-      if (cp.nombre) actor = cp.nombre;
-      else if (cp.usuario) actor = cp.usuario;
-      else if (cp.usuarioId && cache.userById.has(String(cp.usuarioId))) {
-        const u = cache.userById.get(String(cp.usuarioId));
-        actor = u?.nombreApellido || u?.usuario || shortId(cp.usuarioId);
-      } else if (cp.usuarioId) {
-        actor = `ID:${shortId(cp.usuarioId)}`;
-      }
-
+      const actor = userLabel(h.cambiadoPor);
       const actorHTML = actor ? ` — <em style="color:#666;">por ${actor}</em>` : "";
-      const descHTML = h.descripcion ? ` — <span style="color:#555;">${h.descripcion}</span>` : "";
+      const descHTML  = h.descripcion ? ` — <span style="color:#555;">${h.descripcion}</span>` : "";
       const fechaHTML = ` <span style="color:#777;">(${fmtDateTime(h.fecha)})</span>`;
 
       return `<li><strong>${from}</strong> → <strong>${to}</strong>${fechaHTML}${actorHTML}${descHTML}</li>`;
@@ -197,7 +299,7 @@ async function renderFichaPaciente(p) {
     `;
   })();
 
-  // render
+  // ── RENDER ────────────────────────────────────────────────────────────────
   container.innerHTML = `
     <div class="ficha-paciente">
       <div class="ficha-header">
@@ -208,10 +310,17 @@ async function renderFichaPaciente(p) {
         <div class="ficha-bloque ficha-simple">
           <p><strong>Condición de Pago:</strong> ${p.condicionDePago ?? "sin datos"}</p>
           <p><strong>Estado actual:</strong> ${p.estado ?? "sin datos"}</p>
+
+          <div style="margin-top:8px;">
+            <h4 style="margin:0 0 6px 0;">Resumen de estados</h4>
+            ${buildEstadoResumen()}
+          </div>
+
           ${p.estado === "Baja"
-      ? `<p><strong>Fecha de baja:</strong> ${p.fechaBaja ?? "-"}</p>
+            ? `<p><strong>Fecha de baja:</strong> ${p.fechaBaja ?? "-"}</p>
                <p><strong>Motivo de baja:</strong> ${p.motivoBaja ?? "-"}</p>`
-      : ""}
+            : ""}
+
           <div style="margin-top:8px;">
             <h4 style="margin:0 0 4px 0;">Historial de estado</h4>
             ${historialHTML}
@@ -254,6 +363,7 @@ async function renderFichaPaciente(p) {
     </div>
   `;
 }
+
 
 
 
