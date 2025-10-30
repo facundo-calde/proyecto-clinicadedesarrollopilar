@@ -183,9 +183,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
         usuarios.forEach(usuario => {
           const areasCol = extractAreas(usuario).join(', ');
+
+          const apodo = escapeHTML(usuario.apodo || "");
+          const nombre = escapeHTML(usuario.nombreApellido || "");
+          // Muestra apodo primero; si no hay apodo, muestra solo el nombre.
+          const nombreCol = apodo
+            ? `${apodo}<br><small style="color:#6b7280;">${nombre}</small>`
+            : `${nombre}`;
+
           const tr = document.createElement('tr');
           tr.innerHTML = `
-            <td>${escapeHTML(usuario.nombreApellido || '')}</td>
+            <td>${nombreCol}</td>
             <td>${escapeHTML(areasCol)}</td>
             <td>${escapeHTML(usuario.mail || '')}</td>
             <td>${escapeHTML(usuario.whatsapp || '')}</td>
@@ -205,6 +213,7 @@ document.addEventListener('DOMContentLoaded', () => {
     botonAgregar.addEventListener('click', () => mostrarFormularioUsuario());
   }
 });
+
 
 
 // ==========================
