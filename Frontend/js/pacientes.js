@@ -270,7 +270,7 @@ async function modificarPaciente(dni) {
         : {};
     };
 
-    // Helper JSON con auth de tu app
+    // Helper JSON con auth
     async function apiFetchJson(path, init = {}) {
       const res = await fetch(`/api${path}`, {
         ...init,
@@ -292,6 +292,16 @@ async function modificarPaciente(dni) {
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#39;");
 
+    const norm = (s) =>
+      (s ?? "")
+        .toString()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .trim();
+
+    const HEX24 = /^[a-f0-9]{24}$/i;
+
     // Paciente
     const p = await apiFetchJson(`/pacientes/${dni}`);
 
@@ -308,7 +318,7 @@ async function modificarPaciente(dni) {
       USUARIOS = Array.isArray(u) ? u : [];
     } catch (_) {}
 
-    // ▼ FIX: usar m.nombre (no m.numero)
+    // opciones módulos (por nombre)
     const MOD_OPTS = MODULOS.length
       ? MODULOS
           .sort((x, y) => (x?.nombre || "").localeCompare(y?.nombre || "", "es"))
@@ -316,52 +326,77 @@ async function modificarPaciente(dni) {
           .join("")
       : `<option value="">No disponible</option>`;
 
+    // opciones áreas
     const AREA_OPTS = AREAS.length
       ? AREAS.map(a => `<option value="${a._id}">${escapeHTML(a.nombre)}</option>`).join("")
       : `<option value="">No disponible</option>`;
 
-    // helpers filtro profesionales
-    const norm = (s) => (s ?? "")
-      .toString()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase()
-      .trim();
-
-    const HEX24 = /^[a-f0-9]{24}$/i;
+    // Map id área => nombre normalizado
     const AREA_ID_TO_NAME_NORM = new Map();
     AREAS.forEach(a => AREA_ID_TO_NAME_NORM.set(String(a._id), norm(a.nombre)));
-    const ROLES_PROF = new Set(["profesional", "coordinador y profesional"]);
 
+    // —— ROLES permitidos en el selector de profesional
+    // (normalizados y sin tildes)
+    const ROLES_OBJETIVO = new Set([
+      "profesional",
+      "coordinador y profesional",
+      "coordinador de area",  // sin tilde tras normalizar
+      "directoras",
+    ]);
+
+    // ¿El usuario u pertenece al área seleccionada?
+    function userPerteneceArea(u, areaId) {
+      // Directora: se muestra siempre, sin importar el área
+      if (norm(u.rol || u.rolAsignado) === "directoras") return true;
+
+      if (!areaId) return true; // si no hay área elegida aún
+
+      const areaNormObjetivo = AREA_ID_TO_NAME_NORM.get(String(areaId)) || "";
+
+      // 1) Revisar areasProfesional [{areaNombre, nivel}]
+      if (Array.isArray(u.areasProfesional)) {
+        for (const ap of u.areasProfesional) {
+          const nombre = norm(ap?.areaNombre || ap?.area || ap?.nombre || "");
+          if (nombre && nombre === areaNormObjetivo) return true;
+        }
+      }
+
+      // 2) Revisar areasCoordinadas [{areaNombre}]
+      if (Array.isArray(u.areasCoordinadas)) {
+        for (const ac of u.areasCoordinadas) {
+          const nombre = norm(ac?.areaNombre || ac?.area || ac?.nombre || "");
+          if (nombre && nombre === areaNormObjetivo) return true;
+        }
+      }
+
+      // 3) Revisar areas (pueden ser ids o objetos/nombres)
+      const arr = Array.isArray(u.areas) ? u.areas : [];
+      for (const it of arr) {
+        const idCandidate   = typeof it === "object" ? it._id    : it;
+        const nameCandidate = typeof it === "object" ? it.nombre : it;
+
+        if (HEX24.test(String(idCandidate || ""))) {
+          const n = AREA_ID_TO_NAME_NORM.get(String(idCandidate));
+          if (n && n === areaNormObjetivo) return true;
+        }
+        if (norm(nameCandidate) === areaNormObjetivo) return true;
+      }
+
+      return false;
+    }
+
+    // Construye <option> de profesionales según área
     const profesionalesDeArea = (areaId) => {
-      const targetNameNorm = AREA_ID_TO_NAME_NORM.get(String(areaId)) || "";
       const lista = (USUARIOS || [])
-        .filter(u => ROLES_PROF.has(norm(u.rol || u.rolAsignado)))
-        .filter(u => {
-          if (!areaId) return true;
-
-          if (Array.isArray(u.areasProfesional) && u.areasProfesional.length) {
-            for (const ap of u.areasProfesional) {
-              const nombre = ap?.areaNombre || "";
-              if (norm(nombre) === targetNameNorm) return true;
-            }
-          }
-          const arr = Array.isArray(u.areas) ? u.areas : [];
-          for (const it of arr) {
-            const idCandidate = typeof it === "object" ? it._id : it;
-            const nameCandidate = typeof it === "object" ? it.nombre : it;
-            if (HEX24.test(String(idCandidate || ""))) {
-              const n = AREA_ID_TO_NAME_NORM.get(String(idCandidate));
-              if (n && n === targetNameNorm) return true;
-            }
-            if (norm(nameCandidate) === targetNameNorm) return true;
-          }
-          return false;
-        });
+        .filter(u => ROLES_OBJETIVO.has(norm(u.rol || u.rolAsignado)))
+        .filter(u => userPerteneceArea(u, areaId));
 
       if (!lista.length) return `<option value="">Sin profesionales para el área</option>`;
       return `<option value="">-- Seleccionar --</option>` +
-        lista.map(u => `<option value="${u._id}">${escapeHTML(u.nombreApellido || u.nombre || u.usuario)}</option>`).join("");
+        lista
+          .sort((a,b) => (a.nombreApellido || "").localeCompare(b.nombreApellido || "", "es", {sensitivity:"base"}))
+          .map(u => `<option value="${u._id}">${escapeHTML(u.nombreApellido || u.nombre || u.usuario)}</option>`)
+          .join("");
     };
 
     // template módulo
@@ -388,7 +423,7 @@ async function modificarPaciente(dni) {
         </div>
 
         <div class="profesionales-container" style="margin-top:10px;">
-          <h5 style="margin:8px 0;">Profesionales:</h5>
+          <h5 style="margin:8px 0;">Profesionales / Coordinadores / Directoras:</h5>
           <div class="profesional-row" style="display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:8px;">
             <select class="area-select swal2-select" style="width:100%; margin:0;">
               <option value="">-- Área --</option>
@@ -514,7 +549,7 @@ async function modificarPaciente(dni) {
         condicionDePagoSelect.addEventListener("change", toggleObraSocial);
         toggleObraSocial();
 
-        // descripción de estado
+        // estado -> descripción
         const estadoSel = document.getElementById("estado");
         const estadoDescWrap = document.getElementById("estadoDescWrap");
         const estadoInicial = p.estado || "En espera";
@@ -533,7 +568,6 @@ async function modificarPaciente(dni) {
           ['<option value="">-- Relación --</option>']
             .concat(relaciones.map(r => `<option value="${r}" ${r === sel ? 'selected' : ''}>${r[0].toUpperCase() + r.slice(1)}</option>`))
             .join('');
-
         let idx = 0;
         const addRespRow = (preset = { relacion: 'tutor', nombre: '', email: '', whatsapp: '' }) => {
           const filas = cont.querySelectorAll('.responsable-row').length;
@@ -556,8 +590,11 @@ async function modificarPaciente(dni) {
           cont.lastElementChild.querySelector('.btn-remove')
             .addEventListener('click', () => cont.removeChild(document.getElementById(rowId)));
         };
-        if (responsablesIniciales.length) responsablesIniciales.forEach(r => addRespRow(r));
-        else addRespRow({ relacion: 'tutor' });
+        if (Array.isArray(p.responsables) && p.responsables.length) {
+          p.responsables.slice(0,3).forEach(r => addRespRow({relacion:r.relacion,nombre:r.nombre,email:r.email||"",whatsapp:r.whatsapp||""}));
+        } else {
+          addRespRow({ relacion: 'tutor' });
+        }
         btnAdd.addEventListener('click', () => addRespRow());
 
         // módulos
@@ -622,7 +659,7 @@ async function modificarPaciente(dni) {
               }
             };
             const profesionales = Array.isArray(m.profesionales) ? m.profesionales : [];
-            if (profesionales.length === 0) return;
+            if (!profesionales.length) return;
 
             ensureRows(profesionales.length);
             const filas = contProf.querySelectorAll(".profesional-row");
@@ -750,7 +787,7 @@ async function modificarPaciente(dni) {
 
     if (!isConfirmed) return;
 
-    // PUT (config.js mete Authorization y reescribe /api)
+    // PUT
     const putRes = await fetch(`/api/pacientes/${dni}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json", ...getAuthHeaders() },
