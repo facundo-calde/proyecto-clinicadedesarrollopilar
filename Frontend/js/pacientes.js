@@ -752,6 +752,20 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
       : {};
   };
 
+  // Pequeño helper para pedir JSON con las cabeceras de auth de tu app
+  async function apiFetchJson(path, init = {}) {
+    const res = await fetch(`/api${path}`, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        ...(init.headers || {}),
+        ...getAuthHeaders(),
+      },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  }
+
   Swal.fire({
     title: '<h3 style="font-family: Montserrat; font-weight: 600;">Cargar nuevo paciente:</h3>',
     html: `
@@ -812,6 +826,15 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
             <select id="profesionalSeleccionado" class="swal2-select" style="margin-bottom: 10px;">
               <option value="">-- Cargando profesionales --</option>
             </select>
+
+            <!-- NUEVO: Módulos (multi-select opcional) -->
+            <label style="font-weight:bold;">Módulos (opcional):</label>
+            <select id="modulosSeleccionados" class="swal2-select" multiple size="6" style="height:auto; min-height:140px;">
+              <option value="">-- Cargando módulos --</option>
+            </select>
+            <small id="moduloHint" style="display:block; color:#666; margin-top:4px;">
+              Sostené Ctrl/⌘ para seleccionar varios. Se guardan los IDs.
+            </small>
           </div>
         </div>
       </form>
@@ -823,7 +846,7 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
     cancelButtonText: "Cancelar",
 
     didOpen: async () => {
-      // obra social
+      // obra social toggle
       const condicionDePagoSelect = document.getElementById("condicionDePago");
       const obraSocialExtra = document.getElementById("obraSocialExtra");
       const toggleObraSocial = () => {
@@ -834,9 +857,10 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
       condicionDePagoSelect.addEventListener("change", toggleObraSocial);
       toggleObraSocial();
 
-      // áreas + profesionales
-      const areaSel = document.getElementById("areaSeleccionada");
-      const profSel = document.getElementById("profesionalSeleccionado");
+      // selects principales
+      const areaSel   = document.getElementById("areaSeleccionada");
+      const profSel   = document.getElementById("profesionalSeleccionado");
+      const modsSel   = document.getElementById("modulosSeleccionados");
 
       const setOptions = (selectEl, items, mapFn, emptyText) => {
         if (!Array.isArray(items) || items.length === 0) {
@@ -849,18 +873,23 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
 
       let AREAS = [];
       let USUARIOS = [];
+      let MODULOS = [];
 
       try {
-        const [areas, usuarios] = await Promise.all([
+        const [areas, usuarios, modulos] = await Promise.all([
           apiFetchJson(`/areas`),
-          apiFetchJson(`/usuarios`)
+          apiFetchJson(`/usuarios`),
+          apiFetchJson(`/modulos`)
         ]);
 
-        AREAS = Array.isArray(areas) ? areas : [];
-        USUARIOS = Array.isArray(usuarios) ? usuarios : [];
+        AREAS   = Array.isArray(areas)   ? areas   : [];
+        USUARIOS= Array.isArray(usuarios)? usuarios: [];
+        MODULOS = Array.isArray(modulos) ? modulos : [];
 
+        // Áreas
         setOptions(areaSel, AREAS, (a) => `<option value="${a._id}">${a.nombre}</option>`, "No disponible");
 
+        // Profesionales (filtrados por área elegida)
         const norm = (s) =>
           (s ?? "").toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
@@ -897,17 +926,28 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
           profSel.innerHTML = lista.length === 0
             ? `<option value="">Sin profesionales para el área</option>`
             : `<option value="">-- Seleccionar --</option>` +
-            lista.map(u =>
-              `<option value="${u._id}">${u.nombreApellido || u.nombre || u.usuario}</option>`
-            ).join("");
+              lista.map(u =>
+                `<option value="${u._id}">${u.nombreApellido || u.nombre || u.usuario}</option>`
+              ).join("");
         };
 
         renderProfesionales();
         areaSel.addEventListener("change", renderProfesionales);
+
+        // Módulos (multi): usar _id + nombre del esquema que me pasaste
+        if (MODULOS.length === 0) {
+          modsSel.innerHTML = `<option value="">No hay módulos cargados</option>`;
+        } else {
+          modsSel.innerHTML = MODULOS
+            .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || "", "es"))
+            .map(m => `<option value="${m._id}">${m.nombre}</option>`)
+            .join("");
+        }
       } catch (e) {
-        console.warn("No se pudieron cargar áreas/profesionales:", e);
+        console.warn("No se pudieron cargar áreas/profesionales/módulos:", e);
         areaSel.innerHTML = `<option value="">No disponible</option>`;
         profSel.innerHTML = `<option value="">No disponible</option>`;
+        modsSel.innerHTML = `<option value="">No disponible</option>`;
       }
 
       // responsables (con email)
@@ -1017,8 +1057,13 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
         tipo = gv("tipo");
       }
 
-      // si no usás módulos acá:
-      const modulosAsignados = [];
+      // Módulos (IDs) desde multi-select
+      const modsSel = document.getElementById("modulosSeleccionados");
+      const modulosAsignados = Array.from(modsSel?.selectedOptions || [])
+        .map(o => o.value)
+        .filter(Boolean);
+
+      // Si todavía no usás áreas acá:
       const areasDerivadas = [];
 
       return {
@@ -1034,7 +1079,7 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
         prestador,
         credencial,
         tipo,
-        modulosAsignados,
+        modulosAsignados, // <-- ahora viaja poblado con IDs de Modulo
         areas: areasDerivadas
       };
     }
@@ -1063,6 +1108,7 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
     }
   });
 });
+
 
 
 
