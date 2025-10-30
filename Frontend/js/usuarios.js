@@ -297,6 +297,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         /* Secciones */
         #pasanteSection{ display:none; grid-column:1 / -1; max-width:100%; }
         #genericAreaSection{ display:none; }
+        #seguroExtraRow{ display:none; }
       </style>
 
       <div class="swal-body">
@@ -304,11 +305,15 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
           <!-- Col 1 -->
           <div class="form-column">
             <input class="swal2-input" id="nombreApellido" placeholder="Nombre y Apellido" autocomplete="off">
+            <input class="swal2-input" id="apodo" placeholder="Apodo (opcional)" autocomplete="off"> <!-- NUEVO -->
             <input class="swal2-input" id="fechaNacimiento" type="date" placeholder="Fecha de Nacimiento" autocomplete="off">
             <input class="swal2-input" id="domicilio" placeholder="Domicilio" autocomplete="off">
             <input class="swal2-input" id="dni" placeholder="DNI" autocomplete="off">
             <input class="swal2-input" id="cuit" placeholder="CUIT" autocomplete="off">
+
             <input class="swal2-input" id="matricula" placeholder="Matrícula" autocomplete="off">
+            <label><small>Vencimiento matrícula (opcional)</small></label>
+            <input class="swal2-input" id="vencimientoMatricula" type="date" placeholder="Vencimiento matrícula" autocomplete="off"> <!-- NUEVO -->
 
             <label><strong>Jurisdicción:</strong></label>
             <select id="jurisdiccion" class="swal2-select">
@@ -318,6 +323,9 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
             </select>
 
             <input class="swal2-input" id="registroNacionalDePrestadores" placeholder="Registro Nacional de Prestadores" autocomplete="off">
+            <label><small>Vencimiento RNP (opcional)</small></label>
+            <input class="swal2-input" id="vencimientoRegistroNacionalDePrestadores" type="date" placeholder="Vencimiento RNP" autocomplete="off"> <!-- NUEVO -->
+
             <input class="swal2-input" id="whatsapp" placeholder="Whatsapp" autocomplete="off">
             <input class="swal2-input" id="mail" placeholder="Mail" autocomplete="off">
 
@@ -388,7 +396,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
               <button type="button" id="btnAddCoord" class="mini-btn">+ Agregar área a coordinar</button>
             </div>
 
-            <!-- NUEVO: Roles comunes -->
+            <!-- Roles comunes -->
             <div id="genericAreaSection" class="block">
               <label><strong>Área asignada:</strong></label>
               <select id="genericArea" class="swal2-select">
@@ -397,8 +405,15 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
               </select>
             </div>
 
+            <!-- Seguro (solo roles habilitados) -->
             <label id="labelSeguro" style="display:none;margin-top:10px;"><strong>Seguro de mala praxis:</strong></label>
             <input class="swal2-input" id="seguroMalaPraxis" placeholder="Número de póliza o compañía" style="display:none" autocomplete="off">
+            <div id="seguroExtraRow" class="two-col">
+              <div>
+                <label><small>Vencimiento seguro (opcional)</small></label>
+                <input class="swal2-input" id="vencimientoSeguroMalaPraxis" type="date" placeholder="Vencimiento seguro" autocomplete="off">
+              </div>
+            </div>
           </div>
 
           <!-- Col 3 -->
@@ -444,16 +459,30 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         apply();
       };
       const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = (val ?? ""); };
+      const setDate = (id, val) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (!val) { el.value = ""; return; }
+        // val puede venir como ISO; tomamos YYYY-MM-DD
+        const d = String(val).split("T")[0];
+        el.value = d || "";
+      };
 
       if (modoEdicion) {
         set("nombreApellido", u.nombreApellido);
-        set("fechaNacimiento", u.fechaNacimiento ? String(u.fechaNacimiento).split("T")[0] : "");
+        set("apodo", u.apodo || ""); // NUEVO
+        setDate("fechaNacimiento", u.fechaNacimiento);
         set("domicilio", u.domicilio);
         set("dni", u.dni);
         set("cuit", u.cuit);
         set("matricula", u.matricula);
+        setDate("vencimientoMatricula", u.vencimientoMatricula); // NUEVO
+
         if (u.jurisdiccion) document.getElementById("jurisdiccion").value = u.jurisdiccion;
+
         set("registroNacionalDePrestadores", u.registroNacionalDePrestadores);
+        setDate("vencimientoRegistroNacionalDePrestadores", u.vencimientoRegistroNacionalDePrestadores); // NUEVO
+
         set("whatsapp", u.whatsapp);
         set("mail", u.mail);
 
@@ -479,6 +508,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         if (u.pasanteArea)  document.getElementById("pasanteArea").value =
           (typeof u.pasanteArea === "string" ? u.pasanteArea : (u.pasanteArea?.areaNombre || ""));
         if (u.seguroMalaPraxis) document.getElementById("seguroMalaPraxis").value = u.seguroMalaPraxis;
+        setDate("vencimientoSeguroMalaPraxis", u.vencimientoSeguroMalaPraxis); // NUEVO
       } else {
         const usuarioEl = document.getElementById("usuario");
         const passEl    = document.getElementById("contrasena");
@@ -505,6 +535,8 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
       const btnAddCoord    = document.getElementById("btnAddCoord");
       const labelSeguro    = document.getElementById("labelSeguro");
       const inputSeguro    = document.getElementById("seguroMalaPraxis");
+      const seguroExtraRow = document.getElementById("seguroExtraRow");
+      const vencSeguroEl   = document.getElementById("vencimientoSeguroMalaPraxis");
 
       function addProRow(areaNombre = "", nivel = "") {
         proList.insertAdjacentHTML("beforeend", buildProRow(areaNombre, nivel));
@@ -535,8 +567,10 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         coordSection.style.display   = "none";
         pasanteSection.style.display = "none";
         genericSection.style.display = "none";
+
         labelSeguro.style.display    = "none";
         inputSeguro.style.display    = "none";
+        seguroExtraRow.style.display = "none";
 
         if (ROLES_PAS.has(rol)) {
           pasanteSection.style.display = "block";
@@ -546,12 +580,14 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
           proSection.style.display = "block";
           labelSeguro.style.display = "block";
           inputSeguro.style.display = "block";
+          seguroExtraRow.style.display = "grid"; // mostrar vencimiento del seguro
           if (!proList.querySelector(".pro-row")) addProRow();
         }
         if (ROLES_COORD.has(rol)) {
           coordSection.style.display = "block";
           labelSeguro.style.display = "block";
           inputSeguro.style.display = "block";
+          seguroExtraRow.style.display = "grid"; // mostrar vencimiento del seguro
           if (!coordList.querySelector(".coord-row")) addCoordRow();
         }
         if (ROLES_COMMON.has(rol)) {
@@ -722,13 +758,16 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
 
       return {
         nombreApellido: get("nombreApellido"),
+        apodo: get("apodo") || undefined, // NUEVO
         fechaNacimiento: get("fechaNacimiento"),
         domicilio: get("domicilio"),
         dni: get("dni"),
         cuit: get("cuit"),
         matricula: get("matricula"),
+        vencimientoMatricula: get("vencimientoMatricula") || undefined, // NUEVO
         jurisdiccion: get("jurisdiccion"),
         registroNacionalDePrestadores: get("registroNacionalDePrestadores"),
+        vencimientoRegistroNacionalDePrestadores: get("vencimientoRegistroNacionalDePrestadores") || undefined, // NUEVO
         whatsapp: get("whatsapp"),
         mail: get("mail"),
         salarioAcuerdo: onlyDigits(get("salarioAcuerdo")),
@@ -747,7 +786,9 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         pasanteArea: pasanteAreaObj,
         usuario: get("usuario"),
         contrasena: get("contrasena"),
+        // Seguro (visible/permitido solo en roles habilitados por schema)
         seguroMalaPraxis: get("seguroMalaPraxis") || undefined,
+        vencimientoSeguroMalaPraxis: get("vencimientoSeguroMalaPraxis") || undefined, // NUEVO
         areasProfesional: finalAreasProfesional,
         areasCoordinadas: finalAreasCoordinadas
       };
@@ -797,6 +838,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
     Swal.fire("Error", "No se pudo guardar el usuario", "error");
   });
 }
+
 
 
 

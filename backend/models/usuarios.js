@@ -1,5 +1,18 @@
 const mongoose = require('mongoose');
 
+// ------------ Helpers ------------
+function toOptionalDate(v) {
+  if (v == null) return undefined;
+  if (v instanceof Date && !isNaN(v)) return v;
+  if (typeof v === 'string') {
+    const s = v.trim();
+    if (!s) return undefined;
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? undefined : d;
+  }
+  return undefined;
+}
+
 // ------------ Subdocs ------------
 const documentoSchema = new mongoose.Schema({
   tipo:        { type: String, required: true },
@@ -47,11 +60,13 @@ const pasanteAreaSchema = new mongoose.Schema({
 // ------------ Usuario ------------
 const usuarioSchema = new mongoose.Schema({
   nombreApellido: String,
+  apodo: { type: String, trim: true },                          // 👈 NUEVO
   fechaNacimiento: Date,
   domicilio: String,
   dni: String,
   cuit: String,
   matricula: String,
+  vencimientoMatricula: { type: Date, set: toOptionalDate },    // 👈 NUEVO
 
   jurisdiccion: {
     type: String,
@@ -61,6 +76,11 @@ const usuarioSchema = new mongoose.Schema({
   },
 
   registroNacionalDePrestadores: String,
+  vencimientoRegistroNacionalDePrestadores: {                   // 👈 NUEVO
+    type: Date,
+    set: toOptionalDate
+  },
+
   whatsapp: String,
   mail: String,
 
@@ -89,6 +109,7 @@ const usuarioSchema = new mongoose.Schema({
 
   // Solo para roles con parte profesional (no obligatorio)
   seguroMalaPraxis: String,
+  vencimientoSeguroMalaPraxis: { type: Date, set: toOptionalDate }, // 👈 NUEVO
 
   // 👇 Para Pasante: nivel + área
   pasanteNivel: { type: String, enum: NIVELES_PRO, default: undefined },
@@ -132,13 +153,14 @@ usuarioSchema.pre('validate', function (next) {
         }
       }
     }
-    // Seguro NO obligatorio, y pasante exclusivo
+    // Pasante exclusivo
     this.pasanteNivel = undefined;
     this.pasanteArea  = undefined;
   } else {
-    // ✅ No borramos areasProfesional para permitir áreas opcionales en otros roles
-    // Si querés reservar el seguro para roles con parte profesional, lo limpiamos:
+    // Permitimos áreas opcionales en otros roles (no borramos).
+    // Si no es profesional, el seguro no aplica.
     this.seguroMalaPraxis = undefined;
+    this.vencimientoSeguroMalaPraxis = undefined; // 👈 coherencia con seguro
   }
 
   // Coordinadores: al menos un área coordinada
@@ -150,7 +172,7 @@ usuarioSchema.pre('validate', function (next) {
     this.pasanteNivel = undefined;
     this.pasanteArea  = undefined;
   } else {
-    // ✅ No borramos areasCoordinadas para permitir áreas opcionales en otros roles
+    // No borramos areasCoordinadas para roles comunes.
   }
 
   // Pasante: requiere nivel + área (id o nombre)
@@ -163,12 +185,12 @@ usuarioSchema.pre('validate', function (next) {
     if (!tieneArea) {
       this.invalidate('pasanteArea', 'El rol Pasante requiere asignar un área');
     }
-    // Exclusividad de pasante: no usar profesional/coord ni seguro
+    // Exclusividad de pasante
     this.areasProfesional = [];
     this.areasCoordinadas = [];
     this.seguroMalaPraxis = undefined;
+    this.vencimientoSeguroMalaPraxis = undefined; // 👈 también limpiar
   } else {
-    // Si NO es pasante, vaciar campos exclusivos de pasante
     this.pasanteNivel = undefined;
     this.pasanteArea  = undefined;
   }
@@ -192,4 +214,5 @@ Usuario.ROLES = ROLES;
 Usuario.NIVELES_PRO = NIVELES_PRO;
 
 module.exports = Usuario;
+
 

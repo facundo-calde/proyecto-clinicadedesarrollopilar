@@ -16,6 +16,14 @@ function parseMaybeJSON(v) {
   try { return JSON.parse(v); } catch { return v; }
 }
 
+function toDateOrUndefined(v) {
+  if (v == null) return undefined;
+  const s = String(v).trim();
+  if (!s) return undefined;
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? undefined : d;
+}
+
 // Junta archivos sin importar si vino req.file, req.files[], o req.files.{campo}
 function collectFilesFromReq(req) {
   const files = [];
@@ -101,7 +109,9 @@ function normalizeBody(body) {
     }
   }
 
+  // Campos string simples (vacío -> undefined)
   [
+    "apodo",
     "jurisdiccion","registroNacionalDePrestadores",
     "salarioAcuerdo","salarioAcuerdoObs",
     "fijoAcuerdo","fijoAcuerdoObs",
@@ -117,6 +127,18 @@ function normalizeBody(body) {
       body[k] = val === "" ? undefined : val;
     }
   });
+
+  // Vencimientos (fecha opcional)
+  if (Object.prototype.hasOwnProperty.call(body, "vencimientoMatricula")) {
+    body.vencimientoMatricula = toDateOrUndefined(body.vencimientoMatricula);
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "vencimientoRegistroNacionalDePrestadores")) {
+    body.vencimientoRegistroNacionalDePrestadores =
+      toDateOrUndefined(body.vencimientoRegistroNacionalDePrestadores);
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "vencimientoSeguroMalaPraxis")) {
+    body.vencimientoSeguroMalaPraxis = toDateOrUndefined(body.vencimientoSeguroMalaPraxis);
+  }
 
   if (body.usuario) body.usuario = body.usuario.toLowerCase();
   if (body.mail)    body.mail    = body.mail.toLowerCase();
@@ -135,8 +157,11 @@ function applyRoleCleaning(rol, body, currentDoc = null) {
   const esCoordinador = rol === "Coordinador de área" || rol === "Coordinador y profesional";
   const esPasante     = rol === "Pasante";
 
-  // Seguro: solo tiene sentido para roles con parte profesional; si no, borramos
-  if (!esProfesional) body.seguroMalaPraxis = undefined;
+  // Seguro (y su vencimiento) solo para roles con parte profesional o coordinación
+  if (!(esProfesional || esCoordinador)) {
+    body.seguroMalaPraxis = undefined;
+    body.vencimientoSeguroMalaPraxis = undefined;
+  }
 
   if (esPasante) {
     // Exclusivo: Pasante NO usa áreas profesional/coordinadas
@@ -145,7 +170,6 @@ function applyRoleCleaning(rol, body, currentDoc = null) {
     // mantener pasanteNivel/pasanteArea tal como vengan
   } else {
     // ✅ No borrar áreas en otros roles (permitir opcional)
-    // Si el cliente no mandó estas claves en PUT, las preservamos abajo con currentDoc.
     // Campos exclusivos de pasante: fuera de pasante, limpiar
     body.pasanteArea  = undefined;
     body.pasanteNivel = undefined;
@@ -158,6 +182,12 @@ function applyRoleCleaning(rol, body, currentDoc = null) {
     }
     if (!Object.prototype.hasOwnProperty.call(body, "areasCoordinadas")) {
       body.areasCoordinadas = currentDoc.areasCoordinadas;
+    }
+    if (!Object.prototype.hasOwnProperty.call(body, "seguroMalaPraxis") && (esProfesional || esCoordinador)) {
+      body.seguroMalaPraxis = currentDoc.seguroMalaPraxis;
+    }
+    if (!Object.prototype.hasOwnProperty.call(body, "vencimientoSeguroMalaPraxis") && (esProfesional || esCoordinador)) {
+      body.vencimientoSeguroMalaPraxis = currentDoc.vencimientoSeguroMalaPraxis;
     }
   }
 }
@@ -288,7 +318,6 @@ exports.crearUsuario = async (req, res) => {
 
     return res.status(201).json({
       ...nuevoObj,
-      // usar el mismo nombre que en schema
       pasanteNivel: nuevoObj.pasanteNivel,
       documentos: mapDocsForView(nuevoObj.documentos),
       areasProfesionalDetalladas: buildAreasDetalladas(nuevoObj, "Profesional"),
