@@ -913,6 +913,7 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
           "No disponible"
         );
 
+        // === Helpers de normalización y matching ===
         const norm = (s) =>
           (s ?? "").toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
         const HEX24 = /^[a-f0-9]{24}$/i;
@@ -930,74 +931,82 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
           "pasante"
         ]);
 
-        // Chequeo flexible de pertenencia a área
-        const matchAnyArea = (u, targetId, targetNameNorm) => {
-          // 1) Profesional (array de objetos/string)
-          if (Array.isArray(u.areasProfesional)) {
-            for (const ap of u.areasProfesional) {
-              const apId = (ap && ap._id) ? String(ap._id) : null;
-              const apName = ap?.areaNombre || ap?.nombre || ap?.area || (typeof ap === "string" ? ap : "");
-              if (apId && apId === targetId) return true;
-              if (norm(apName) === targetNameNorm) return true;
-            }
+        // True si entry coincide por id o por nombre
+        function matchAreaEntry(entry, targetId, targetNameNorm) {
+          if (!entry) return false;
+
+          if (typeof entry === "string") {
+            const s = entry.trim();
+            if (!s) return false;
+            if (HEX24.test(s) && s === targetId) return true;
+            return norm(s) === targetNameNorm;
           }
-          // 2) Coordinadas
-          if (Array.isArray(u.areasCoordinadas)) {
-            for (const ac of u.areasCoordinadas) {
-              const acId = (ac && ac._id) ? String(ac._id) : null;
-              const acName = ac?.areaNombre || ac?.nombre || ac?.area || (typeof ac === "string" ? ac : "");
-              if (acId && acId === targetId) return true;
-              if (norm(acName) === targetNameNorm) return true;
-            }
+
+          const idCandidates = [
+            entry._id, entry.id, entry.areaId,
+            entry.area?._id, entry.area?.id
+          ].filter(Boolean).map(String);
+          if (idCandidates.some(x => x === targetId)) return true;
+
+          const nameCandidates = [
+            entry.areaNombre, entry.nombre, entry.name, entry.area, entry.area?.nombre, entry.area?.name
+          ].filter(Boolean).map(norm);
+
+          return nameCandidates.some(n => n === targetNameNorm);
+        }
+
+        // ¿El usuario pertenece al área?
+        function userBelongsToArea(u, targetId) {
+          const targetNameNorm = ID2NAME_NORM.get(targetId) || "";
+
+          if (Array.isArray(u.areasProfesional) && u.areasProfesional.some(e => matchAreaEntry(e, targetId, targetNameNorm))) {
+            return true;
           }
-          // 3) Campo genérico areas (id u objeto o string)
-          if (Array.isArray(u.areas)) {
-            for (const a of u.areas) {
-              const idCand = typeof a === "object" ? a._id : a;
-              const nameCand = typeof a === "object" ? (a.nombre || a.name || a.area) : a;
-              if (HEX24.test(String(idCand || "")) && String(idCand) === targetId) return true;
-              if (norm(nameCand) === targetNameNorm) return true;
-            }
+          if (Array.isArray(u.areasCoordinadas) && u.areasCoordinadas.some(e => matchAreaEntry(e, targetId, targetNameNorm))) {
+            return true;
           }
-          // 4) Pasante: pasanteArea puede venir como string u objeto
-          if (u.rol && norm(u.rol) === "pasante" && u.pasanteArea) {
-            const pa = u.pasanteArea;
-            const paId = (typeof pa === "object" && pa._id) ? String(pa._id) : null;
-            const paName = typeof pa === "string" ? pa : (pa.areaNombre || pa.nombre || pa.area || "");
-            if (paId && paId === targetId) return true;
-            if (norm(paName) === targetNameNorm) return true;
+          if (Array.isArray(u.areas) && u.areas.some(e => matchAreaEntry(e, targetId, targetNameNorm))) {
+            return true;
+          }
+          if (Array.isArray(u.areasProfesionalDetalladas) && u.areasProfesionalDetalladas.some(e => matchAreaEntry(e, targetId, targetNameNorm))) {
+            return true;
+          }
+          if (Array.isArray(u.areasCoordinadasDetalladas) && u.areasCoordinadasDetalladas.some(e => matchAreaEntry(e, targetId, targetNameNorm))) {
+            return true;
+          }
+          if (u.rol && norm(u.rol) === "pasante" && u.pasanteArea && matchAreaEntry(u.pasanteArea, targetId, targetNameNorm)) {
+            return true;
           }
           return false;
-        };
+        }
 
-        const renderProfesionales = () => {
+        // Render de opciones según el área elegida
+        function renderProfesionales() {
           const selId = areaSel.value || "";
           if (!selId) {
             profSel.innerHTML = `<option value="">-- Seleccioná un área primero --</option>`;
             return;
           }
-          const targetNameNorm = ID2NAME_NORM.get(selId) || "";
 
           const lista = (USUARIOS || [])
             .filter(u => ROLES_OK.has(norm(u.rol || "")))
             .filter(u => {
-              // Directoras siempre visibles (sin filtrar por área)
+              // Directoras: siempre visibles
               if (norm(u.rol || "") === "directoras") return true;
               // Resto: deben pertenecer al área
-              return matchAnyArea(u, selId, targetNameNorm);
-            });
+              return userBelongsToArea(u, selId);
+            })
+            .sort((a, b) => (a.nombreApellido || "").localeCompare(b.nombreApellido || "", "es"));
 
           profSel.innerHTML = lista.length === 0
             ? `<option value="">Sin usuarios para el área</option>`
             : `<option value="">-- Seleccionar --</option>` +
-              lista
-                .sort((a, b) => (a.nombreApellido || "").localeCompare(b.nombreApellido || "", "es"))
-                .map(u =>
-                  `<option value="${u._id}">
-                    ${u.nombreApellido || u.nombre || u.usuario} — ${u.rol}
-                  </option>`
-                ).join("");
-        };
+              lista.map(u => `
+                <option value="${u._id}">
+                  ${u.nombreApellido || u.nombre || u.usuario} — ${u.rol}
+                </option>
+              `).join("");
+        }
 
         renderProfesionales();
         areaSel.addEventListener("change", renderProfesionales);
@@ -1162,6 +1171,7 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
     }
   });
 });
+
 
 
 
