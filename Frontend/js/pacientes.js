@@ -785,7 +785,7 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
       : {};
   };
 
-  // Helper para pedir JSON con auth de tu app
+  // Helper para pedir JSON con auth
   async function apiFetchJson(path, init = {}) {
     const res = await fetch(`/api${path}`, {
       ...init,
@@ -881,7 +881,7 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
       condicionDePagoSelect.addEventListener("change", toggleObraSocial);
       toggleObraSocial();
 
-      // áreas + usuarios asignables
+      // áreas + usuarios
       const areaSel = document.getElementById("areaSeleccionada");
       const profSel = document.getElementById("profesionalSeleccionado");
 
@@ -906,20 +906,23 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
         AREAS = Array.isArray(areas) ? areas : [];
         USUARIOS = Array.isArray(usuarios) ? usuarios : [];
 
-        setOptions(areaSel, AREAS, (a) => `<option value="${a._id}">${a.nombre}</option>`, "No disponible");
+        setOptions(
+          areaSel,
+          AREAS,
+          (a) => `<option value="${a._id}">${a.nombre}</option>`,
+          "No disponible"
+        );
 
         const norm = (s) =>
           (s ?? "").toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
         const HEX24 = /^[a-f0-9]{24}$/i;
 
-        const ID2NAME = new Map();
-        const AREA_ID_TO_NAME_NORM = new Map();
-        AREAS.forEach(a => {
-          ID2NAME.set(String(a._id), a.nombre);
-          AREA_ID_TO_NAME_NORM.set(String(a._id), norm(a.nombre));
-        });
+        // Mapear id → nombre normalizado
+        const ID2NAME_NORM = new Map();
+        AREAS.forEach(a => ID2NAME_NORM.set(String(a._id), norm(a.nombre)));
 
-        const ROLES_ASIGNABLES = new Set([
+        // Roles permitidos
+        const ROLES_OK = new Set([
           "profesional",
           "coordinador y profesional",
           "coordinador de área",
@@ -927,25 +930,42 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
           "pasante"
         ]);
 
-        const coincideAreaEnListaDeNombres = (lista, targetNameNorm) => {
-          if (!Array.isArray(lista)) return false;
-          for (const it of lista) {
-            const nombre = (it?.areaNombre || it?.nombre || it?.name || it?.area || it || "").toString();
-            if (norm(nombre) === targetNameNorm) return true;
-          }
-          return false;
-        };
-
-        const coincideAreaLegacy = (areasLegacy, targetNameNorm) => {
-          const arr = Array.isArray(areasLegacy) ? areasLegacy : [];
-          for (const it of arr) {
-            const idCandidate   = typeof it === "object" ? it._id    : it;
-            const nameCandidate = typeof it === "object" ? it.nombre : it;
-            if (HEX24.test(String(idCandidate || ""))) {
-              const n = AREA_ID_TO_NAME_NORM.get(String(idCandidate));
-              if (n && n === targetNameNorm) return true;
+        // Chequeo flexible de pertenencia a área
+        const matchAnyArea = (u, targetId, targetNameNorm) => {
+          // 1) Profesional (array de objetos/string)
+          if (Array.isArray(u.areasProfesional)) {
+            for (const ap of u.areasProfesional) {
+              const apId = (ap && ap._id) ? String(ap._id) : null;
+              const apName = ap?.areaNombre || ap?.nombre || ap?.area || (typeof ap === "string" ? ap : "");
+              if (apId && apId === targetId) return true;
+              if (norm(apName) === targetNameNorm) return true;
             }
-            if (norm(nameCandidate) === targetNameNorm) return true;
+          }
+          // 2) Coordinadas
+          if (Array.isArray(u.areasCoordinadas)) {
+            for (const ac of u.areasCoordinadas) {
+              const acId = (ac && ac._id) ? String(ac._id) : null;
+              const acName = ac?.areaNombre || ac?.nombre || ac?.area || (typeof ac === "string" ? ac : "");
+              if (acId && acId === targetId) return true;
+              if (norm(acName) === targetNameNorm) return true;
+            }
+          }
+          // 3) Campo genérico areas (id u objeto o string)
+          if (Array.isArray(u.areas)) {
+            for (const a of u.areas) {
+              const idCand = typeof a === "object" ? a._id : a;
+              const nameCand = typeof a === "object" ? (a.nombre || a.name || a.area) : a;
+              if (HEX24.test(String(idCand || "")) && String(idCand) === targetId) return true;
+              if (norm(nameCand) === targetNameNorm) return true;
+            }
+          }
+          // 4) Pasante: pasanteArea puede venir como string u objeto
+          if (u.rol && norm(u.rol) === "pasante" && u.pasanteArea) {
+            const pa = u.pasanteArea;
+            const paId = (typeof pa === "object" && pa._id) ? String(pa._id) : null;
+            const paName = typeof pa === "string" ? pa : (pa.areaNombre || pa.nombre || pa.area || "");
+            if (paId && paId === targetId) return true;
+            if (norm(paName) === targetNameNorm) return true;
           }
           return false;
         };
@@ -956,48 +976,27 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
             profSel.innerHTML = `<option value="">-- Seleccioná un área primero --</option>`;
             return;
           }
-          const targetNameNorm = AREA_ID_TO_NAME_NORM.get(selId) || "";
+          const targetNameNorm = ID2NAME_NORM.get(selId) || "";
 
-          const lista = USUARIOS
-            .filter(u => ROLES_ASIGNABLES.has(norm(u.rol || "")))
+          const lista = (USUARIOS || [])
+            .filter(u => ROLES_OK.has(norm(u.rol || "")))
             .filter(u => {
-              const rol = norm(u.rol || "");
-              // Profesional / Coord. y profesional
-              if (rol === "profesional" || rol === "coordinador y profesional") {
-                if (coincideAreaEnListaDeNombres(u.areasProfesional, targetNameNorm)) return true;
-                if (coincideAreaLegacy(u.areas, targetNameNorm)) return true;
-                return false;
-              }
-              // Coordinador de área
-              if (rol === "coordinador de área") {
-                if (coincideAreaEnListaDeNombres(u.areasCoordinadas, targetNameNorm)) return true;
-                if (coincideAreaLegacy(u.areas, targetNameNorm)) return true;
-                return false;
-              }
-              // Directora(s) (también filtra por área)
-              if (rol === "directoras") {
-                if (coincideAreaEnListaDeNombres(u.areasCoordinadas, targetNameNorm)) return true;
-                if (coincideAreaEnListaDeNombres(u.areasProfesional, targetNameNorm)) return true;
-                if (coincideAreaLegacy(u.areas, targetNameNorm)) return true;
-                return false;
-              }
-              // Pasante (usa pasanteArea.areaNombre o string)
-              if (rol === "pasante") {
-                const a = u.pasanteArea;
-                const nombre = typeof a === "string" ? a : (a?.areaNombre || "");
-                return norm(nombre) === targetNameNorm;
-              }
-              return false;
+              // Directoras siempre visibles (sin filtrar por área)
+              if (norm(u.rol || "") === "directoras") return true;
+              // Resto: deben pertenecer al área
+              return matchAnyArea(u, selId, targetNameNorm);
             });
 
           profSel.innerHTML = lista.length === 0
             ? `<option value="">Sin usuarios para el área</option>`
             : `<option value="">-- Seleccionar --</option>` +
-              lista.map(u => {
-                const label = (u.nombreApellido || u.nombre || u.usuario || "").trim();
-                const rolTxt = (u.rol || "").trim();
-                return `<option value="${u._id}">${label} — ${rolTxt}</option>`;
-              }).join("");
+              lista
+                .sort((a, b) => (a.nombreApellido || "").localeCompare(b.nombreApellido || "", "es"))
+                .map(u =>
+                  `<option value="${u._id}">
+                    ${u.nombreApellido || u.nombre || u.usuario} — ${u.rol}
+                  </option>`
+                ).join("");
         };
 
         renderProfesionales();
@@ -1008,7 +1007,7 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
         profSel.innerHTML = `<option value="">No disponible</option>`;
       }
 
-      // Responsables (agrego DNI/CUIT)
+      // RESPONSABLES (WhatsApp + Documento + Email)
       const cont = document.getElementById("responsablesContainer");
       const btnAdd = document.getElementById("btnAgregarResponsable");
 
@@ -1020,7 +1019,7 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
           )).join('');
 
       let idx = 0;
-      const addRow = (preset = { relacion: 'tutor', nombre: '', documento: '', whatsapp: '', email: '' }) => {
+      const addRow = (preset = { relacion: 'tutor', nombre: '', whatsapp: '', documento: '', email: '' }) => {
         const filas = cont.querySelectorAll('.responsable-row').length;
         if (filas >= 3) return;
 
@@ -1032,8 +1031,8 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
                 ${makeRelacionOptions(preset.relacion || '')}
               </select>
               <input class="swal2-input resp-nombre" placeholder="Nombre" value="${preset.nombre || ''}" style="margin:0;height:40px;">
-              <input class="swal2-input resp-doc" placeholder="DNI/CUIT (opcional)" value="${preset.documento || ''}" style="margin:0;height:40px;">
               <input class="swal2-input resp-whatsapp" placeholder="Whatsapp (solo dígitos)" value="${preset.whatsapp || ''}" style="margin:0;height:40px;">
+              <input class="swal2-input resp-documento" placeholder="Documento (DNI/CUIT)" value="${preset.documento || ''}" style="margin:0;height:40px;">
               <input class="swal2-input resp-email" placeholder="Email (opcional)" type="email" value="${preset.email || ''}" style="margin:0;height:40px;">
               <button type="button" class="swal2-cancel swal2-styled btn-remove" title="Quitar"
                 style="width:36px;height:36px;margin:0;padding:0;line-height:1;display:flex;align-items:center;justify-content:center;">✕</button>
@@ -1084,13 +1083,12 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
         Swal.showValidationMessage("⚠️ Debe haber entre 1 y 3 responsables.");
         return false;
       }
-
       const responsables = [];
       for (const row of filas) {
         const relacion = row.querySelector('.resp-relacion')?.value || "";
         const nombreR = (row.querySelector('.resp-nombre')?.value || "").trim();
-        const doc = (row.querySelector('.resp-doc')?.value || "").trim();
         const whatsapp = (row.querySelector('.resp-whatsapp')?.value || "").trim();
+        const documento = (row.querySelector('.resp-documento')?.value || "").trim(); // opcional
         const email = (row.querySelector('.resp-email')?.value || "").trim().toLowerCase();
 
         if (!relacion || !nombreR || !whatsapp) {
@@ -1107,11 +1105,8 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
         }
 
         const r = { relacion, nombre: nombreR, whatsapp };
+        if (documento) r.documento = documento;
         if (email) r.email = email;
-
-        // DNI/CUIT opcional: guardo como string tal cual (sin validar formato estricto)
-        if (doc) r.documento = doc;
-
         responsables.push(r);
       }
 
@@ -1122,13 +1117,9 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
         tipo = gv("tipo");
       }
 
-      // selección de área y usuario asignado (si se quiere guardar)
-      const areaIdSel = (document.getElementById("areaSeleccionada")?.value || "");
-      const usuarioAsignadoId = (document.getElementById("profesionalSeleccionado")?.value || "");
-
-      // si no usás módulos/áreas aún en backend:
+      // si no usás módulos acá:
       const modulosAsignados = [];
-      const areasDerivadas = areaIdSel ? [areaIdSel] : [];
+      const areasDerivadas = [];
 
       return {
         nombre,
@@ -1144,9 +1135,7 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
         credencial,
         tipo,
         modulosAsignados,
-        areas: areasDerivadas,
-        // opcionalmente mandás también el usuario asignado:
-        usuarioAsignadoId
+        areas: areasDerivadas
       };
     }
   }).then(async (result) => {
@@ -1173,6 +1162,7 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
     }
   });
 });
+
 
 
 
