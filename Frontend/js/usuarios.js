@@ -293,15 +293,10 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         .two-col { display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
         .swal2-confirm{ background:#2f72c4 !important;color:#fff !important;font-weight:700;padding:8px 20px;border-radius:8px; }
         .swal2-cancel { background:#e53935 !important;color:#fff !important;font-weight:700;padding:8px 20px; }
-        .prefix-wrapper{ position:relative; }
-        .prefix-wrapper > .peso-prefix{
-          position:absolute; left:10px; top:50%; transform:translateY(-50%);
-          color:#333; font-weight:600;
-        }
-        .prefix-wrapper > input{ padding-left:28px; }
 
-        /* ✅ Pasante exclusivo */
+        /* Secciones */
         #pasanteSection{ display:none; grid-column:1 / -1; max-width:100%; }
+        #genericAreaSection{ display:none; }
       </style>
 
       <div class="swal-body">
@@ -328,15 +323,11 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
 
             <div class="two-col">
               <div>
-                <div class="prefix-wrapper">
-                  <input class="swal2-input" id="salarioAcuerdo" placeholder="Salario acordado" autocomplete="off" inputmode="numeric">
-                </div>
+                <input class="swal2-input" id="salarioAcuerdo" placeholder="Salario acordado" autocomplete="off" inputmode="numeric">
                 <input class="swal2-input" id="salarioAcuerdoObs" placeholder="Obs. salario (opcional)" autocomplete="off">
               </div>
               <div>
-                <div class="prefix-wrapper">
-                  <input class="swal2-input" id="fijoAcuerdo" placeholder="Fijo acordado" autocomplete="off" inputmode="numeric">
-                </div>
+                <input class="swal2-input" id="fijoAcuerdo" placeholder="Fijo acordado" autocomplete="off" inputmode="numeric">
                 <input class="swal2-input" id="fijoAcuerdoObs" placeholder="Obs. fijo (opcional)" autocomplete="off">
               </div>
             </div>
@@ -367,7 +358,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
             </select>
 
             <!-- Pasante (exclusivo) -->
-            <div id="pasanteSection" class="block" style="display:none;">
+            <div id="pasanteSection" class="block">
               <label><strong>Pasantía (área + nivel):</strong></label>
               <div class="pro-row">
                 <select id="pasanteArea" class="swal2-select pro-area">
@@ -383,18 +374,27 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
               </div>
             </div>
 
-            <!-- Áreas profesional (visible para TODOS; obligatorio solo en roles pro) -->
-            <div id="proSection" class="block" style="display:block;">
+            <!-- Profesional -->
+            <div id="proSection" class="block">
               <label><strong>Áreas como profesional (con nivel):</strong></label>
               <div id="proList"></div>
               <button type="button" id="btnAddPro" class="mini-btn">+ Agregar área profesional</button>
             </div>
 
-            <!-- Áreas coordinación (visible para TODOS; obligatorio solo en roles coord) -->
-            <div id="coordSection" class="block" style="display:block;">
+            <!-- Coordinador -->
+            <div id="coordSection" class="block">
               <label><strong>Áreas como coordinador:</strong></label>
               <div id="coordList"></div>
               <button type="button" id="btnAddCoord" class="mini-btn">+ Agregar área a coordinar</button>
+            </div>
+
+            <!-- NUEVO: Roles comunes -->
+            <div id="genericAreaSection" class="block">
+              <label><strong>Área asignada:</strong></label>
+              <select id="genericArea" class="swal2-select">
+                <option value="">-- Área --</option>
+                ${AREA_OPTS}
+              </select>
             </div>
 
             <label id="labelSeguro" style="display:none;margin-top:10px;"><strong>Seguro de mala praxis:</strong></label>
@@ -431,7 +431,6 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
     showCancelButton: true,
     cancelButtonText: "Cancelar",
     didOpen: () => {
-      // Helpers moneda
       const nfARS = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 });
       const cleanNumber = (s) => (s ? String(s).replace(/\D+/g, "") : "");
       const formatInputARS = (input) => {
@@ -444,7 +443,6 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         input.addEventListener("blur", apply);
         apply();
       };
-
       const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = (val ?? ""); };
 
       if (modoEdicion) {
@@ -478,7 +476,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         if (u.rol) document.getElementById("rol").value = u.rol;
 
         if (u.pasanteNivel) document.getElementById("pasanteNivel").value = u.pasanteNivel;
-        if (u.pasanteArea)  document.getElementById("pasanteArea").value  =
+        if (u.pasanteArea)  document.getElementById("pasanteArea").value =
           (typeof u.pasanteArea === "string" ? u.pasanteArea : (u.pasanteArea?.areaNombre || ""));
         if (u.seguroMalaPraxis) document.getElementById("seguroMalaPraxis").value = u.seguroMalaPraxis;
       } else {
@@ -499,6 +497,8 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
       const proSection     = document.getElementById("proSection");
       const coordSection   = document.getElementById("coordSection");
       const pasanteSection = document.getElementById("pasanteSection");
+      const genericSection = document.getElementById("genericAreaSection");
+      const genericAreaSel = document.getElementById("genericArea");
       const proList        = document.getElementById("proList");
       const coordList      = document.getElementById("coordList");
       const btnAddPro      = document.getElementById("btnAddPro");
@@ -522,38 +522,45 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
       btnAddPro?.addEventListener("click", () => addProRow());
       btnAddCoord?.addEventListener("click", () => addCoordRow());
 
-      const ROLES_PROF  = new Set(["Profesional", "Coordinador y profesional"]);
-      const ROLES_COORD = new Set(["Coordinador de área", "Coordinador y profesional"]);
+      const ROLES_PROF   = new Set(["Profesional", "Coordinador y profesional"]);
+      const ROLES_COORD  = new Set(["Coordinador de área", "Coordinador y profesional"]);
+      const ROLES_PAS    = new Set(["Pasante"]);
+      const ROLES_COMMON = new Set(["Administrador","Directoras","Administrativo","Recepcionista","Área"]);
 
       function syncVisibility() {
         const rol = rolSelect.value;
 
-        // Pasante exclusivo: solo su sección
-        if (rol === "Pasante") {
+        // Reset visibles
+        proSection.style.display     = "none";
+        coordSection.style.display   = "none";
+        pasanteSection.style.display = "none";
+        genericSection.style.display = "none";
+        labelSeguro.style.display    = "none";
+        inputSeguro.style.display    = "none";
+
+        if (ROLES_PAS.has(rol)) {
           pasanteSection.style.display = "block";
-          proSection.style.display     = "none";
-          coordSection.style.display   = "none";
-          labelSeguro.style.display    = "none";
-          inputSeguro.style.display    = "none";
           return;
         }
-
-        // Para TODOS los demás roles: mostrar secciones para poder asignar áreas opcionales
-        pasanteSection.style.display = "none";
-        proSection.style.display     = "block";
-        coordSection.style.display   = "block";
-
-        // Seguro visible solo si es rol con parte profesional o coordinación (no obligatorio)
-        const showSeguro = ROLES_PROF.has(rol) || ROLES_COORD.has(rol);
-        labelSeguro.style.display = showSeguro ? "block" : "none";
-        inputSeguro.style.display = showSeguro ? "block" : "none";
-
-        // Autopre-carga de una fila SOLO si el rol requiere
-        if (ROLES_PROF.has(rol) && !proList.querySelector(".pro-row")) addProRow();
-        if (ROLES_COORD.has(rol) && !coordList.querySelector(".coord-row")) addCoordRow();
+        if (ROLES_PROF.has(rol)) {
+          proSection.style.display = "block";
+          labelSeguro.style.display = "block";
+          inputSeguro.style.display = "block";
+          if (!proList.querySelector(".pro-row")) addProRow();
+        }
+        if (ROLES_COORD.has(rol)) {
+          coordSection.style.display = "block";
+          labelSeguro.style.display = "block";
+          inputSeguro.style.display = "block";
+          if (!coordList.querySelector(".coord-row")) addCoordRow();
+        }
+        if (ROLES_COMMON.has(rol)) {
+          genericSection.style.display = "block";
+        }
       }
       syncVisibility();
 
+      // Prefill edición
       if (modoEdicion) {
         if (Array.isArray(u.areasProfesional) && u.areasProfesional.length) {
           proList.innerHTML = "";
@@ -563,6 +570,12 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
           coordList.innerHTML = "";
           u.areasCoordinadas.forEach(ac => addCoordRow(ac.areaNombre || ""));
         }
+        // Para roles comunes, tomar primer área (coordinadas > profesional)
+        const firstGeneric =
+          (Array.isArray(u.areasCoordinadas) && u.areasCoordinadas[0]?.areaNombre) ||
+          (Array.isArray(u.areasProfesional) && u.areasProfesional[0]?.areaNombre) ||
+          "";
+        if (firstGeneric) genericAreaSel.value = firstGeneric;
       }
 
       rolSelect.addEventListener("change", syncVisibility);
@@ -663,10 +676,13 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
           return { areaNombre };
         }).filter(Boolean);
 
-      const ROLES_PROF  = new Set(["Profesional", "Coordinador y profesional"]);
-      const ROLES_COORD = new Set(["Coordinador de área", "Coordinador y profesional"]);
+      const genericArea = get("genericArea");
+      const ROLES_PROF   = new Set(["Profesional", "Coordinador y profesional"]);
+      const ROLES_COORD  = new Set(["Coordinador de área", "Coordinador y profesional"]);
+      const ROLES_PAS    = new Set(["Pasante"]);
+      const ROLES_COMMON = new Set(["Administrador","Directoras","Administrativo","Recepcionista","Área"]);
 
-      // Reglas de obligatoriedad (no cambian)
+      // Reglas de obligatoriedad (se mantienen)
       if (ROLES_PROF.has(rol) && areasProfesional.length === 0) {
         Swal.showValidationMessage("Agregá al menos un área con nivel para el rol profesional.");
         return false;
@@ -675,31 +691,30 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         Swal.showValidationMessage("Agregá al menos un área para coordinación.");
         return false;
       }
-      if (rol === "Pasante") {
-        const pasanteAreaSel = get("pasanteArea");
-        const pasanteNivel   = get("pasanteNivel");
-        if (!pasanteAreaSel) {
-          Swal.showValidationMessage("Seleccioná el área a la que pertenece el pasante.");
-          return false;
-        }
-        if (!pasanteNivel) {
-          Swal.showValidationMessage("Seleccioná el nivel del pasante (Junior/Senior).");
-          return false;
-        }
+      if (ROLES_PAS.has(rol)) {
+        const pa = get("pasanteArea");
+        const pn = get("pasanteNivel");
+        if (!pa) { Swal.showValidationMessage("Seleccioná el área del pasante."); return false; }
+        if (!pn) { Swal.showValidationMessage("Seleccioná el nivel del pasante."); return false; }
       }
 
-      // Pasante exclusivo: ignorar datos de pro/coord si llegan
       let finalAreasProfesional = areasProfesional;
       let finalAreasCoordinadas = areasCoordinadas;
       let pasanteAreaObj = undefined;
       let pasanteNivel   = undefined;
 
-      if (rol === "Pasante") {
+      if (ROLES_PAS.has(rol)) {
         finalAreasProfesional = [];
         finalAreasCoordinadas = [];
         pasanteNivel = get("pasanteNivel") || undefined;
         const val = get("pasanteArea");
         pasanteAreaObj = val ? { areaNombre: val } : undefined;
+      } else if (ROLES_COMMON.has(rol)) {
+        // Solo un área simple (sin nivel)
+        finalAreasProfesional = [];
+        finalAreasCoordinadas = genericArea ? [{ areaNombre: genericArea }] : [];
+        pasanteNivel = undefined;
+        pasanteAreaObj = undefined;
       } else {
         pasanteNivel = undefined;
         pasanteAreaObj = undefined;
@@ -732,9 +747,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         pasanteArea: pasanteAreaObj,
         usuario: get("usuario"),
         contrasena: get("contrasena"),
-        // Seguro: opcional (solo se muestra en roles pro/coord)
         seguroMalaPraxis: get("seguroMalaPraxis") || undefined,
-        // Áreas:
         areasProfesional: finalAreasProfesional,
         areasCoordinadas: finalAreasCoordinadas
       };
