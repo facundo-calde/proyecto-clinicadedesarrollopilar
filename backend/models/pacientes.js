@@ -14,7 +14,9 @@ const responsableSchema = new mongoose.Schema({
     match: [/^\d{10,15}$/, 'El WhatsApp debe tener entre 10 y 15 dígitos'],
   },
   // Email opcional por responsable
-  email: { type: String, trim: true, lowercase: true, match: emailRule }
+  email: { type: String, trim: true, lowercase: true, match: emailRule },
+  // NUEVO: DNI/CUIT opcional
+  documento: { type: String, trim: true }
 }, { _id: false });
 
 const estadoHistorialSchema = new mongoose.Schema({
@@ -48,7 +50,7 @@ const pacienteSchema = new mongoose.Schema({
 
   fechaNacimiento: { type: String, required: true },
 
-  // Responsables (1..3) con email opcional
+  // Responsables (1..3) con email opcional + documento opcional
   responsables: {
     type: [responsableSchema],
     validate: [{
@@ -123,6 +125,7 @@ pacienteSchema.pre('save', function(next) {
 });
 
 module.exports = mongoose.model('Paciente', pacienteSchema);
+
 
 
 

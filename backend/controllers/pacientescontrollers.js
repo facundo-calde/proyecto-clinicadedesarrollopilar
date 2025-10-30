@@ -4,6 +4,7 @@ const Paciente = require("../models/pacientes");
 // --- Validaciones básicas ---
 const WSP_RE  = /^\d{10,15}$/;                // solo dígitos, 10–15
 const DNI_RE  = /^\d{7,8}$/;                  // 7–8 dígitos
+const DOC_RE  = /^\d{7,13}$/;                 // DNI (7-8) o CUIT (11). Permitimos 7–13 para flexibilidad
 const MAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/; // formato simple
 const CP_OK   = new Set(["Obra Social", "Particular", "Obra Social + Particular"]);
 const ESTADOS = new Set(["Alta", "Baja", "En espera"]);
@@ -12,8 +13,11 @@ const ESTADOS = new Set(["Alta", "Baja", "En espera"]);
 function toStr(x) {
   return (x ?? "").toString();
 }
+function onlyDigits(s) {
+  return toStr(s).replace(/\D+/g, "");
+}
 
-// Permite repetidos y limita a 3. E-mail opcional y validado.
+// Permite repetidos y limita a 3. E-mail opcional y validado. NUEVO: documento opcional (DNI/CUIT)
 function sanitizeResponsables(responsables) {
   if (!Array.isArray(responsables)) return [];
   const out = [];
@@ -21,8 +25,9 @@ function sanitizeResponsables(responsables) {
   for (const r0 of responsables) {
     const relacion  = toStr(r0.relacion).trim().toLowerCase(); // padre | madre | tutor
     const nombre    = toStr(r0.nombre).trim();
-    const whatsapp  = toStr(r0.whatsapp).trim();
+    const whatsapp  = onlyDigits(r0.whatsapp);
     const emailRaw  = toStr(r0.email).trim().toLowerCase();
+    const documento = onlyDigits(r0.documento); // ← NUEVO
 
     if (!["padre", "madre", "tutor"].includes(relacion)) continue;
     if (!nombre) continue;
@@ -32,6 +37,9 @@ function sanitizeResponsables(responsables) {
     if (emailRaw) {
       if (!MAIL_RE.test(emailRaw)) continue; // si el mail viene mal, descartamos ese responsable
       r.email = emailRaw;
+    }
+    if (documento && DOC_RE.test(documento)) {
+      r.documento = documento; // ← guardar solo si pasa validación
     }
 
     out.push(r);
@@ -74,13 +82,13 @@ function buildPacienteData(body, existing = null) {
     if (data.colegioMail === undefined) delete data.colegioMail;
   }
 
-  // Responsables (1..3, con validaciones)
+  // Responsables (1..3, con validaciones) — incluye documento opcional
   if (body.responsables !== undefined) {
     const resp = sanitizeResponsables(body.responsables);
     if (resp.length) data.responsables = resp;
   }
 
-  // Módulos (valida mongoose)
+  // Módulos (valida mongoose a nivel schema)
   if (Array.isArray(body.modulosAsignados)) {
     data.modulosAsignados = body.modulosAsignados;
   }
@@ -216,7 +224,6 @@ const actualizarPaciente = async (req, res) => {
   }
 };
 
-
 // GET /api/pacientes?limit=20&sort=nombre|created
 const listarPacientes = async (req, res) => {
   try {
@@ -255,7 +262,6 @@ const listarPacientes = async (req, res) => {
     res.status(500).json({ error: 'Error al listar pacientes' });
   }
 };
-
 
 module.exports = {
   listarPacientes,
