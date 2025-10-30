@@ -99,7 +99,6 @@ const populateAsignaciones = (q) =>
 
 // Toma el valor del parámetro de ruta, sea cual sea el nombre
 function getIdParam(req) {
-  // intenta nombres conocidos y, si no, toma el primer valor de params
   const raw =
     req.params.idOrNombre ??
     req.params.id ??
@@ -138,8 +137,9 @@ const crearModulo = async (req, res) => {
     }
 
     const saved = await new Modulo(data).save();
-    await populateAsignaciones(saved);
-    return res.status(201).json(saved);
+    // devolver versión lean para asegurar _id
+    const plain = await Modulo.findById(saved._id).select('_id nombre').lean();
+    return res.status(201).json(plain);
   } catch (error) {
     if (error?.code === 11000) {
       return res.status(409).json({ error: 'Ya existe un módulo con ese nombre.' });
@@ -149,11 +149,19 @@ const crearModulo = async (req, res) => {
   }
 };
 
-// GET /modulos
-const obtenerModulos = async (_req, res) => {
+// GET /modulos  (?lite=1 para solo _id y nombre)
+const obtenerModulos = async (req, res) => {
   try {
-    const modulos = await populateAsignaciones(Modulo.find().sort({ nombre: 1 }));
-    return res.json(modulos);
+    const lite = String(req.query.lite || '').trim() === '1';
+    if (lite) {
+      const list = await Modulo.find().select('_id nombre').sort({ nombre: 1 }).lean();
+      return res.json(list);
+    }
+    // completo, pero evitando que se pierda _id: usar lean()
+    const modulos = await populateAsignaciones(
+      Modulo.find().sort({ nombre: 1 }).lean()
+    );
+    return res.json(await modulos);
   } catch (error) {
     console.error('❌ obtenerModulos:', error);
     return res.status(500).json({ error: 'Error al obtener módulos' });
@@ -175,14 +183,12 @@ const buscarModulos = async (req, res) => {
     );
 
     const docs = await Modulo.find({ nombre: { $regex: regex } })
+      .select('_id nombre')
       .sort({ nombre: 1 })
-      .limit(10);
+      .limit(10)
+      .lean();
 
-    const full = await populateAsignaciones(
-      Modulo.find({ _id: { $in: docs.map(d => d._id) } }).sort({ nombre: 1 })
-    );
-
-    return res.json(await full);
+    return res.json(docs);
   } catch (error) {
     console.error('❌ buscarModulos:', error);
     return res.status(500).json({ error: 'Error en la búsqueda de módulos' });
@@ -198,7 +204,9 @@ const obtenerModulo = async (req, res) => {
     const moduloBase = await findByIdOrNombre(idParam);
     if (!moduloBase) return res.status(404).json({ error: 'Módulo no encontrado' });
 
-    const modulo = await populateAsignaciones(Modulo.findById(moduloBase._id));
+    const modulo = await populateAsignaciones(
+      Modulo.findById(moduloBase._id).lean()
+    );
     return res.json(await modulo);
   } catch (error) {
     console.error('❌ obtenerModulo:', error);
@@ -231,8 +239,10 @@ const actualizarModulo = async (req, res) => {
       return res.status(400).json({ error: 'El campo "nombre" no puede quedar vacío.' });
     }
 
+    await Modulo.findByIdAndUpdate(current._id, { $set }, { new: false });
+
     const moduloActualizado = await populateAsignaciones(
-      Modulo.findByIdAndUpdate(current._id, { $set }, { new: true })
+      Modulo.findById(current._id).lean()
     );
 
     return res.json({ mensaje: 'Módulo actualizado correctamente', modulo: await moduloActualizado });
@@ -270,3 +280,4 @@ module.exports = {
   actualizarModulo,
   eliminarModulo,
 };
+
