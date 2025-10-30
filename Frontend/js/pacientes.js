@@ -31,7 +31,7 @@ document.getElementById("busquedaInput").addEventListener("input", async () => {
 
 
 // ─────────────────────────────────────────────────────────────────────────────
-// RENDER FICHA
+// RENDER FICHA (solo muestra RESUMEN DE ESTADOS; se quitó el historial detallado)
 // ─────────────────────────────────────────────────────────────────────────────
 async function renderFichaPaciente(p) {
 
@@ -121,18 +121,17 @@ async function renderFichaPaciente(p) {
     return String(cp);
   };
 
-  // ── INFO DE ESTADOS: creado (En espera), Alta, Baja ────────────────────────
+  // ── RESUMEN: creado (En espera), Alta, Baja ───────────────────────────────
   function buildEstadoResumen() {
     const hist = Array.isArray(p.estadoHistorial) ? [...p.estadoHistorial].filter(h => h && h.fecha) : [];
-    hist.sort((a,b) => new Date(a.fecha) - new Date(b.fecha)); // ascendente
+    hist.sort((a,b) => new Date(a.fecha) - new Date(b.fecha)); // asc
 
-    // creado/en espera: primero que deje el estado en "En espera" o fallback a creadoPor
+    // creado/en espera
     let creado = null;
     for (const h of hist) {
-      const to = (h.estadoNuevo ?? h.hasta ?? h.estado ?? "").toLowerCase();
+      const to = (h.estadoNuevo ?? h.estado ?? "").toLowerCase();
       if (to === "en espera") {
         creado = {
-          estado: "En espera",
           actor: userLabel(h.cambiadoPor),
           fecha: h.fecha,
           obs:   h.descripcion || ""
@@ -142,7 +141,6 @@ async function renderFichaPaciente(p) {
     }
     if (!creado && (p.creadoPor || p.createdBy || p.creadoPorId || p.createdAt || p.fechaCreacion)) {
       creado = {
-        estado: "En espera",
         actor: userLabel(p.creadoPor || p.createdBy || p.creadoPorId),
         fecha: p.createdAt || p.fechaCreacion || p.creadoEl || "",
         obs:   p.observacionCreacion || ""
@@ -153,14 +151,9 @@ async function renderFichaPaciente(p) {
     let alta = null;
     for (let i = hist.length - 1; i >= 0; i--) {
       const h = hist[i];
-      const to = (h.estadoNuevo ?? h.hasta ?? h.estado ?? "").toLowerCase();
+      const to = (h.estadoNuevo ?? h.estado ?? "").toLowerCase();
       if (to === "alta") {
-        alta = {
-          estado: "Alta",
-          actor: userLabel(h.cambiadoPor),
-          fecha: h.fecha,
-          obs:   h.descripcion || ""
-        };
+        alta = { actor: userLabel(h.cambiadoPor), fecha: h.fecha, obs: h.descripcion || "" };
         break;
       }
     }
@@ -169,14 +162,9 @@ async function renderFichaPaciente(p) {
     let baja = null;
     for (let i = hist.length - 1; i >= 0; i--) {
       const h = hist[i];
-      const to = (h.estadoNuevo ?? h.hasta ?? h.estado ?? "").toLowerCase();
+      const to = (h.estadoNuevo ?? h.estado ?? "").toLowerCase();
       if (to === "baja") {
-        baja = {
-          estado: "Baja",
-          actor: userLabel(h.cambiadoPor),
-          fecha: h.fecha,
-          obs:   h.descripcion || ""
-        };
+        baja = { actor: userLabel(h.cambiadoPor), fecha: h.fecha, obs: h.descripcion || "" };
         break;
       }
     }
@@ -220,9 +208,7 @@ async function renderFichaPaciente(p) {
                 </ul>`
               : "";
 
-            // si NO hay moduloId y tampoco un nombre real, no mostramos
             if (!m.moduloId && nombreSeguro === "Módulo") return "";
-
             return `<li>${nombreSeguro} - Cantidad: ${cant}${det}</li>`;
           })
           .filter(Boolean);
@@ -269,36 +255,6 @@ async function renderFichaPaciente(p) {
     return `<ul style="margin:5px 0; padding-left:20px;">${mpLinea}${tutorLinea}</ul>`;
   })();
 
-  // ── HISTORIAL COMPLETO (lista) ────────────────────────────────────────────
-  const historialHTML = (() => {
-    const hist = Array.isArray(p.estadoHistorial) ? p.estadoHistorial.slice() : [];
-    if (!hist.length) return "<em>Sin movimientos</em>";
-
-    hist.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
-
-    let prevEstado = null;
-    const items = hist.map((h, idx) => {
-      const from = (h.estadoAnterior ?? h.desde ?? (idx === 0 ? "—" : prevEstado ?? "—"));
-      const to   = (h.estadoNuevo ?? h.hasta ?? h.estado ?? "—");
-      prevEstado = to;
-
-      const actor = userLabel(h.cambiadoPor);
-      const actorHTML = actor ? ` — <em style="color:#666;">por ${actor}</em>` : "";
-      const descHTML  = h.descripcion ? ` — <span style="color:#555;">${h.descripcion}</span>` : "";
-      const fechaHTML = ` <span style="color:#777;">(${fmtDateTime(h.fecha)})</span>`;
-
-      return `<li><strong>${from}</strong> → <strong>${to}</strong>${fechaHTML}${actorHTML}${descHTML}</li>`;
-    });
-
-    items.reverse();
-
-    return `
-      <ul style="margin:6px 0 0 14px; padding-left:6px; list-style: disc;">
-        ${items.join("")}
-      </ul>
-    `;
-  })();
-
   // ── RENDER ────────────────────────────────────────────────────────────────
   container.innerHTML = `
     <div class="ficha-paciente">
@@ -320,11 +276,6 @@ async function renderFichaPaciente(p) {
             ? `<p><strong>Fecha de baja:</strong> ${p.fechaBaja ?? "-"}</p>
                <p><strong>Motivo de baja:</strong> ${p.motivoBaja ?? "-"}</p>`
             : ""}
-
-          <div style="margin-top:8px;">
-            <h4 style="margin:0 0 4px 0;">Historial de estado</h4>
-            ${historialHTML}
-          </div>
         </div>
 
         <div class="ficha-bloque">
