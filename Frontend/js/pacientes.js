@@ -257,39 +257,77 @@ async function renderFichaPaciente(p) {
 
 
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MODIFICAR PACIENTE
-// ─────────────────────────────────────────────────────────────────────────────
 async function modificarPaciente(dni) {
   try {
-    // ← antes: apiFetch(...) devolvía Response
+    // Auth headers
+    const getAuthHeaders = () => {
+      const token =
+        localStorage.getItem("token") ||
+        sessionStorage.getItem("token") ||
+        "";
+      return token
+        ? { Authorization: `Bearer ${token}`, "x-access-token": token }
+        : {};
+    };
+
+    // Helper JSON con auth de tu app
+    async function apiFetchJson(path, init = {}) {
+      const res = await fetch(`/api${path}`, {
+        ...init,
+        headers: {
+          "Content-Type": "application/json",
+          ...(init.headers || {}),
+          ...getAuthHeaders(),
+        },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    }
+
+    const escapeHTML = (s) =>
+      String(s ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+
+    // Paciente
     const p = await apiFetchJson(`/pacientes/${dni}`);
 
     // Catálogos
     let MODULOS = [], AREAS = [], USUARIOS = [];
     try {
       const [m, a, u] = await Promise.all([
-        apiFetchJson(`/modulos`),   // ← antes: apiFetch
-        apiFetchJson(`/areas`),     // ← antes: apiFetch
-        apiFetchJson(`/usuarios`),  // ← antes: fetch('/api/usuarios')
+        apiFetchJson(`/modulos`),
+        apiFetchJson(`/areas`),
+        apiFetchJson(`/usuarios`),
       ]);
-      MODULOS = Array.isArray(m) ? m : [];
-      AREAS = Array.isArray(a) ? a : [];
+      MODULOS  = Array.isArray(m) ? m : [];
+      AREAS    = Array.isArray(a) ? a : [];
       USUARIOS = Array.isArray(u) ? u : [];
-    } catch (_) {
-      // deja arrays vacíos si algo falla
-    }
+    } catch (_) {}
 
+    // ▼ FIX: usar m.nombre (no m.numero)
     const MOD_OPTS = MODULOS.length
-      ? MODULOS.map(m => `<option value="${m._id}">Módulo ${m.numero}</option>`).join("")
+      ? MODULOS
+          .sort((x, y) => (x?.nombre || "").localeCompare(y?.nombre || "", "es"))
+          .map(m => `<option value="${m._id}">Módulo ${escapeHTML(m.nombre)}</option>`)
+          .join("")
       : `<option value="">No disponible</option>`;
 
     const AREA_OPTS = AREAS.length
-      ? AREAS.map(a => `<option value="${a._id}">${a.nombre}</option>`).join("")
+      ? AREAS.map(a => `<option value="${a._id}">${escapeHTML(a.nombre)}</option>`).join("")
       : `<option value="">No disponible</option>`;
 
     // helpers filtro profesionales
-    const norm = (s) => (s ?? "").toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+    const norm = (s) => (s ?? "")
+      .toString()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+
     const HEX24 = /^[a-f0-9]{24}$/i;
     const AREA_ID_TO_NAME_NORM = new Map();
     AREAS.forEach(a => AREA_ID_TO_NAME_NORM.set(String(a._id), norm(a.nombre)));
@@ -323,10 +361,10 @@ async function modificarPaciente(dni) {
 
       if (!lista.length) return `<option value="">Sin profesionales para el área</option>`;
       return `<option value="">-- Seleccionar --</option>` +
-        lista.map(u => `<option value="${u._id}">${u.nombreApellido || u.nombre || u.usuario}</option>`).join("");
+        lista.map(u => `<option value="${u._id}">${escapeHTML(u.nombreApellido || u.nombre || u.usuario)}</option>`).join("");
     };
 
-    // template módulo — SOLO cambia este select de cantidad
+    // template módulo
     const renderModuloSelect = (index) => `
       <div class="modulo-row" data-index="${index}"
            style="margin-bottom:15px; padding:10px; border:1px solid #ddd; border-radius:6px;">
@@ -372,23 +410,23 @@ async function modificarPaciente(dni) {
     // responsables iniciales
     const responsablesIniciales = Array.isArray(p.responsables) && p.responsables.length
       ? p.responsables.slice(0, 3).map(r => ({
-        relacion: r.relacion, nombre: r.nombre, whatsapp: r.whatsapp, email: r.email || ""
-      }))
+          relacion: r.relacion, nombre: r.nombre, whatsapp: r.whatsapp, email: r.email || ""
+        }))
       : (() => {
-        const arr = [];
-        if (p.tutor?.nombre && p.tutor?.whatsapp) {
-          arr.push({ relacion: 'tutor', nombre: p.tutor.nombre, whatsapp: p.tutor.whatsapp, email: "" });
-        }
-        if (p.madrePadre) {
-          arr.push({
-            relacion: /madre/i.test(p.madrePadre) ? 'madre' : 'padre',
-            nombre: String(p.madrePadre).replace(/^(madre|padre)\s*:\s*/i, '').trim(),
-            whatsapp: p.whatsappMadrePadre || '',
-            email: ""
-          });
-        }
-        return arr.slice(0, 3);
-      })();
+          const arr = [];
+          if (p.tutor?.nombre && p.tutor?.whatsapp) {
+            arr.push({ relacion: 'tutor', nombre: p.tutor.nombre, whatsapp: p.tutor.whatsapp, email: "" });
+          }
+          if (p.madrePadre) {
+            arr.push({
+              relacion: /madre/i.test(p.madrePadre) ? 'madre' : 'padre',
+              nombre: String(p.madrePadre).replace(/^(madre|padre)\s*:\s*/i, '').trim(),
+              whatsapp: p.whatsappMadrePadre || '',
+              email: ""
+            });
+          }
+          return arr.slice(0, 3);
+        })();
 
     // modal
     const { isConfirmed, value: data } = await Swal.fire({
@@ -715,13 +753,13 @@ async function modificarPaciente(dni) {
     // PUT (config.js mete Authorization y reescribe /api)
     const putRes = await fetch(`/api/pacientes/${dni}`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
       body: JSON.stringify(data)
     });
 
     if (!putRes.ok) {
       let msg = "Error al guardar";
-      try { const j = await putRes.json(); msg = j?.error || msg; } catch { }
+      try { const j = await putRes.json(); msg = j?.error || msg; } catch {}
       if (putRes.status === 401) msg = 'Token requerido o inválido. Iniciá sesión nuevamente.';
       throw new Error(msg);
     }
@@ -758,7 +796,7 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
       <form id="formNuevoPaciente" class="formulario-paciente">
         <div class="grid-form">
           <div class="columna">
-            <label>Nombre y Apellido:</label>
+            <label>Apellido y Nombre:</label>
             <input id="nombre" class="swal2-input">
             <label>DNI:</label>
             <input id="dni" class="swal2-input">
