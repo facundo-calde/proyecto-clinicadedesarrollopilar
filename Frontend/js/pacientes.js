@@ -282,7 +282,7 @@ async function modificarPaciente(dni) {
       ? AREAS.map(a => `<option value="${a._id}">${a.nombre}</option>`).join("")
       : `<option value="">No disponible</option>`;
 
-    // ---- Helpers de filtro por área/rol ----
+    // ---- Helpers de filtro por área/rol (reforzados) ----
     const norm = (s) => (s ?? "").toString()
       .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
       .toLowerCase().trim();
@@ -291,7 +291,18 @@ async function modificarPaciente(dni) {
     const AREA_ID_TO_NAME_NORM = new Map();
     AREAS.forEach(a => AREA_ID_TO_NAME_NORM.set(String(a._id), norm(a.nombre)));
 
-    // 👇 roles habilitados para asignar en un plan
+    // Normalización de roles (acepta variaciones)
+    function normalizeRole(r) {
+      const x = norm(r);
+      if (!x) return "";
+      if (x.includes("directora")) return "directoras";
+      if (x.includes("coordinador") && x.includes("profes")) return "coordinador y profesional";
+      if (x.includes("coordinador") && (x.includes("area") || x.includes("área"))) return "coordinador de área";
+      if (x.startsWith("pasant")) return "pasante";
+      if (x.startsWith("profes")) return "profesional";
+      return x; // fallback
+    }
+
     const ROLES_ASIGNABLES = new Set([
       "profesional",
       "coordinador y profesional",
@@ -300,67 +311,84 @@ async function modificarPaciente(dni) {
       "pasante",
     ]);
 
-    // Devuelve <option>... de usuarios válidos para el área dada
+    // Extrae todos los roles posibles de un usuario
+    function userRoles(u) {
+      const out = new Set();
+      if (u.rol) out.add(normalizeRole(u.rol));
+      if (u.rolAsignado) out.add(normalizeRole(u.rolAsignado));
+      if (Array.isArray(u.roles)) for (const rr of u.roles) out.add(normalizeRole(rr));
+      return new Set([...out].filter(Boolean));
+    }
+
+    // Matcheo flexible de área (id o nombre, objetos o strings)
+    function matchAreaEntry(entry, targetId, targetNameNorm) {
+      if (!entry) return false;
+
+      if (typeof entry === "string") {
+        const s = entry.trim();
+        if (!s) return false;
+        if (HEX24.test(s) && s === targetId) return true;
+        return norm(s) === targetNameNorm;
+      }
+
+      const idCandidates = [
+        entry._id, entry.id, entry.areaId,
+        entry.area?._id, entry.area?.id
+      ].filter(Boolean).map(String);
+      if (idCandidates.some(x => x === targetId)) return true;
+
+      const nameCandidates = [
+        entry.areaNombre, entry.nombre, entry.name, entry.area,
+        entry.area?.nombre, entry.area?.name
+      ].filter(Boolean).map(norm);
+
+      return nameCandidates.some(n => n === targetNameNorm);
+    }
+
+    function userBelongsToArea(u, targetId) {
+      const targetNameNorm = AREA_ID_TO_NAME_NORM.get(String(targetId)) || "";
+
+      // Detallados
+      if (Array.isArray(u.areasProfesional) && u.areasProfesional.some(e => matchAreaEntry(e, String(targetId), targetNameNorm))) return true;
+      if (Array.isArray(u.areasCoordinadas) && u.areasCoordinadas.some(e => matchAreaEntry(e, String(targetId), targetNameNorm))) return true;
+      if (Array.isArray(u.areasProfesionalDetalladas) && u.areasProfesionalDetalladas.some(e => matchAreaEntry(e, String(targetId), targetNameNorm))) return true;
+      if (Array.isArray(u.areasCoordinadasDetalladas) && u.areasCoordinadasDetalladas.some(e => matchAreaEntry(e, String(targetId), targetNameNorm))) return true;
+
+      // Mixto legacy
+      if (Array.isArray(u.areas) && u.areas.some(e => matchAreaEntry(e, String(targetId), targetNameNorm))) return true;
+
+      // Campos sueltos
+      if (u.area && matchAreaEntry(u.area, String(targetId), targetNameNorm)) return true;
+      if (u.areaNombre && matchAreaEntry(u.areaNombre, String(targetId), targetNameNorm)) return true;
+
+      // Pasantes
+      if ([...userRoles(u)].includes("pasante") && u.pasanteArea && matchAreaEntry(u.pasanteArea, String(targetId), targetNameNorm)) return true;
+
+      return false;
+    }
+
+    // Devuelve <option>... de usuarios válidos para el área dada, con etiqueta de rol
     const profesionalesDeArea = (areaId) => {
-      const targetNameNorm = AREA_ID_TO_NAME_NORM.get(String(areaId)) || "";
-
+      const selId = String(areaId || "");
       const lista = (USUARIOS || [])
-        .filter(u => ROLES_ASIGNABLES.has(norm(u.rol || u.rolAsignado)))
         .filter(u => {
-          const rol = norm(u.rol || u.rolAsignado || "");
-
-          // Directoras: no se filtra por área, siempre disponibles
-          if (rol === "directoras") return true;
-
-          // Si no hay área elegida, no filtramos por área
-          if (!areaId) return true;
-
-          // Profesional / Coord. y profesional -> mirar areasProfesional o legacy areas
-          if (rol === "profesional" || rol === "coordinador y profesional") {
-            if (Array.isArray(u.areasProfesional)) {
-              for (const ap of u.areasProfesional) {
-                if (norm(ap?.areaNombre) === targetNameNorm) return true;
-              }
-            }
-          }
-
-          // Coordinador de área -> mirar areasCoordinadas
-          if (rol === "coordinador de área") {
-            if (Array.isArray(u.areasCoordinadas)) {
-              for (const ac of u.areasCoordinadas) {
-                if (norm(ac?.areaNombre) === targetNameNorm) return true;
-              }
-            }
-          }
-
-          // Pasante -> mirar pasanteArea.areaNombre
-          if (rol === "pasante") {
-            const a = u.pasanteArea;
-            const nombre = typeof a === "string" ? a : (a?.areaNombre || "");
-            if (norm(nombre) === targetNameNorm) return true;
-          }
-
-          // Legacy: u.areas puede tener nombres o {_id,nombre}
-          const arr = Array.isArray(u.areas) ? u.areas : [];
-          for (const it of arr) {
-            const idCandidate   = typeof it === "object" ? it._id    : it;
-            const nameCandidate = typeof it === "object" ? it.nombre : it;
-
-            if (HEX24.test(String(idCandidate || ""))) {
-              const n = AREA_ID_TO_NAME_NORM.get(String(idCandidate));
-              if (n && n === targetNameNorm) return true;
-            }
-            if (norm(nameCandidate) === targetNameNorm) return true;
-          }
-
-          return false;
-        });
+          const roles = userRoles(u);
+          if (![...roles].some(r => ROLES_ASIGNABLES.has(r))) return false;
+          if (roles.has("directoras")) return true;       // directoras siempre visibles
+          if (!selId) return true;                        // si no hay área aún, mostrar
+          return userBelongsToArea(u, selId);
+        })
+        .sort((a, b) => (a.nombreApellido || "").localeCompare(b.nombreApellido || "", "es"));
 
       if (!lista.length) return `<option value="">Sin usuarios para el área</option>`;
       return `<option value="">-- Seleccionar --</option>` +
-        lista.map(u =>
-          `<option value="${u._id}">${u.nombreApellido || u.nombre || u.usuario}</option>`
-        ).join("");
+        lista.map(u => {
+          const roles = [...userRoles(u)].filter(r => ROLES_ASIGNABLES.has(r));
+          const rolMostrar = roles.includes("directoras") ? "Directora" : (roles[0] || (u.rol || ""));
+          return `<option value="${u._id}">
+                    ${u.nombreApellido || u.nombre || u.usuario} — ${rolMostrar}
+                  </option>`;
+        }).join("");
     };
 
     // ---- Template de cada bloque de módulo ----
@@ -406,22 +434,27 @@ async function modificarPaciente(dni) {
       </div>
     `;
 
-    // ---- Responsables iniciales (como ya tenías) ----
+    // ---- Responsables iniciales (ahora con documento opcional) ----
     const responsablesIniciales = Array.isArray(p.responsables) && p.responsables.length
       ? p.responsables.slice(0, 3).map(r => ({
-          relacion: r.relacion, nombre: r.nombre, whatsapp: r.whatsapp, email: r.email || ""
+          relacion: r.relacion,
+          nombre: r.nombre,
+          whatsapp: r.whatsapp,
+          email: r.email || "",
+          documento: r.documento || ""
         }))
       : (() => {
           const arr = [];
           if (p.tutor?.nombre && p.tutor?.whatsapp) {
-            arr.push({ relacion: 'tutor', nombre: p.tutor.nombre, whatsapp: p.tutor.whatsapp, email: "" });
+            arr.push({ relacion: 'tutor', nombre: p.tutor.nombre, whatsapp: p.tutor.whatsapp, email: "", documento: "" });
           }
           if (p.madrePadre) {
             arr.push({
               relacion: /madre/i.test(p.madrePadre) ? 'madre' : 'padre',
               nombre: String(p.madrePadre).replace(/^(madre|padre)\s*:\s*/i, '').trim(),
               whatsapp: p.whatsappMadrePadre || '',
-              email: ""
+              email: "",
+              documento: ""
             });
           }
           return arr.slice(0, 3);
@@ -514,15 +547,15 @@ async function modificarPaciente(dni) {
 
         // desc estado
         const estadoSel = document.getElementById("estado");
-        const estadoDescWrap = document.getElementById("estadoDescWrap");
+        theEstadoDescWrap = document.getElementById("estadoDescWrap"); // keep existing var name context
         const estadoInicial = p.estado || "En espera";
         const toggleDesc = () => {
-          estadoDescWrap.style.display = (estadoSel.value !== estadoInicial) ? "block" : "none";
+          theEstadoDescWrap.style.display = (estadoSel.value !== estadoInicial) ? "block" : "none";
         };
         estadoSel.addEventListener("change", toggleDesc);
         toggleDesc();
 
-        // responsables
+        // responsables (con Documento opcional)
         const cont = document.getElementById("responsablesContainer");
         const btnAdd = document.getElementById("btnAgregarResponsable");
         const relaciones = ['padre', 'madre', 'tutor'];
@@ -531,19 +564,20 @@ async function modificarPaciente(dni) {
             .concat(relaciones.map(r => `<option value="${r}" ${r === sel ? 'selected' : ''}>${r[0].toUpperCase() + r.slice(1)}</option>`))
             .join('');
         let idx = 0;
-        const addRespRow = (preset = { relacion: 'tutor', nombre: '', email: '', whatsapp: '' }) => {
+        const addRespRow = (preset = { relacion: 'tutor', nombre: '', email: '', whatsapp: '', documento: '' }) => {
           const filas = cont.querySelectorAll('.responsable-row').length;
           if (filas >= 3) return;
           const rowId = `resp-${idx++}`;
           const html = `
             <div class="responsable-row" id="${rowId}" style="border:1px solid #ddd; border-radius:8px; padding:8px; margin:8px 0;">
-              <div style="display:grid; grid-template-columns: 140px 1fr 1fr 1fr 40px; gap:10px; align-items:center;">
+              <div style="display:grid; grid-template-columns: 140px 1fr 1fr 1fr 1fr 40px; gap:10px; align-items:center;">
                 <select class="swal2-select resp-relacion" style="margin:0;height:40px;">
                   ${makeRelacionOptions(preset.relacion || '')}
                 </select>
                 <input class="swal2-input resp-nombre" placeholder="Nombre" value="${preset.nombre || ''}" style="margin:0;height:40px;">
-                <input class="swal2-input resp-email" type="email" placeholder="Email (opcional)" value="${preset.email || ''}" style="margin:0;height:40px;">
                 <input class="swal2-input resp-whatsapp" placeholder="Whatsapp (solo dígitos)" value="${preset.whatsapp || ''}" style="margin:0;height:40px;">
+                <input class="swal2-input resp-documento" placeholder="Documento (DNI/CUIT)" value="${preset.documento || ''}" style="margin:0;height:40px;">
+                <input class="swal2-input resp-email" type="email" placeholder="Email (opcional)" value="${preset.email || ''}" style="margin:0;height:40px;">
                 <button type="button" class="swal2-cancel swal2-styled btn-remove" title="Quitar"
                         style="width:36px;height:36px;margin:0;padding:0;line-height:1;display:flex;align-items:center;justify-content:center;">✕</button>
               </div>
@@ -683,6 +717,7 @@ async function modificarPaciente(dni) {
           const nombreR = (row.querySelector('.resp-nombre')?.value || "").trim();
           const emailR = (row.querySelector('.resp-email')?.value || "").trim().toLowerCase();
           const whatsapp = (row.querySelector('.resp-whatsapp')?.value || "").trim();
+          const documento = (row.querySelector('.resp-documento')?.value || "").trim(); // opcional
 
           if (!relacion || !nombreR || !whatsapp) {
             Swal.showValidationMessage("⚠️ Completá relación, nombre y WhatsApp en cada responsable.");
@@ -698,6 +733,7 @@ async function modificarPaciente(dni) {
           }
 
           const r = { relacion, nombre: nombreR, whatsapp };
+          if (documento) r.documento = documento;
           if (emailR) r.email = emailR;
           responsables.push(r);
         }
@@ -767,6 +803,7 @@ async function modificarPaciente(dni) {
     Swal.fire("❌ Error al cargar/modificar paciente", err.message || "", "error");
   }
 }
+
 
 
 
