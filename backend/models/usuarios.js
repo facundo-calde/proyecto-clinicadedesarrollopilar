@@ -38,7 +38,7 @@ const areaCoordinadaSchema = new mongoose.Schema({
   areaNombre: { type: String }
 }, { _id: false });
 
-// 👇 Nuevo: área para Pasante (una sola)
+// 👇 Área para Pasante (una sola)
 const pasanteAreaSchema = new mongoose.Schema({
   areaId:     { type: mongoose.Schema.Types.ObjectId, ref: 'Area' },
   areaNombre: { type: String }
@@ -91,8 +91,8 @@ const usuarioSchema = new mongoose.Schema({
   seguroMalaPraxis: String,
 
   // 👇 Para Pasante: nivel + área
-  pasanteNivel: { type: String, enum: NIVELES_PRO, default: undefined }, // <— renombrado para alinear con frontend
-  pasanteArea:  { type: pasanteAreaSchema, default: undefined },         // <— NUEVO
+  pasanteNivel: { type: String, enum: NIVELES_PRO, default: undefined },
+  pasanteArea:  { type: pasanteAreaSchema, default: undefined },
 
   usuario: {
     type: String,
@@ -132,11 +132,12 @@ usuarioSchema.pre('validate', function (next) {
         }
       }
     }
-    // Seguro NO obligatorio
+    // Seguro NO obligatorio, y pasante exclusivo
     this.pasanteNivel = undefined;
     this.pasanteArea  = undefined;
   } else {
-    this.areasProfesional = [];
+    // ✅ No borramos areasProfesional para permitir áreas opcionales en otros roles
+    // Si querés reservar el seguro para roles con parte profesional, lo limpiamos:
     this.seguroMalaPraxis = undefined;
   }
 
@@ -145,10 +146,11 @@ usuarioSchema.pre('validate', function (next) {
     if (!Array.isArray(this.areasCoordinadas) || this.areasCoordinadas.length === 0) {
       this.invalidate('areasCoordinadas', 'Debe tener al menos un área para coordinación');
     }
+    // Pasante exclusivo
     this.pasanteNivel = undefined;
     this.pasanteArea  = undefined;
   } else {
-    this.areasCoordinadas = [];
+    // ✅ No borramos areasCoordinadas para permitir áreas opcionales en otros roles
   }
 
   // Pasante: requiere nivel + área (id o nombre)
@@ -161,11 +163,12 @@ usuarioSchema.pre('validate', function (next) {
     if (!tieneArea) {
       this.invalidate('pasanteArea', 'El rol Pasante requiere asignar un área');
     }
-    // No usa profesional/coord ni seguro
+    // Exclusividad de pasante: no usar profesional/coord ni seguro
     this.areasProfesional = [];
     this.areasCoordinadas = [];
     this.seguroMalaPraxis = undefined;
   } else {
+    // Si NO es pasante, vaciar campos exclusivos de pasante
     this.pasanteNivel = undefined;
     this.pasanteArea  = undefined;
   }
@@ -178,7 +181,7 @@ usuarioSchema.pre('save', function (next) {
   const nombres = new Set();
   (this.areasProfesional || []).forEach(a => { if (a?.areaNombre) nombres.add(a.areaNombre); });
   (this.areasCoordinadas || []).forEach(a => { if (a?.areaNombre) nombres.add(a.areaNombre); });
-  if (this.pasanteArea?.areaNombre) nombres.add(this.pasanteArea.areaNombre); // <— incluir Pasante
+  if (this.pasanteArea?.areaNombre) nombres.add(this.pasanteArea.areaNombre); // incluir Pasante
   this.areas = Array.from(nombres);
   next();
 });
@@ -189,3 +192,4 @@ Usuario.ROLES = ROLES;
 Usuario.NIVELES_PRO = NIVELES_PRO;
 
 module.exports = Usuario;
+

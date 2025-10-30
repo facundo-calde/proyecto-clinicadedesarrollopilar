@@ -78,20 +78,27 @@ function normalizeBody(body) {
     try { return JSON.parse(v); } catch { return v; }
   };
 
-  body.areasProfesional = _parse(body.areasProfesional);
-  body.areasCoordinadas = _parse(body.areasCoordinadas);
-  if (body.areasProfesional == null || body.areasProfesional === "") body.areasProfesional = [];
-  if (body.areasCoordinadas == null || body.areasCoordinadas === "") body.areasCoordinadas = [];
+  // ✅ No forzar []: si no viene, dejar undefined para NO pisar en PUT
+  if (Object.prototype.hasOwnProperty.call(body, "areasProfesional")) {
+    const ap = _parse(body.areasProfesional);
+    body.areasProfesional = (ap === "" ? undefined : ap);
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "areasCoordinadas")) {
+    const ac = _parse(body.areasCoordinadas);
+    body.areasCoordinadas = (ac === "" ? undefined : ac);
+  }
 
   // PASANTE: puede venir como JSON string, string plano u objeto
-  let pa = _parse(body.pasanteArea);
-  if (pa == null || pa === "" || (typeof pa === "object" && Object.keys(pa).length === 0)) {
-    body.pasanteArea = undefined;
-  } else if (typeof pa === "string") {
-    body.pasanteArea = { areaNombre: pa.trim() };
-  } else if (typeof pa === "object") {
-    const areaNombre = (pa.areaNombre || pa.area || pa.nombre || "").toString().trim();
-    body.pasanteArea = areaNombre ? { areaNombre } : undefined;
+  if (Object.prototype.hasOwnProperty.call(body, "pasanteArea")) {
+    let pa = _parse(body.pasanteArea);
+    if (pa == null || pa === "" || (typeof pa === "object" && Object.keys(pa).length === 0)) {
+      body.pasanteArea = undefined;
+    } else if (typeof pa === "string") {
+      body.pasanteArea = { areaNombre: pa.trim() };
+    } else if (typeof pa === "object") {
+      const areaNombre = (pa.areaNombre || pa.area || pa.nombre || "").toString().trim();
+      body.pasanteArea = areaNombre ? { areaNombre } : undefined;
+    }
   }
 
   [
@@ -114,11 +121,6 @@ function normalizeBody(body) {
   if (body.usuario) body.usuario = body.usuario.toLowerCase();
   if (body.mail)    body.mail    = body.mail.toLowerCase();
 
-  // alias front → schema
-  if (Object.prototype.hasOwnProperty.call(body, "pasanteNivel")) {
-    body.nivelPasante = body.pasanteNivel || undefined;
-  }
-
   // Limpieza de números por si vienen con $ . , de la UI
   const onlyDigits = s => (typeof s === "string" ? s.replace(/\D+/g, "") : s);
   if (body.salarioAcuerdo) body.salarioAcuerdo = onlyDigits(body.salarioAcuerdo);
@@ -127,34 +129,34 @@ function normalizeBody(body) {
   return body;
 }
 
-// Reglas por rol
+// Reglas por rol (versión A: permitir áreas opcionales en cualquier rol salvo exclusividad de Pasante)
 function applyRoleCleaning(rol, body, currentDoc = null) {
-  if (body.pasanteNivel && !body.nivelPasante) {
-    body.nivelPasante = body.pasanteNivel;
-  }
-
   const esProfesional = rol === "Profesional" || rol === "Coordinador y profesional";
   const esCoordinador = rol === "Coordinador de área" || rol === "Coordinador y profesional";
   const esPasante     = rol === "Pasante";
 
+  // Seguro: solo tiene sentido para roles con parte profesional; si no, borramos
   if (!esProfesional) body.seguroMalaPraxis = undefined;
 
   if (esPasante) {
+    // Exclusivo: Pasante NO usa áreas profesional/coordinadas
     body.areasProfesional = [];
     body.areasCoordinadas = [];
-    // mantener pasanteArea/nivelPasante
+    // mantener pasanteNivel/pasanteArea tal como vengan
   } else {
-    if (!esProfesional) body.areasProfesional = [];
-    if (!esCoordinador) body.areasCoordinadas = [];
-    body.pasanteArea = undefined;
-    body.nivelPasante = undefined;
+    // ✅ No borrar áreas en otros roles (permitir opcional)
+    // Si el cliente no mandó estas claves en PUT, las preservamos abajo con currentDoc.
+    // Campos exclusivos de pasante: fuera de pasante, limpiar
+    body.pasanteArea  = undefined;
+    body.pasanteNivel = undefined;
   }
 
+  // Preservar en PUT si no vino el campo (no pisar con undefined)
   if (currentDoc) {
-    if (!Array.isArray(body.areasProfesional) && currentDoc.areasProfesional) {
+    if (!Object.prototype.hasOwnProperty.call(body, "areasProfesional")) {
       body.areasProfesional = currentDoc.areasProfesional;
     }
-    if (!Array.isArray(body.areasCoordinadas) && currentDoc.areasCoordinadas) {
+    if (!Object.prototype.hasOwnProperty.call(body, "areasCoordinadas")) {
       body.areasCoordinadas = currentDoc.areasCoordinadas;
     }
   }
@@ -286,7 +288,8 @@ exports.crearUsuario = async (req, res) => {
 
     return res.status(201).json({
       ...nuevoObj,
-      pasanteNivel: nuevoObj.nivelPasante,
+      // usar el mismo nombre que en schema
+      pasanteNivel: nuevoObj.pasanteNivel,
       documentos: mapDocsForView(nuevoObj.documentos),
       areasProfesionalDetalladas: buildAreasDetalladas(nuevoObj, "Profesional"),
       areasCoordinadasDetalladas: buildAreasDetalladas(nuevoObj, "Coordinador")
@@ -303,9 +306,9 @@ exports.obtenerUsuarios = async (_req, res) => {
     const lista = await Usuario.find().select("-contrasena").lean();
     const out = lista.map(u => ({
       ...u,
-      pasanteNivel: u.nivelPasante,
+      pasanteNivel: u.pasanteNivel,
       // Para pasantes es útil un nivel “global”
-      nivelRol: u.rol === "Pasante" ? (u.nivelPasante || "") : "",
+      nivelRol: u.rol === "Pasante" ? (u.pasanteNivel || "") : "",
       documentos: mapDocsForView(u.documentos),
       areasProfesionalDetalladas: buildAreasDetalladas(u, "Profesional"),
       areasCoordinadasDetalladas: buildAreasDetalladas(u, "Coordinador")
@@ -324,7 +327,7 @@ exports.getUsuarioPorId = async (req, res) => {
 
     res.json({
       ...u,
-      pasanteNivel: u.nivelPasante,
+      pasanteNivel: u.pasanteNivel,
       documentos: mapDocsForView(u.documentos),
       areasProfesionalDetalladas: buildAreasDetalladas(u, "Profesional"),
       areasCoordinadasDetalladas: buildAreasDetalladas(u, "Coordinador")
@@ -373,7 +376,7 @@ exports.actualizarUsuario = async (req, res) => {
 
     return res.json({
       ...uObj,
-      pasanteNivel: uObj.nivelPasante,
+      pasanteNivel: uObj.pasanteNivel,
       documentos: mapDocsForView(uObj.documentos),
       areasProfesionalDetalladas: buildAreasDetalladas(uObj, "Profesional"),
       areasCoordinadasDetalladas: buildAreasDetalladas(uObj, "Coordinador")

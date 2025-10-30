@@ -300,7 +300,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         }
         .prefix-wrapper > input{ padding-left:28px; }
 
-        /* ✅ Pasante con mismo layout que Profesional */
+        /* ✅ Pasante exclusivo */
         #pasanteSection{ display:none; grid-column:1 / -1; max-width:100%; }
       </style>
 
@@ -366,9 +366,9 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
               <option value="Área">Área</option>
             </select>
 
-            <!-- Pasante con mismo layout que Profesional -->
+            <!-- Pasante (exclusivo) -->
             <div id="pasanteSection" class="block" style="display:none;">
-              <label><strong>Áreas de pasantía (con nivel):</strong></label>
+              <label><strong>Pasantía (área + nivel):</strong></label>
               <div class="pro-row">
                 <select id="pasanteArea" class="swal2-select pro-area">
                   <option value="">-- Área --</option>
@@ -383,13 +383,15 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
               </div>
             </div>
 
-            <div id="proSection" class="block" style="display:none;">
+            <!-- Áreas profesional (visible para TODOS; obligatorio solo en roles pro) -->
+            <div id="proSection" class="block" style="display:block;">
               <label><strong>Áreas como profesional (con nivel):</strong></label>
               <div id="proList"></div>
               <button type="button" id="btnAddPro" class="mini-btn">+ Agregar área profesional</button>
             </div>
 
-            <div id="coordSection" class="block" style="display:none;">
+            <!-- Áreas coordinación (visible para TODOS; obligatorio solo en roles coord) -->
+            <div id="coordSection" class="block" style="display:block;">
               <label><strong>Áreas como coordinador:</strong></label>
               <div id="coordList"></div>
               <button type="button" id="btnAddCoord" class="mini-btn">+ Agregar área a coordinar</button>
@@ -526,18 +528,29 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
       function syncVisibility() {
         const rol = rolSelect.value;
 
-        proSection.style.display   = ROLES_PROF.has(rol)  ? "block" : "none";
-        coordSection.style.display = ROLES_COORD.has(rol) ? "block" : "none";
+        // Pasante exclusivo: solo su sección
+        if (rol === "Pasante") {
+          pasanteSection.style.display = "block";
+          proSection.style.display     = "none";
+          coordSection.style.display   = "none";
+          labelSeguro.style.display    = "none";
+          inputSeguro.style.display    = "none";
+          return;
+        }
 
-        // Mostrar seguro para profesionales y coordinadores (no obligatorio)
+        // Para TODOS los demás roles: mostrar secciones para poder asignar áreas opcionales
+        pasanteSection.style.display = "none";
+        proSection.style.display     = "block";
+        coordSection.style.display   = "block";
+
+        // Seguro visible solo si es rol con parte profesional o coordinación (no obligatorio)
         const showSeguro = ROLES_PROF.has(rol) || ROLES_COORD.has(rol);
         labelSeguro.style.display = showSeguro ? "block" : "none";
         inputSeguro.style.display = showSeguro ? "block" : "none";
 
-        if (proSection.style.display !== "none" && !proList.querySelector(".pro-row")) addProRow();
-        if (coordSection.style.display !== "none" && !coordList.querySelector(".coord-row")) addCoordRow();
-
-        pasanteSection.style.display = (rol === "Pasante") ? "block" : "none";
+        // Autopre-carga de una fila SOLO si el rol requiere
+        if (ROLES_PROF.has(rol) && !proList.querySelector(".pro-row")) addProRow();
+        if (ROLES_COORD.has(rol) && !coordList.querySelector(".coord-row")) addCoordRow();
       }
       syncVisibility();
 
@@ -653,7 +666,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
       const ROLES_PROF  = new Set(["Profesional", "Coordinador y profesional"]);
       const ROLES_COORD = new Set(["Coordinador de área", "Coordinador y profesional"]);
 
-      // Validaciones por rol
+      // Reglas de obligatoriedad (no cambian)
       if (ROLES_PROF.has(rol) && areasProfesional.length === 0) {
         Swal.showValidationMessage("Agregá al menos un área con nivel para el rol profesional.");
         return false;
@@ -664,17 +677,33 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
       }
       if (rol === "Pasante") {
         const pasanteAreaSel = get("pasanteArea");
+        const pasanteNivel   = get("pasanteNivel");
         if (!pasanteAreaSel) {
           Swal.showValidationMessage("Seleccioná el área a la que pertenece el pasante.");
           return false;
         }
+        if (!pasanteNivel) {
+          Swal.showValidationMessage("Seleccioná el nivel del pasante (Junior/Senior).");
+          return false;
+        }
       }
 
-      const pasanteAreaObj = (() => {
+      // Pasante exclusivo: ignorar datos de pro/coord si llegan
+      let finalAreasProfesional = areasProfesional;
+      let finalAreasCoordinadas = areasCoordinadas;
+      let pasanteAreaObj = undefined;
+      let pasanteNivel   = undefined;
+
+      if (rol === "Pasante") {
+        finalAreasProfesional = [];
+        finalAreasCoordinadas = [];
+        pasanteNivel = get("pasanteNivel") || undefined;
         const val = get("pasanteArea");
-        if (!val) return undefined;
-        return { areaNombre: val };
-      })();
+        pasanteAreaObj = val ? { areaNombre: val } : undefined;
+      } else {
+        pasanteNivel = undefined;
+        pasanteAreaObj = undefined;
+      }
 
       return {
         nombreApellido: get("nombreApellido"),
@@ -699,14 +728,15 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         nombreFiguraExtracto: get("nombreFiguraExtracto"),
         tipoCuenta: get("tipoCuenta"),
         rol,
-        pasanteNivel: get("pasanteNivel"),
+        pasanteNivel,
         pasanteArea: pasanteAreaObj,
         usuario: get("usuario"),
         contrasena: get("contrasena"),
-        // Seguro: opcional para profesional y coordinador
+        // Seguro: opcional (solo se muestra en roles pro/coord)
         seguroMalaPraxis: get("seguroMalaPraxis") || undefined,
-        areasProfesional,
-        areasCoordinadas
+        // Áreas:
+        areasProfesional: finalAreasProfesional,
+        areasCoordinadas: finalAreasCoordinadas
       };
     }
   }).then(async result => {
@@ -754,6 +784,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
     Swal.fire("Error", "No se pudo guardar el usuario", "error");
   });
 }
+
 
 
 
