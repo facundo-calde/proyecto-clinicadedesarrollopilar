@@ -259,53 +259,8 @@ async function renderFichaPaciente(p) {
 
 async function modificarPaciente(dni) {
   try {
-    // Auth headers
-    const getAuthHeaders = () => {
-      const token =
-        localStorage.getItem("token") ||
-        sessionStorage.getItem("token") ||
-        "";
-      return token
-        ? { Authorization: `Bearer ${token}`, "x-access-token": token }
-        : {};
-    };
-
-    // Helper JSON con auth
-    async function apiFetchJson(path, init = {}) {
-      const res = await fetch(`/api${path}`, {
-        ...init,
-        headers: {
-          "Content-Type": "application/json",
-          ...(init.headers || {}),
-          ...getAuthHeaders(),
-        },
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.json();
-    }
-
-    const escapeHTML = (s) =>
-      String(s ?? "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#39;");
-
-    const norm = (s) =>
-      (s ?? "")
-        .toString()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .toLowerCase()
-        .trim();
-
-    const HEX24 = /^[a-f0-9]{24}$/i;
-
-    // Paciente
     const p = await apiFetchJson(`/pacientes/${dni}`);
 
-    // Catálogos
     let MODULOS = [], AREAS = [], USUARIOS = [];
     try {
       const [m, a, u] = await Promise.all([
@@ -318,88 +273,97 @@ async function modificarPaciente(dni) {
       USUARIOS = Array.isArray(u) ? u : [];
     } catch (_) {}
 
-    // opciones módulos (por nombre)
+    // 👇 usa m.nombre del esquema actual
     const MOD_OPTS = MODULOS.length
-      ? MODULOS
-          .sort((x, y) => (x?.nombre || "").localeCompare(y?.nombre || "", "es"))
-          .map(m => `<option value="${m._id}">Módulo ${escapeHTML(m.nombre)}</option>`)
-          .join("")
+      ? MODULOS.map(m => `<option value="${m._id}">${m.nombre}</option>`).join("")
       : `<option value="">No disponible</option>`;
 
-    // opciones áreas
     const AREA_OPTS = AREAS.length
-      ? AREAS.map(a => `<option value="${a._id}">${escapeHTML(a.nombre)}</option>`).join("")
+      ? AREAS.map(a => `<option value="${a._id}">${a.nombre}</option>`).join("")
       : `<option value="">No disponible</option>`;
 
-    // Map id área => nombre normalizado
+    // ---- Helpers de filtro por área/rol ----
+    const norm = (s) => (s ?? "").toString()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase().trim();
+    const HEX24 = /^[a-f0-9]{24}$/i;
+
     const AREA_ID_TO_NAME_NORM = new Map();
     AREAS.forEach(a => AREA_ID_TO_NAME_NORM.set(String(a._id), norm(a.nombre)));
 
-    // —— ROLES permitidos en el selector de profesional
-    // (normalizados y sin tildes)
-    const ROLES_OBJETIVO = new Set([
+    // 👇 roles habilitados para asignar en un plan
+    const ROLES_ASIGNABLES = new Set([
       "profesional",
       "coordinador y profesional",
-      "coordinador de area",  // sin tilde tras normalizar
+      "coordinador de área",
       "directoras",
+      "pasante",
     ]);
 
-    // ¿El usuario u pertenece al área seleccionada?
-    function userPerteneceArea(u, areaId) {
-      // Directora: se muestra siempre, sin importar el área
-      if (norm(u.rol || u.rolAsignado) === "directoras") return true;
-
-      if (!areaId) return true; // si no hay área elegida aún
-
-      const areaNormObjetivo = AREA_ID_TO_NAME_NORM.get(String(areaId)) || "";
-
-      // 1) Revisar areasProfesional [{areaNombre, nivel}]
-      if (Array.isArray(u.areasProfesional)) {
-        for (const ap of u.areasProfesional) {
-          const nombre = norm(ap?.areaNombre || ap?.area || ap?.nombre || "");
-          if (nombre && nombre === areaNormObjetivo) return true;
-        }
-      }
-
-      // 2) Revisar areasCoordinadas [{areaNombre}]
-      if (Array.isArray(u.areasCoordinadas)) {
-        for (const ac of u.areasCoordinadas) {
-          const nombre = norm(ac?.areaNombre || ac?.area || ac?.nombre || "");
-          if (nombre && nombre === areaNormObjetivo) return true;
-        }
-      }
-
-      // 3) Revisar areas (pueden ser ids o objetos/nombres)
-      const arr = Array.isArray(u.areas) ? u.areas : [];
-      for (const it of arr) {
-        const idCandidate   = typeof it === "object" ? it._id    : it;
-        const nameCandidate = typeof it === "object" ? it.nombre : it;
-
-        if (HEX24.test(String(idCandidate || ""))) {
-          const n = AREA_ID_TO_NAME_NORM.get(String(idCandidate));
-          if (n && n === areaNormObjetivo) return true;
-        }
-        if (norm(nameCandidate) === areaNormObjetivo) return true;
-      }
-
-      return false;
-    }
-
-    // Construye <option> de profesionales según área
+    // Devuelve <option>... de usuarios válidos para el área dada
     const profesionalesDeArea = (areaId) => {
-      const lista = (USUARIOS || [])
-        .filter(u => ROLES_OBJETIVO.has(norm(u.rol || u.rolAsignado)))
-        .filter(u => userPerteneceArea(u, areaId));
+      const targetNameNorm = AREA_ID_TO_NAME_NORM.get(String(areaId)) || "";
 
-      if (!lista.length) return `<option value="">Sin profesionales para el área</option>`;
+      const lista = (USUARIOS || [])
+        .filter(u => ROLES_ASIGNABLES.has(norm(u.rol || u.rolAsignado)))
+        .filter(u => {
+          const rol = norm(u.rol || u.rolAsignado || "");
+
+          // Directoras: no se filtra por área, siempre disponibles
+          if (rol === "directoras") return true;
+
+          // Si no hay área elegida, no filtramos por área
+          if (!areaId) return true;
+
+          // Profesional / Coord. y profesional -> mirar areasProfesional o legacy areas
+          if (rol === "profesional" || rol === "coordinador y profesional") {
+            if (Array.isArray(u.areasProfesional)) {
+              for (const ap of u.areasProfesional) {
+                if (norm(ap?.areaNombre) === targetNameNorm) return true;
+              }
+            }
+          }
+
+          // Coordinador de área -> mirar areasCoordinadas
+          if (rol === "coordinador de área") {
+            if (Array.isArray(u.areasCoordinadas)) {
+              for (const ac of u.areasCoordinadas) {
+                if (norm(ac?.areaNombre) === targetNameNorm) return true;
+              }
+            }
+          }
+
+          // Pasante -> mirar pasanteArea.areaNombre
+          if (rol === "pasante") {
+            const a = u.pasanteArea;
+            const nombre = typeof a === "string" ? a : (a?.areaNombre || "");
+            if (norm(nombre) === targetNameNorm) return true;
+          }
+
+          // Legacy: u.areas puede tener nombres o {_id,nombre}
+          const arr = Array.isArray(u.areas) ? u.areas : [];
+          for (const it of arr) {
+            const idCandidate   = typeof it === "object" ? it._id    : it;
+            const nameCandidate = typeof it === "object" ? it.nombre : it;
+
+            if (HEX24.test(String(idCandidate || ""))) {
+              const n = AREA_ID_TO_NAME_NORM.get(String(idCandidate));
+              if (n && n === targetNameNorm) return true;
+            }
+            if (norm(nameCandidate) === targetNameNorm) return true;
+          }
+
+          return false;
+        });
+
+      if (!lista.length) return `<option value="">Sin usuarios para el área</option>`;
       return `<option value="">-- Seleccionar --</option>` +
-        lista
-          .sort((a,b) => (a.nombreApellido || "").localeCompare(b.nombreApellido || "", "es", {sensitivity:"base"}))
-          .map(u => `<option value="${u._id}">${escapeHTML(u.nombreApellido || u.nombre || u.usuario)}</option>`)
-          .join("");
+        lista.map(u =>
+          `<option value="${u._id}">${u.nombreApellido || u.nombre || u.usuario}</option>`
+        ).join("");
     };
 
-    // template módulo
+    // ---- Template de cada bloque de módulo ----
     const renderModuloSelect = (index) => `
       <div class="modulo-row" data-index="${index}"
            style="margin-bottom:15px; padding:10px; border:1px solid #ddd; border-radius:6px;">
@@ -423,26 +387,26 @@ async function modificarPaciente(dni) {
         </div>
 
         <div class="profesionales-container" style="margin-top:10px;">
-          <h5 style="margin:8px 0;">Profesionales / Coordinadores / Directoras:</h5>
+          <h5 style="margin:8px 0;">Usuarios (profesionales / coordinadores / directoras / pasantes):</h5>
           <div class="profesional-row" style="display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:8px;">
             <select class="area-select swal2-select" style="width:100%; margin:0;">
               <option value="">-- Área --</option>
               ${AREA_OPTS}
             </select>
             <select class="profesional-select swal2-select" style="width:100%; margin:0;">
-              <option value="">-- Seleccionar profesional --</option>
+              <option value="">-- Seleccionar usuario --</option>
             </select>
           </div>
         </div>
 
         <button type="button" class="btnAgregarProfesional"
           style="margin-top:8px; padding:4px 10px; border:1px solid #ccc; border-radius:5px; background:#eee; cursor:pointer;">
-          ➕ Agregar profesional
+          ➕ Agregar otro
         </button>
       </div>
     `;
 
-    // responsables iniciales
+    // ---- Responsables iniciales (como ya tenías) ----
     const responsablesIniciales = Array.isArray(p.responsables) && p.responsables.length
       ? p.responsables.slice(0, 3).map(r => ({
           relacion: r.relacion, nombre: r.nombre, whatsapp: r.whatsapp, email: r.email || ""
@@ -463,7 +427,7 @@ async function modificarPaciente(dni) {
           return arr.slice(0, 3);
         })();
 
-    // modal
+    // ---- Modal principal ----
     const { isConfirmed, value: data } = await Swal.fire({
       title: '<h3 style="font-family: Montserrat; font-weight: 600;">Modificar datos del paciente:</h3>',
       html: `
@@ -543,19 +507,17 @@ async function modificarPaciente(dni) {
         const obraSocialExtra = document.getElementById("obraSocialExtra");
         const toggleObraSocial = () => {
           const v = condicionDePagoSelect.value;
-          obraSocialExtra.style.display =
-            (v === "Obra Social" || v === "Obra Social + Particular") ? "block" : "none";
+          obraSocialExtra.style.display = (v === "Obra Social" || v === "Obra Social + Particular") ? "block" : "none";
         };
         condicionDePagoSelect.addEventListener("change", toggleObraSocial);
         toggleObraSocial();
 
-        // estado -> descripción
+        // desc estado
         const estadoSel = document.getElementById("estado");
         const estadoDescWrap = document.getElementById("estadoDescWrap");
         const estadoInicial = p.estado || "En espera";
         const toggleDesc = () => {
-          estadoDescWrap.style.display =
-            (estadoSel.value !== estadoInicial) ? "block" : "none";
+          estadoDescWrap.style.display = (estadoSel.value !== estadoInicial) ? "block" : "none";
         };
         estadoSel.addEventListener("change", toggleDesc);
         toggleDesc();
@@ -590,11 +552,8 @@ async function modificarPaciente(dni) {
           cont.lastElementChild.querySelector('.btn-remove')
             .addEventListener('click', () => cont.removeChild(document.getElementById(rowId)));
         };
-        if (Array.isArray(p.responsables) && p.responsables.length) {
-          p.responsables.slice(0,3).forEach(r => addRespRow({relacion:r.relacion,nombre:r.nombre,email:r.email||"",whatsapp:r.whatsapp||""}));
-        } else {
-          addRespRow({ relacion: 'tutor' });
-        }
+        if (responsablesIniciales.length) responsablesIniciales.forEach(r => addRespRow(r));
+        else addRespRow({ relacion: 'tutor' });
         btnAdd.addEventListener('click', () => addRespRow());
 
         // módulos
@@ -612,7 +571,7 @@ async function modificarPaciente(dni) {
                 ${AREA_OPTS}
               </select>
               <select class="profesional-select swal2-select" style="width:100%; margin:0;">
-                <option value="">-- Seleccionar profesional --</option>
+                <option value="">-- Seleccionar usuario --</option>
               </select>
             </div>`;
 
@@ -659,7 +618,7 @@ async function modificarPaciente(dni) {
               }
             };
             const profesionales = Array.isArray(m.profesionales) ? m.profesionales : [];
-            if (!profesionales.length) return;
+            if (profesionales.length === 0) return;
 
             ensureRows(profesionales.length);
             const filas = contProf.querySelectorAll(".profesional-row");
@@ -691,7 +650,6 @@ async function modificarPaciente(dni) {
 
         const nombre = gv("nombre");
         const fechaNacimiento = gv("fecha");
-
         const colegio = gv("colegio");
         const colegioMail = gv("colegioMail");
         const curso = gv("curso");
@@ -787,10 +745,9 @@ async function modificarPaciente(dni) {
 
     if (!isConfirmed) return;
 
-    // PUT
     const putRes = await fetch(`/api/pacientes/${dni}`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data)
     });
 
@@ -810,6 +767,7 @@ async function modificarPaciente(dni) {
     Swal.fire("❌ Error al cargar/modificar paciente", err.message || "", "error");
   }
 }
+
 
 
 
@@ -942,7 +900,14 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
         const ID2NAME = new Map();
         AREAS.forEach(a => ID2NAME.set(String(a._id), a.nombre));
 
-        const ROLES_PROF = new Set(['profesional', 'coordinador y profesional']);
+        const ROLES_PROF = new Set([
+          "profesional",
+          "coordinador y profesional",
+          "coordinador de área",
+          "directoras",
+          "pasante"
+        ]);
+
 
         const renderProfesionales = () => {
           const selId = areaSel.value || "";
@@ -1451,8 +1416,8 @@ async function cargarListadoInicial() {
 
     // normalizo por si el backend devuelve {items:[]}
     const items = Array.isArray(data) ? data.slice(0, 20)
-                 : Array.isArray(data?.items) ? data.items.slice(0, 20)
-                 : [];
+      : Array.isArray(data?.items) ? data.items.slice(0, 20)
+        : [];
 
     renderListadoPacientes(items);
   } catch (e) {
