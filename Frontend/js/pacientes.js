@@ -913,16 +913,14 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
           "No disponible"
         );
 
-        // === Helpers de normalización y matching ===
+        // === Helpers idénticos a modificarPaciente ===
         const norm = (s) =>
           (s ?? "").toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
         const HEX24 = /^[a-f0-9]{24}$/i;
 
-        // Mapear id → nombre normalizado
         const ID2NAME_NORM = new Map();
         AREAS.forEach(a => ID2NAME_NORM.set(String(a._id), norm(a.nombre)));
 
-        // Roles permitidos
         const ROLES_OK = new Set([
           "profesional",
           "coordinador y profesional",
@@ -931,7 +929,6 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
           "pasante"
         ]);
 
-        // True si entry coincide por id o por nombre
         function matchAreaEntry(entry, targetId, targetNameNorm) {
           if (!entry) return false;
 
@@ -949,13 +946,13 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
           if (idCandidates.some(x => x === targetId)) return true;
 
           const nameCandidates = [
-            entry.areaNombre, entry.nombre, entry.name, entry.area, entry.area?.nombre, entry.area?.name
+            entry.areaNombre, entry.nombre, entry.name, entry.area,
+            entry.area?.nombre, entry.area?.name
           ].filter(Boolean).map(norm);
 
           return nameCandidates.some(n => n === targetNameNorm);
         }
 
-        // ¿El usuario pertenece al área?
         function userBelongsToArea(u, targetId) {
           const targetNameNorm = ID2NAME_NORM.get(targetId) || "";
 
@@ -980,7 +977,6 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
           return false;
         }
 
-        // Render de opciones según el área elegida
         function renderProfesionales() {
           const selId = areaSel.value || "";
           if (!selId) {
@@ -991,9 +987,7 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
           const lista = (USUARIOS || [])
             .filter(u => ROLES_OK.has(norm(u.rol || "")))
             .filter(u => {
-              // Directoras: siempre visibles
-              if (norm(u.rol || "") === "directoras") return true;
-              // Resto: deben pertenecer al área
+              if (norm(u.rol || "") === "directoras") return true; // directoras siempre
               return userBelongsToArea(u, selId);
             })
             .sort((a, b) => (a.nombreApellido || "").localeCompare(b.nombreApellido || "", "es"));
@@ -1126,7 +1120,7 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
         tipo = gv("tipo");
       }
 
-      // si no usás módulos acá:
+      // sin módulos acá
       const modulosAsignados = [];
       const areasDerivadas = [];
 
