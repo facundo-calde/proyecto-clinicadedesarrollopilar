@@ -913,13 +913,26 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
           "No disponible"
         );
 
-        // === Helpers idénticos a modificarPaciente ===
+        // ====== Helpers robustos (idénticos a los de modificarPaciente, pero ampliados) ======
         const norm = (s) =>
           (s ?? "").toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
         const HEX24 = /^[a-f0-9]{24}$/i;
 
+        // id -> nombre normalizado
         const ID2NAME_NORM = new Map();
         AREAS.forEach(a => ID2NAME_NORM.set(String(a._id), norm(a.nombre)));
+
+        // Normalización de roles (acepta variaciones y plurales)
+        function normalizeRole(r) {
+          const x = norm(r);
+          if (!x) return "";
+          if (x.includes("directora")) return "directoras";
+          if (x.includes("coordinador") && x.includes("profes")) return "coordinador y profesional";
+          if (x.includes("coordinador") && (x.includes("area") || x.includes("área"))) return "coordinador de área";
+          if (x.startsWith("pasant")) return "pasante";
+          if (x.startsWith("profes")) return "profesional";
+          return x; // fallback
+        }
 
         const ROLES_OK = new Set([
           "profesional",
@@ -928,6 +941,18 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
           "directoras",
           "pasante"
         ]);
+
+        // Extrae TODOS los roles posibles de un usuario (rol, rolAsignado, roles[])
+        function userRoles(u) {
+          const out = new Set();
+          if (u.rol) out.add(normalizeRole(u.rol));
+          if (u.rolAsignado) out.add(normalizeRole(u.rolAsignado));
+          if (Array.isArray(u.roles)) {
+            for (const rr of u.roles) out.add(normalizeRole(rr));
+          }
+          // Limpieza: sacamos vacíos
+          return new Set([...out].filter(Boolean));
+        }
 
         function matchAreaEntry(entry, targetId, targetNameNorm) {
           if (!entry) return false;
@@ -939,12 +964,14 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
             return norm(s) === targetNameNorm;
           }
 
+          // ids potenciales
           const idCandidates = [
             entry._id, entry.id, entry.areaId,
             entry.area?._id, entry.area?.id
           ].filter(Boolean).map(String);
           if (idCandidates.some(x => x === targetId)) return true;
 
+          // nombres potenciales
           const nameCandidates = [
             entry.areaNombre, entry.nombre, entry.name, entry.area,
             entry.area?.nombre, entry.area?.name
@@ -953,27 +980,26 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
           return nameCandidates.some(n => n === targetNameNorm);
         }
 
+        // ¿El usuario pertenece al área?
         function userBelongsToArea(u, targetId) {
           const targetNameNorm = ID2NAME_NORM.get(targetId) || "";
 
-          if (Array.isArray(u.areasProfesional) && u.areasProfesional.some(e => matchAreaEntry(e, targetId, targetNameNorm))) {
-            return true;
-          }
-          if (Array.isArray(u.areasCoordinadas) && u.areasCoordinadas.some(e => matchAreaEntry(e, targetId, targetNameNorm))) {
-            return true;
-          }
-          if (Array.isArray(u.areas) && u.areas.some(e => matchAreaEntry(e, targetId, targetNameNorm))) {
-            return true;
-          }
-          if (Array.isArray(u.areasProfesionalDetalladas) && u.areasProfesionalDetalladas.some(e => matchAreaEntry(e, targetId, targetNameNorm))) {
-            return true;
-          }
-          if (Array.isArray(u.areasCoordinadasDetalladas) && u.areasCoordinadasDetalladas.some(e => matchAreaEntry(e, targetId, targetNameNorm))) {
-            return true;
-          }
-          if (u.rol && norm(u.rol) === "pasante" && u.pasanteArea && matchAreaEntry(u.pasanteArea, targetId, targetNameNorm)) {
-            return true;
-          }
+          // 1) Arrays de detalle
+          if (Array.isArray(u.areasProfesional) && u.areasProfesional.some(e => matchAreaEntry(e, targetId, targetNameNorm))) return true;
+          if (Array.isArray(u.areasCoordinadas) && u.areasCoordinadas.some(e => matchAreaEntry(e, targetId, targetNameNorm))) return true;
+          if (Array.isArray(u.areasProfesionalDetalladas) && u.areasProfesionalDetalladas.some(e => matchAreaEntry(e, targetId, targetNameNorm))) return true;
+          if (Array.isArray(u.areasCoordinadasDetalladas) && u.areasCoordinadasDetalladas.some(e => matchAreaEntry(e, targetId, targetNameNorm))) return true;
+
+          // 2) Campo general "areas" (mixto)
+          if (Array.isArray(u.areas) && u.areas.some(e => matchAreaEntry(e, targetId, targetNameNorm))) return true;
+
+          // 3) Campos sueltos "area"/"areaNombre"
+          if (u.area && matchAreaEntry(u.area, targetId, targetNameNorm)) return true;
+          if (u.areaNombre && matchAreaEntry(u.areaNombre, targetId, targetNameNorm)) return true;
+
+          // 4) Pasantes
+          if ([...userRoles(u)].includes("pasante") && u.pasanteArea && matchAreaEntry(u.pasanteArea, targetId, targetNameNorm)) return true;
+
           return false;
         }
 
@@ -985,9 +1011,13 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
           }
 
           const lista = (USUARIOS || [])
-            .filter(u => ROLES_OK.has(norm(u.rol || "")))
             .filter(u => {
-              if (norm(u.rol || "") === "directoras") return true; // directoras siempre
+              const roles = userRoles(u);
+              // debe tener algún rol válido
+              if (![...roles].some(r => ROLES_OK.has(r))) return false;
+              // directoras: siempre visibles
+              if (roles.has("directoras")) return true;
+              // resto: deben matchear el área
               return userBelongsToArea(u, selId);
             })
             .sort((a, b) => (a.nombreApellido || "").localeCompare(b.nombreApellido || "", "es"));
@@ -995,11 +1025,15 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
           profSel.innerHTML = lista.length === 0
             ? `<option value="">Sin usuarios para el área</option>`
             : `<option value="">-- Seleccionar --</option>` +
-              lista.map(u => `
-                <option value="${u._id}">
-                  ${u.nombreApellido || u.nombre || u.usuario} — ${u.rol}
-                </option>
-              `).join("");
+              lista.map(u => {
+                const roles = [...userRoles(u)].filter(r => ROLES_OK.has(r));
+                const rolMostrar = roles.includes("directoras")
+                  ? "Directora"
+                  : (roles[0] || (u.rol || ""));
+                return `<option value="${u._id}">
+                          ${u.nombreApellido || u.nombre || u.usuario} — ${rolMostrar}
+                        </option>`;
+              }).join("");
         }
 
         renderProfesionales();
