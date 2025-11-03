@@ -1352,27 +1352,31 @@ async function verDocumentos(dni) {
     const paciente = await apiFetchJson(`/pacientes/${dni}`);
     const documentos = Array.isArray(paciente.documentosPersonales) ? paciente.documentosPersonales : [];
 
-    const htmlTabla = documentos.length
-      ? documentos.map((doc, i) => {
-          const fecha = doc.fecha ? nfISO(doc.fecha) : '-';
-          const tipo  = esc(doc.tipo ?? '-');
-          const obs   = esc(doc.observaciones ?? '-');
-          const href  = doc.archivoURL || doc.url || '#';
-          return `
-            <tr>
-              <td>${fecha}</td>
-              <td>${tipo}</td>
-              <td>${obs}</td>
-              <td>
-                ${href && href !== '#' ? `<a href="${href}" target="_blank" rel="noopener" title="Ver archivo"><i class="fa fa-file-pdf"></i></a>` : '-'}
-              </td>
-              <td>
-                <button onclick="editarDocumento('${dni}', ${i})" title="Editar"><i class="fa fa-pen"></i></button>
-                <button onclick="eliminarDocumento('${dni}', ${i})" title="Eliminar"><i class="fa fa-trash"></i></button>
-              </td>
-            </tr>`;
-        }).join('')
-      : `<tr><td colspan="5" style="text-align:center;">No hay documentos cargados.</td></tr>`;
+   const htmlTabla = documentos.length
+  ? documentos.map((doc, i) => {
+      const fecha = doc.fecha ? nfISO(doc.fecha) : '-';
+      const tipo  = esc(doc.tipo ?? '-');
+      const obs   = esc(doc.observaciones ?? '-');
+
+      // ← acepta varias claves posibles
+      const href  = doc.archivoURL || doc.archivoUrl || doc.url || doc.fileUrl || doc.publicUrl || '';
+
+      return `
+        <tr>
+          <td>${fecha}</td>
+          <td>${tipo}</td>
+          <td>${obs}</td>
+          <td>
+            ${href ? `<a href="${href}" target="_blank" rel="noopener" title="Ver archivo"><i class="fa-solid fa-file-pdf"></i></a>` : '-'}
+          </td>
+          <td>
+            <button onclick="editarDocumento('${dni}', ${i})" title="Editar"><i class="fa-solid fa-pen"></i></button>
+            <button onclick="eliminarDocumento('${dni}', ${i})" title="Eliminar"><i class="fa-solid fa-trash"></i></button>
+          </td>
+        </tr>`;
+    }).join('')
+  : `<tr><td colspan="5" style="text-align:center;">No hay documentos cargados.</td></tr>`;
+
 
     await Swal.fire({
       title: `<h3 style="font-family:Montserrat;">Documentos personales - DNI ${dni}</h3>`,
@@ -1599,21 +1603,29 @@ async function verDiagnosticos(dni) {
     const diagnosticos = Array.isArray(paciente.diagnosticos) ? paciente.diagnosticos : [];
 
     const htmlTabla = diagnosticos.length
-      ? diagnosticos.map((d, i) => `
+  ? diagnosticos.map((d, i) => {
+      const fecha = d.fecha ? nfISO(d.fecha) : '-';
+      const area  = esc(d.area || '');
+      const obs   = esc(d.observaciones ?? '-');
+
+      const href  = d.archivoURL || d.archivoUrl || d.url || d.fileUrl || d.publicUrl || '';
+
+      return `
         <tr>
-          <td>${d.fecha ? nfISO(d.fecha) : '-'}</td>
-          <td>${esc(d.area || '')}</td>
-          <td>${esc(d.observaciones ?? "-")}</td>
+          <td>${fecha}</td>
+          <td>${area}</td>
+          <td>${obs}</td>
           <td>
-            ${d.archivoURL ? `<a href="${d.archivoURL}" target="_blank" rel="noopener"><i class="fa fa-file-pdf"></i></a>` : '-'}
+            ${href ? `<a href="${href}" target="_blank" rel="noopener"><i class="fa-solid fa-file-pdf"></i></a>` : '-'}
           </td>
           <td>
-            <button onclick="editarDiagnostico('${dni}', ${i})"><i class="fa fa-pen"></i></button>
-            <button onclick="eliminarDiagnostico('${dni}', ${i})"><i class="fa fa-trash"></i></button>
+            <button onclick="editarDiagnostico('${dni}', ${i})" title="Editar"><i class="fa-solid fa-pen"></i></button>
+            <button onclick="eliminarDiagnostico('${dni}', ${i})" title="Eliminar"><i class="fa-solid fa-trash"></i></button>
           </td>
-        </tr>
-      `).join("")
-      : `<tr><td colspan="5" style="text-align:center;">No hay diagnósticos cargados.</td></tr>`;
+        </tr>`;
+    }).join('')
+  : `<tr><td colspan="5" style="text-align:center;">No hay diagnósticos cargados.</td></tr>`;
+
 
     await Swal.fire({
       title: `<h3 style="font-family:Montserrat;">Historial de informes:<br>DNI ${dni}</h3>`,
