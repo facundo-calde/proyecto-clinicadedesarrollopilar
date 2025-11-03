@@ -846,6 +846,7 @@ async function crearModuloEventoEspecial() {
     ].map(x => (x || '').toString().trim()).filter(Boolean);
     return cands[0] || 'Sin nombre';
   };
+
   const arr = (v) => Array.isArray(v) ? v : (v ? [v] : []);
 
   const normAreaEntry = (x) => {
@@ -900,6 +901,7 @@ async function crearModuloEventoEspecial() {
       default:                             return s;
     }
   };
+
   const rolesCanonicos = (u) => {
     const crudos = [u.rol, u.role, u.cargo, ...(Array.isArray(u.roles) ? u.roles : [])].filter(Boolean);
     const expandidos = crudos.flatMap(r => {
@@ -908,6 +910,7 @@ async function crearModuloEventoEspecial() {
     });
     return new Set(expandidos);
   };
+
   const hasRolCanon = (u, ...wanted) => {
     const R = rolesCanonicos(u);
     return wanted.some(w => R.has(w));
@@ -977,8 +980,10 @@ async function crearModuloEventoEspecial() {
     confirmButtonText: 'Guardar',
     cancelButtonText: 'Cancelar',
     preConfirm: () => {
-      const nombreEl = document.getElementById('modulo_nombre_es');
-      const padresEl = document.getElementById('valor_padres_es');
+      // 👇 scopeado al modal para no tomar inputs fuera
+      const modal = Swal.getHtmlContainer();
+      const nombreEl = modal.querySelector('#modulo_nombre_es');
+      const padresEl = modal.querySelector('#valor_padres_es');
 
       const nombre = (nombreEl.value || '').trim();
       const valorPadres = Number(padresEl.value);
@@ -993,24 +998,23 @@ async function crearModuloEventoEspecial() {
         return Swal.showValidationMessage('⚠️ Máximo 120 caracteres para el nombre');
       }
 
-      const coordinadoresExternos = [...document.querySelectorAll('.monto-input')]
+      const coordinadoresExternos = [...modal.querySelectorAll('.monto-input')]
         .map(i => ({ usuario: i.dataset.user, monto: Number(i.value) || 0 }))
         .filter(x => x.usuario && x.monto > 0);
 
       return {
         nombre,
         valorPadres: Number.isNaN(valorPadres) ? 0 : valorPadres,
-        // En evento especial SOLO guardamos coordinadores/directoras externos
-        coordinadoresExternos
+        coordinadoresExternos // solo estos en evento especial
       };
     }
   });
 
   if (!formValues) return;
 
-  // Guardar en el endpoint del esquema nuevo (ajustá si tu ruta difiere)
+  // ✅ Endpoint correcto del router: /modulos/evento-especial
   try {
-    const res = await apiFetch(`/moduloseventoespecial`, {
+    const res = await apiFetch(`/modulos/evento-especial`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(formValues)
@@ -1028,7 +1032,3 @@ async function crearModuloEventoEspecial() {
     Swal.fire('Error', error?.message || 'Ocurrió un error al guardar el evento especial', 'error');
   }
 }
-
-
-
-
