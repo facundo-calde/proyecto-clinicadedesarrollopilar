@@ -1383,7 +1383,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, m => ({
 })[m]);
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DOCUMENTOS PERSONALES (sin columna "Modificar")
+// DOCUMENTOS PERSONALES
 // ─────────────────────────────────────────────────────────────────────────────
 async function verDocumentos(dni) {
   try {
@@ -1440,8 +1440,194 @@ async function verDocumentos(dni) {
   }
 }
 
+async function agregarDocumento(dni) {
+  const { isConfirmed } = await Swal.fire({
+    title: "Agregar nuevo documento",
+    html: `
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <label>Fecha:</label>
+        <input type="date" id="docFecha" class="swal2-input">
+        <label>Tipo:</label>
+        <input type="text" id="docTipo" class="swal2-input" placeholder="Ej: DNI, Autorización, Carnet OS...">
+        <label>Observaciones:</label>
+        <textarea id="docObs" class="swal2-textarea" placeholder="Opcional"></textarea>
+        <label>Archivo adjunto (PDF/imagen/doc):</label>
+        <input type="file" id="docArchivo" class="swal2-file" accept=".pdf,image/*,.doc,.docx,.txt">
+      </div>
+    `,
+    showCancelButton: true,
+    confirmButtonText: "Guardar",
+    cancelButtonText: "Cancelar",
+    preConfirm: async () => {
+      const fecha = document.getElementById("docFecha").value;
+      const tipo  = document.getElementById("docTipo").value.trim();
+      const observaciones = document.getElementById("docObs").value.trim();
+      const archivo = document.getElementById("docArchivo").files[0];
+
+      if (!fecha || !tipo || !archivo) {
+        Swal.showValidationMessage("Fecha, tipo y archivo son obligatorios");
+        return false;
+      }
+
+      // 1) Subir archivo a R2 vía Worker
+      const safeName = slugFileName(archivo.name);
+      const ts = Date.now();
+      const key = `${dni}/documentos/${ts}-${safeName}`;
+      await r2Put({ bucket: R2_BUCKET_PACIENTES, key, file: archivo });
+
+      // 2) Guardar metadata en backend
+      const res = await apiFetch(`/pacientes/${dni}/documentos`, {
+        method: 'POST',
+        body: JSON.stringify({
+          fecha,
+          tipo,
+          observaciones,
+          archivoKey: key,
+          archivoURL: `${R2_BASE}/${R2_BUCKET_PACIENTES}/${encodeURIComponent(key)}`
+        })
+      });
+      if (!res.ok) {
+        try { await r2Delete({ bucket: R2_BUCKET_PACIENTES, key }); } catch { }
+        let msg = "No se pudo guardar el documento";
+        try { const j = await res.json(); msg = j?.error || msg; } catch { }
+        throw new Error(msg);
+      }
+      return true;
+    },
+  });
+
+  if (!isConfirmed) return;
+  Swal.fire("✅ Documento agregado", "", "success").then(() => verDocumentos(dni));
+}
+
+async function editarDocumento(dni, index) {
+  try {
+    const paciente = await apiFetchJson(`/pacientes/${dni}`);
+    const docs = Array.isArray(paciente.documentosPersonales) ? paciente.documentosPersonales : [];
+    const doc = docs[index];
+    if (!doc) throw new Error("Documento inválido");
+
+    const { value, isConfirmed } = await Swal.fire({
+      title: "Editar documento",
+      html: `
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <label>Fecha:</label>
+          <input type="date" id="docFecha" class="swal2-input" value="${doc.fecha ? nfISO(doc.fecha) : ''}">
+          <label>Tipo:</label>
+          <input type="text" id="docTipo" class="swal2-input" value="${esc(doc.tipo || '')}">
+          <label>Observaciones:</label>
+          <textarea id="docObs" class="swal2-textarea">${esc(doc.observaciones || '')}</textarea>
+          <label>Reemplazar archivo (opcional):</label>
+          <input type="file" id="docArchivo" class="swal2-file" accept=".pdf,image/*,.doc,.docx,.txt">
+          ${doc.archivoURL ? `<small>Actual: <a href="${doc.archivoURL}" target="_blank">ver</a></small>` : ""}
+        </div>
+      `,
+      showCancelButton: true,
+      confirmButtonText: "Guardar cambios",
+      cancelButtonText: "Cancelar",
+      preConfirm: () => {
+        const fecha = document.getElementById("docFecha").value;
+        const tipo  = document.getElementById("docTipo").value.trim();
+        const observaciones = document.getElementById("docObs").value.trim();
+        const file = document.getElementById("docArchivo").files[0] || null;
+        if (!fecha || !tipo) {
+          Swal.showValidationMessage("Fecha y tipo son obligatorios");
+          return false;
+        }
+        return { fecha, tipo, observaciones, file };
+      }
+    });
+
+    if (!isConfirmed) return;
+
+    let newKey = doc.archivoKey;
+    let newURL = doc.archivoURL;
+
+    if (value.file) {
+      const safe = slugFileName(value.file.name);
+      const ts = Date.now();
+      newKey = `${dni}/documentos/${ts}-${safe}`;
+      await r2Put({ bucket: R2_BUCKET_PACIENTES, key: newKey, file: value.file });
+      newURL = `${R2_BASE}/${R2_BUCKET_PACIENTES}/${encodeURIComponent(newKey)}`;
+    }
+
+    const docId = doc._id || doc.id;
+    const url = docId
+      ? `/pacientes/${dni}/documentos/${docId}`
+      : `/pacientes/${dni}/documentos?index=${index}`;
+
+    const res = await apiFetch(url, {
+      method: 'PUT',
+      body: JSON.stringify({
+        fecha: value.fecha,
+        tipo: value.tipo,
+        observaciones: value.observaciones,
+        archivoKey: newKey,
+        archivoURL: newURL
+      })
+    });
+    if (!res.ok) {
+      if (value.file) { try { await r2Delete({ bucket: R2_BUCKET_PACIENTES, key: newKey }); } catch { }
+      }
+      let msg = "No se pudo actualizar el documento";
+      try { const j = await res.json(); msg = j?.error || msg; } catch { }
+      throw new Error(msg);
+    }
+
+    if (value.file && doc.archivoKey && doc.archivoKey !== newKey) {
+      try { await r2Delete({ bucket: R2_BUCKET_PACIENTES, key: doc.archivoKey }); } catch { }
+    }
+
+    Swal.fire("✅ Documento actualizado", "", "success").then(() => verDocumentos(dni));
+  } catch (e) {
+    console.error(e);
+    Swal.fire("❌ Error", e.message || "No se pudo editar el documento", "error");
+  }
+}
+
+async function eliminarDocumento(dni, id, index) {
+  try {
+    const conf = await Swal.fire({
+      title: "Eliminar documento",
+      text: "¿Seguro que querés eliminar este archivo?",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Sí, eliminar",
+      cancelButtonText: "Cancelar"
+    });
+    if (!conf.isConfirmed) return;
+
+    // 1) Backend: elimina metadata por id o por index
+    const url = id
+      ? `/pacientes/${dni}/documentos/${id}`
+      : `/pacientes/${dni}/documentos?index=${index}`;
+
+    const res = await apiFetch(url, { method: 'DELETE' });
+    if (!res.ok) {
+      let msg = "No se pudo eliminar el documento";
+      try { const j = await res.json(); msg = j?.error || msg; } catch { }
+      throw new Error(msg);
+    }
+
+    // 2) Si querés, podés volver a cargar para obtener la key y borrar en R2;
+    //    si tu backend ya devuelve la lista, podés evitar otro GET.
+    try {
+      const paciente = await apiFetchJson(`/pacientes/${dni}`);
+      const doc = (paciente.documentosPersonales || [])[index];
+      if (doc && doc.archivoKey) {
+        try { await r2Delete({ bucket: R2_BUCKET_PACIENTES, key: doc.archivoKey }); } catch {}
+      }
+    } catch {}
+
+    Swal.fire("✅ Documento eliminado", "", "success").then(() => verDocumentos(dni));
+  } catch (e) {
+    console.error(e);
+    Swal.fire("❌ Error", e.message || "No se pudo eliminar el documento", "error");
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// DIAGNÓSTICOS (sin columna "Acciones")
+// DIAGNÓSTICOS (informes)
 // ─────────────────────────────────────────────────────────────────────────────
 async function verDiagnosticos(dni) {
   try {
@@ -1498,6 +1684,187 @@ async function verDiagnosticos(dni) {
   }
 }
 
+async function agregarDiagnostico(dni) {
+  const { isConfirmed } = await Swal.fire({
+    title: "Agregar diagnóstico",
+    html: `
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <label>Fecha:</label>
+        <input type="date" id="dxFecha" class="swal2-input">
+        <label>Área:</label>
+        <input type="text" id="dxArea" class="swal2-input" placeholder="Ej: Fonoaudiología">
+        <label>Observaciones:</label>
+        <textarea id="dxObs" class="swal2-textarea" placeholder="Opcional"></textarea>
+        <label>Archivo adjunto (PDF/imagen/doc):</label>
+        <input type="file" id="dxArchivo" class="swal2-file" accept=".pdf,image/*,.doc,.docx,.txt">
+      </div>
+    `,
+    showCancelButton: true,
+    confirmButtonText: "Guardar",
+    cancelButtonText: "Cancelar",
+    preConfirm: async () => {
+      const fecha = document.getElementById("dxFecha").value;
+      const area  = document.getElementById("dxArea").value.trim();
+      const observaciones = document.getElementById("dxObs").value.trim();
+      const archivo = document.getElementById("dxArchivo").files[0];
+
+      if (!fecha || !area || !archivo) {
+        Swal.showValidationMessage("Fecha, área y archivo son obligatorios");
+        return false;
+      }
+
+      const safeName = slugFileName(archivo.name);
+      const ts = Date.now();
+      const key = `${dni}/diagnosticos/${ts}-${safeName}`;
+      await r2Put({ bucket: R2_BUCKET_PACIENTES, key, file: archivo });
+
+      const res = await apiFetch(`/pacientes/${dni}/diagnosticos`, {
+        method: 'POST',
+        body: JSON.stringify({
+          fecha,
+          area,
+          observaciones,
+          archivoKey: key,
+          archivoURL: `${R2_BASE}/${R2_BUCKET_PACIENTES}/${encodeURIComponent(key)}`
+        })
+      });
+      if (!res.ok) {
+        try { await r2Delete({ bucket: R2_BUCKET_PACIENTES, key }); } catch { }
+        let msg = "No se pudo guardar el diagnóstico";
+        try { const j = await res.json(); msg = j?.error || msg; } catch { }
+        throw new Error(msg);
+      }
+      return true;
+    }
+  });
+
+  if (!isConfirmed) return;
+  Swal.fire("✅ Diagnóstico agregado", "", "success").then(() => verDiagnosticos(dni));
+}
+
+async function editarDiagnostico(dni, index) {
+  try {
+    const paciente = await apiFetchJson(`/pacientes/${dni}`);
+    const arr = Array.isArray(paciente.diagnosticos) ? paciente.diagnosticos : [];
+    const dx = arr[index];
+    if (!dx) throw new Error("Diagnóstico inválido");
+
+    const { value, isConfirmed } = await Swal.fire({
+      title: "Editar diagnóstico",
+      html: `
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <label>Fecha:</label>
+          <input type="date" id="dxFecha" class="swal2-input" value="${dx.fecha ? nfISO(dx.fecha) : ''}">
+          <label>Área:</label>
+          <input type="text" id="dxArea" class="swal2-input" value="${esc(dx.area || '')}">
+          <label>Observaciones:</label>
+          <textarea id="dxObs" class="swal2-textarea">${esc(dx.observaciones || '')}</textarea>
+          <label>Reemplazar archivo (opcional):</label>
+          <input type="file" id="dxArchivo" class="swal2-file" accept=".pdf,image/*,.doc,.docx,.txt">
+          ${dx.archivoURL ? `<small>Actual: <a href="${dx.archivoURL}" target="_blank">ver</a></small>` : ""}
+        </div>
+      `,
+      showCancelButton: true,
+      confirmButtonText: "Guardar cambios",
+      cancelButtonText: "Cancelar",
+      preConfirm: () => {
+        const fecha = document.getElementById("dxFecha").value;
+        const area  = document.getElementById("dxArea").value.trim();
+        const observaciones = document.getElementById("dxObs").value.trim();
+        const file = document.getElementById("dxArchivo").files[0] || null;
+        if (!fecha || !area) {
+          Swal.showValidationMessage("Fecha y área son obligatorios");
+          return false;
+        }
+        return { fecha, area, observaciones, file };
+      }
+    });
+
+    if (!isConfirmed) return;
+
+    let newKey = dx.archivoKey;
+    let newURL = dx.archivoURL;
+
+    if (value.file) {
+      const safe = slugFileName(value.file.name);
+      const ts = Date.now();
+      newKey = `${dni}/diagnosticos/${ts}-${safe}`;
+      await r2Put({ bucket: R2_BUCKET_PACIENTES, key: newKey, file: value.file });
+      newURL = `${R2_BASE}/${R2_BUCKET_PACIENTES}/${encodeURIComponent(newKey)}`;
+    }
+
+    const dxId = dx._id || dx.id;
+    const url = dxId
+      ? `/pacientes/${dni}/diagnosticos/${dxId}`
+      : `/pacientes/${dni}/diagnosticos?index=${index}`;
+
+    const res = await apiFetch(url, {
+      method: 'PUT',
+      body: JSON.stringify({
+        fecha: value.fecha,
+        area: value.area,
+        observaciones: value.observaciones,
+        archivoKey: newKey,
+        archivoURL: newURL
+      })
+    });
+    if (!res.ok) {
+      if (value.file) { try { await r2Delete({ bucket: R2_BUCKET_PACIENTES, key: newKey }); } catch { }
+      }
+      let msg = "No se pudo actualizar el diagnóstico";
+      try { const j = await res.json(); msg = j?.error || msg; } catch { }
+      throw new Error(msg);
+    }
+
+    if (value.file && dx.archivoKey && dx.archivoKey !== newKey) {
+      try { await r2Delete({ bucket: R2_BUCKET_PACIENTES, key: dx.archivoKey }); } catch { }
+    }
+
+    Swal.fire("✅ Diagnóstico actualizado", "", "success").then(() => verDiagnosticos(dni));
+  } catch (e) {
+    console.error(e);
+    Swal.fire("❌ Error", e.message || "No se pudo editar el diagnóstico", "error");
+  }
+}
+
+async function eliminarDiagnostico(dni, id, index) {
+  try {
+    const conf = await Swal.fire({
+      title: "Eliminar diagnóstico",
+      text: "¿Seguro que querés eliminar este archivo?",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Sí, eliminar",
+      cancelButtonText: "Cancelar"
+    });
+    if (!conf.isConfirmed) return;
+
+    const url = id
+      ? `/pacientes/${dni}/diagnosticos/${id}`
+      : `/pacientes/${dni}/diagnosticos?index=${index}`;
+
+    const res = await apiFetch(url, { method: 'DELETE' });
+    if (!res.ok) {
+      let msg = "No se pudo eliminar el diagnóstico";
+      try { const j = await res.json(); msg = j?.error || msg; } catch { }
+      throw new Error(msg);
+    }
+
+    // Borrado del objeto en R2 (best effort): necesitamos la key; hacemos un GET rápido
+    try {
+      const paciente = await apiFetchJson(`/pacientes/${dni}`);
+      const dx = (paciente.diagnosticos || [])[index];
+      if (dx && dx.archivoKey) {
+        try { await r2Delete({ bucket: R2_BUCKET_PACIENTES, key: dx.archivoKey }); } catch {}
+      }
+    } catch {}
+
+    Swal.fire("✅ Diagnóstico eliminado", "", "success").then(() => verDiagnosticos(dni));
+  } catch (e) {
+    console.error(e);
+    Swal.fire("❌ Error", e.message || "No se pudo eliminar el diagnóstico", "error");
+  }
+}
 
 
 // ─────────────────────────────────────────────────────────────────────────────
