@@ -1,4 +1,5 @@
 // controllers/pacientescontrollers.js
+const mongoose = require("mongoose");
 const Paciente = require("../models/pacientes");
 
 // --- Validaciones básicas ---
@@ -299,10 +300,245 @@ const listarPacientes = async (req, res) => {
   }
 };
 
+/* ============================================================================
+   DOCUMENTOS PERSONALES (metadata R2) 
+   Frontend sube a R2 (Worker). Acá solo persistimos/eliminamos metadata.
+   Campos esperados: { fecha, tipo, observaciones, archivoKey, archivoURL }
+   ============================================================================ */
+
+// POST /api/pacientes/:dni/documentos
+const agregarDocumento = async (req, res) => {
+  try {
+    const dni = toStr(req.params.dni).trim();
+    const p = await Paciente.findOne({ dni });
+    if (!p) return res.status(404).json({ error: "Paciente no encontrado" });
+
+    const { fecha, tipo, observaciones, archivoKey, archivoURL } = req.body || {};
+    if (!fecha || !tipo || !archivoKey || !archivoURL) {
+      return res.status(400).json({ error: "fecha, tipo, archivoKey y archivoURL son obligatorios" });
+    }
+
+    if (!Array.isArray(p.documentosPersonales)) p.documentosPersonales = [];
+    const doc = {
+      _id: new mongoose.Types.ObjectId(),
+      fecha: toStr(fecha).trim(),
+      tipo: toStr(tipo).trim(),
+      observaciones: toStr(observaciones || "").trim() || undefined,
+      archivoKey: toStr(archivoKey).trim(),
+      archivoURL: toStr(archivoURL).trim(),
+      creadoEn: new Date()
+    };
+
+    p.documentosPersonales.push(doc);
+    await p.save();
+
+    res.status(201).json({ ok: true, documento: doc, documentos: p.documentosPersonales });
+  } catch (err) {
+    console.error("❌ agregarDocumento:", err);
+    res.status(500).json({ error: "No se pudo agregar el documento" });
+  }
+};
+
+// PUT /api/pacientes/:dni/documentos/:id
+// Fallback: /api/pacientes/:dni/documentos?index=#
+const actualizarDocumento = async (req, res) => {
+  try {
+    const dni = toStr(req.params.dni).trim();
+    const p = await Paciente.findOne({ dni });
+    if (!p) return res.status(404).json({ error: "Paciente no encontrado" });
+
+    if (!Array.isArray(p.documentosPersonales)) p.documentosPersonales = [];
+
+    let idx = -1;
+    if (req.params.id) {
+      const id = req.params.id;
+      idx = p.documentosPersonales.findIndex(d => String(d._id) === String(id) || String(d.id) === String(id));
+    } else if (req.query.index != null) {
+      idx = parseInt(req.query.index, 10);
+    }
+    if (idx < 0 || idx >= p.documentosPersonales.length) {
+      return res.status(404).json({ error: "Documento no encontrado" });
+    }
+
+    const { fecha, tipo, observaciones, archivoKey, archivoURL } = req.body || {};
+    const doc = p.documentosPersonales[idx];
+
+    if (fecha !== undefined) doc.fecha = toStr(fecha).trim();
+    if (tipo !== undefined)  doc.tipo  = toStr(tipo).trim();
+    if (observaciones !== undefined) {
+      const v = toStr(observaciones).trim();
+      doc.observaciones = v || undefined;
+    }
+    if (archivoKey !== undefined) doc.archivoKey = toStr(archivoKey).trim();
+    if (archivoURL !== undefined) doc.archivoURL = toStr(archivoURL).trim();
+
+    doc.actualizadoEn = new Date();
+
+    await p.save();
+    res.json({ ok: true, documento: doc, documentos: p.documentosPersonales });
+  } catch (err) {
+    console.error("❌ actualizarDocumento:", err);
+    res.status(500).json({ error: "No se pudo actualizar el documento" });
+  }
+};
+
+// DELETE /api/pacientes/:dni/documentos/:id
+// Fallback: /api/pacientes/:dni/documentos?index=#
+const eliminarDocumento = async (req, res) => {
+  try {
+    const dni = toStr(req.params.dni).trim();
+    const p = await Paciente.findOne({ dni });
+    if (!p) return res.status(404).json({ error: "Paciente no encontrado" });
+
+    if (!Array.isArray(p.documentosPersonales)) p.documentosPersonales = [];
+
+    let idx = -1;
+    if (req.params.id) {
+      const id = req.params.id;
+      idx = p.documentosPersonales.findIndex(d => String(d._id) === String(id) || String(d.id) === String(id));
+    } else if (req.query.index != null) {
+      idx = parseInt(req.query.index, 10);
+    }
+    if (idx < 0 || idx >= p.documentosPersonales.length) {
+      return res.status(404).json({ error: "Documento no encontrado" });
+    }
+
+    const removed = p.documentosPersonales.splice(idx, 1)[0];
+    await p.save();
+    // Nota: el borrado del objeto en R2 lo hace el frontend (ya lo implementaste).
+    res.json({ ok: true, eliminado: removed, documentos: p.documentosPersonales });
+  } catch (err) {
+    console.error("❌ eliminarDocumento:", err);
+    res.status(500).json({ error: "No se pudo eliminar el documento" });
+  }
+};
+
+/* ============================================================================
+   DIAGNÓSTICOS (metadata R2)
+   Campos: { fecha, area, observaciones, archivoKey, archivoURL }
+   ============================================================================ */
+
+// POST /api/pacientes/:dni/diagnosticos
+const agregarDiagnostico = async (req, res) => {
+  try {
+    const dni = toStr(req.params.dni).trim();
+    const p = await Paciente.findOne({ dni });
+    if (!p) return res.status(404).json({ error: "Paciente no encontrado" });
+
+    const { fecha, area, observaciones, archivoKey, archivoURL } = req.body || {};
+    if (!fecha || !area || !archivoKey || !archivoURL) {
+      return res.status(400).json({ error: "fecha, área, archivoKey y archivoURL son obligatorios" });
+    }
+
+    if (!Array.isArray(p.diagnosticos)) p.diagnosticos = [];
+    const dx = {
+      _id: new mongoose.Types.ObjectId(),
+      fecha: toStr(fecha).trim(),
+      area: toStr(area).trim(),
+      observaciones: toStr(observaciones || "").trim() || undefined,
+      archivoKey: toStr(archivoKey).trim(),
+      archivoURL: toStr(archivoURL).trim(),
+      creadoEn: new Date()
+    };
+
+    p.diagnosticos.push(dx);
+    await p.save();
+
+    res.status(201).json({ ok: true, diagnostico: dx, diagnosticos: p.diagnosticos });
+  } catch (err) {
+    console.error("❌ agregarDiagnostico:", err);
+    res.status(500).json({ error: "No se pudo agregar el diagnóstico" });
+  }
+};
+
+// PUT /api/pacientes/:dni/diagnosticos/:id
+// Fallback: /api/pacientes/:dni/diagnosticos?index=#
+const actualizarDiagnostico = async (req, res) => {
+  try {
+    const dni = toStr(req.params.dni).trim();
+    const p = await Paciente.findOne({ dni });
+    if (!p) return res.status(404).json({ error: "Paciente no encontrado" });
+
+    if (!Array.isArray(p.diagnosticos)) p.diagnosticos = [];
+
+    let idx = -1;
+    if (req.params.id) {
+      const id = req.params.id;
+      idx = p.diagnosticos.findIndex(d => String(d._id) === String(id) || String(d.id) === String(id));
+    } else if (req.query.index != null) {
+      idx = parseInt(req.query.index, 10);
+    }
+    if (idx < 0 || idx >= p.diagnosticos.length) {
+      return res.status(404).json({ error: "Diagnóstico no encontrado" });
+    }
+
+    const { fecha, area, observaciones, archivoKey, archivoURL } = req.body || {};
+    const dx = p.diagnosticos[idx];
+
+    if (fecha !== undefined) dx.fecha = toStr(fecha).trim();
+    if (area !== undefined)  dx.area  = toStr(area).trim();
+    if (observaciones !== undefined) {
+      const v = toStr(observaciones).trim();
+      dx.observaciones = v || undefined;
+    }
+    if (archivoKey !== undefined) dx.archivoKey = toStr(archivoKey).trim();
+    if (archivoURL !== undefined) dx.archivoURL = toStr(archivoURL).trim();
+
+    dx.actualizadoEn = new Date();
+
+    await p.save();
+    res.json({ ok: true, diagnostico: dx, diagnosticos: p.diagnosticos });
+  } catch (err) {
+    console.error("❌ actualizarDiagnostico:", err);
+    res.status(500).json({ error: "No se pudo actualizar el diagnóstico" });
+  }
+};
+
+// DELETE /api/pacientes/:dni/diagnosticos/:id
+// Fallback: /api/pacientes/:dni/diagnosticos?index=#
+const eliminarDiagnostico = async (req, res) => {
+  try {
+    const dni = toStr(req.params.dni).trim();
+    const p = await Paciente.findOne({ dni });
+    if (!p) return res.status(404).json({ error: "Paciente no encontrado" });
+
+    if (!Array.isArray(p.diagnosticos)) p.diagnosticos = [];
+
+    let idx = -1;
+    if (req.params.id) {
+      const id = req.params.id;
+      idx = p.diagnosticos.findIndex(d => String(d._id) === String(id) || String(d.id) === String(id));
+    } else if (req.query.index != null) {
+      idx = parseInt(req.query.index, 10);
+    }
+    if (idx < 0 || idx >= p.diagnosticos.length) {
+      return res.status(404).json({ error: "Diagnóstico no encontrado" });
+    }
+
+    const removed = p.diagnosticos.splice(idx, 1)[0];
+    await p.save();
+    // Nota: el borrado del objeto en R2 lo hace el frontend (best-effort).
+    res.json({ ok: true, eliminado: removed, diagnosticos: p.diagnosticos });
+  } catch (err) {
+    console.error("❌ eliminarDiagnostico:", err);
+    res.status(500).json({ error: "No se pudo eliminar el diagnóstico" });
+  }
+};
+
 module.exports = {
+  // existentes
   listarPacientes,
   buscarPaciente,
   obtenerPorDNI,
   crearPaciente,
-  actualizarPaciente
+  actualizarPaciente,
+
+  // nuevos (R2 metadata)
+  agregarDocumento,
+  actualizarDocumento,
+  eliminarDocumento,
+
+  agregarDiagnostico,
+  actualizarDiagnostico,
+  eliminarDiagnostico
 };
