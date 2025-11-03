@@ -1180,20 +1180,198 @@ async function crearModuloEventoEspecial() {
     }
   };
 
-  window.modificarEventoEspecial = async (idOrNombre) => {
-    try {
-      const res = await apiFetch(`/modulos/evento-especial/${idOrNombre}`);
-      const ev = await res.json();
-      if (!res.ok) throw new Error(ev?.error || 'No se pudo obtener el evento especial');
+// === Reemplazo completo: editar Evento Especial ===
+window.modificarEventoEspecial = async (idOrNombre) => {
+  try {
+    // 1) Traer el evento + usuarios
+    const [resEv, resUsers] = await Promise.all([
+      apiFetch(`/modulos/evento-especial/${idOrNombre}`),
+      apiFetch(`/usuarios`, { method: 'GET' })
+    ]);
+    const ev = await resEv.json();
+    if (!resEv.ok) throw new Error(ev?.error || 'No se pudo obtener el evento especial');
 
-      // Stub: integrar con tu form si querés editarlo igual que módulos
-      console.log('Evento especial para editar:', ev);
-      await Swal.fire('Editar', 'Acá abrirías tu formulario de edición de evento especial', 'info');
-    } catch (e) {
-      console.error('Error obteniendo evento especial:', e);
-      Swal.fire('Error', e.message || 'No se pudo abrir el editor del evento especial', 'error');
+    let usuarios = [];
+    if (resUsers.ok) usuarios = await resUsers.json();
+
+    // Helpers
+    const formatARS = (v) => new Intl.NumberFormat("es-AR", {
+      style: "currency", currency: "ARS", minimumFractionDigits: 2
+    }).format(Number.isFinite(v) ? v : 0);
+
+    const fullName = (u) => {
+      const cands = [
+        u.nombreApellido, u.apellidoNombre, u.nombreCompleto,
+        [u.apellido, u.nombre].filter(Boolean).join(', '),
+        [u.nombre, u.apellido].filter(Boolean).join(' '),
+        u.nombre, u.apellido, u.displayName, u.usuario, u.email
+      ].map(x => (x || '').toString().trim()).filter(Boolean);
+      return cands[0] || 'Sin nombre';
+    };
+
+    const arr = (v) => Array.isArray(v) ? v : (v ? [v] : []);
+    const isFono     = (s='') => /fonoaudiolog[ií]a/i.test(s);
+    const isPsicoPed = (s='') => /psicopedagog[ií]a/i.test(s);
+
+    const normAreaEntry = (x) => {
+      if (!x) return null;
+      if (typeof x === 'string') return { nombre: x.trim(), nivel: '' };
+      if (typeof x === 'object') {
+        const nombre = (x.nombre || x.name || x.titulo || x.area || '').toString().trim();
+        const nivel  = (
+          x.nivel ?? x.Nivel ?? x.nivelArea ?? x.nivel_area ??
+          x.nivelProfesional ?? x.grado ?? x.categoria ?? x.seniority ?? ''
+        ).toString().trim();
+        if (!nombre && !nivel) return null;
+        return { nombre, nivel };
+      }
+      return null;
+    };
+
+    const getAreasDetailed = (u) => {
+      const profDet  = Array.isArray(u.areasProfesionalDetalladas) ? u.areasProfesionalDetalladas : [];
+      const coordDet = Array.isArray(u.areasCoordinadasDetalladas) ? u.areasCoordinadasDetalladas : [];
+      let list = [...profDet, ...coordDet].map(normAreaEntry).filter(Boolean);
+      if (list.length) return list;
+
+      const pools = [u.areasProfesional, u.areasCoordinadas, u.areas, u.area, u.areaPrincipal];
+      list = pools.flatMap(arr).map(normAreaEntry).filter(Boolean);
+      return list;
+    };
+
+    const hasAreaFP  = (u) => getAreasDetailed(u).some(a => isFono(a.nombre) || isPsicoPed(a.nombre));
+
+    const mapRolCanonical = (r = '') => {
+      const s = String(r).trim().toLowerCase();
+      switch (s) {
+        case 'directoras':                   return 'directora';
+        case 'coordinador y profesional':    return 'coord_y_prof';
+        case 'coordinador de área':
+        case 'coordinador de area':          return 'coordinador';
+        case 'profesional':                  return 'profesional';
+        case 'pasante':                      return 'pasante';
+        default:                             return s;
+      }
+    };
+    const rolesCanonicos = (u) => {
+      const crudos = [u.rol, u.role, u.cargo, ...(Array.isArray(u.roles) ? u.roles : [])].filter(Boolean);
+      const expandidos = crudos.flatMap(r => {
+        const canon = mapRolCanonical(r);
+        return canon === 'coord_y_prof' ? ['coordinador', 'profesional'] : [canon];
+      });
+      return new Set(expandidos);
+    };
+    const hasRolCanon = (u, ...wanted) => {
+      const R = rolesCanonicos(u);
+      return wanted.some(w => R.has(w));
+    };
+
+    // Para EVENTO ESPECIAL: solo EXTERNOS y solo Coordinadores/DirectorAs
+    const candidatosExtern = usuarios.filter(u => !hasAreaFP(u));
+    const coordinadoresExt = candidatosExtern.filter(u => hasRolCanon(u, 'coordinador', 'directora'));
+
+    // Prefill montos (ev.coordinadoresExternos = [{usuario, monto}])
+    const mapMontos = new Map();
+    (ev.coordinadoresExternos || []).forEach(x => {
+      const id = String(x?.usuario?._id || x?.usuario || '');
+      if (id) mapMontos.set(id, Number(x.monto) || 0);
+    });
+
+    const renderRows = (arr) => {
+      if (!arr.length) return `<div class="empty">No hay Coordinadores/DirectorAs externos</div>`;
+      return arr
+        .sort((a,b)=>fullName(a).localeCompare(fullName(b), 'es'))
+        .map(u => {
+          const val = mapMontos.get(String(u._id)) || 0;
+          return `
+            <div class="person-row">
+              <div class="name">${fullName(u)}</div>
+              <input type="number" min="0" step="0.01"
+                     class="monto-input"
+                     data-user="${u._id}"
+                     placeholder="${formatARS(0)}"
+                     value="${val > 0 ? val : ''}" />
+            </div>
+          `;
+        }).join('');
+    };
+
+    // 2) Modal edición
+    const { value: formValues } = await Swal.fire({
+      title: `Editar evento especial: ${ev.nombre}`,
+      width: '700px',
+      html: `
+        <style>
+          .form-col{display:flex;flex-direction:column;gap:14px}
+          .person-row{display:grid;grid-template-columns:1fr 140px;gap:8px;align-items:center;border-bottom:1px dashed #eee;padding:4px 0}
+          .person-row:last-child{border-bottom:none}
+          .name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+          .empty{color:#888;font-style:italic;padding:6px}
+          .swal2-input{width:100%}
+          .panel{border:1px solid #e5e7eb;border-radius:10px;padding:10px;max-height:360px;overflow:auto}
+        </style>
+
+        <div class="form-col">
+          <div>
+            <label for="modulo_nombre_es"><strong>Nombre del evento:</strong></label>
+            <input id="modulo_nombre_es" type="text" class="swal2-input" value="${(ev.nombre || '').replace(/"/g,'&quot;')}" disabled>
+          </div>
+          <div>
+            <label for="valor_padres_es"><strong>Pagan los padres (valor del módulo/evento):</strong></label>
+            <input id="valor_padres_es" type="number" min="0" step="0.01" class="swal2-input" placeholder="${formatARS(0)}" value="${Number(ev.valorPadres)||0}">
+          </div>
+
+          <div>
+            <label><strong>Coordinadores/DirectorAs (ÁREAS EXTERNAS)</strong></label>
+            <div class="panel">
+              ${renderRows(coordinadoresExt)}
+            </div>
+          </div>
+        </div>
+      `,
+      showCancelButton: true,
+      confirmButtonText: 'Guardar cambios',
+      cancelButtonText: 'Cancelar',
+      preConfirm: () => {
+        const modal   = Swal.getHtmlContainer();
+        const padresEl = modal.querySelector('#valor_padres_es');
+        const valorPadres = Number(padresEl.value);
+
+        const coordinadoresExternos = [...modal.querySelectorAll('.monto-input')]
+          .map(i => ({ usuario: i.dataset.user, monto: Number(i.value) || 0 }))
+          .filter(x => x.usuario && x.monto > 0);
+
+        return {
+          nombre: ev.nombre,
+          valorPadres: Number.isNaN(valorPadres) ? 0 : valorPadres,
+          coordinadoresExternos
+        };
+      }
+    });
+
+    if (!formValues) return;
+
+    // 3) Guardar (PUT)
+    const resUpdate = await apiFetch(`/modulos/evento-especial/${encodeURIComponent(ev.nombre)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formValues)
+    });
+    const data = await resUpdate.json();
+
+    if (resUpdate.ok) {
+      await Swal.fire('Éxito', 'Evento especial actualizado correctamente', 'success');
+      // refrescar listado si lo tenés en la pantalla:
+      if (typeof cargarListadoEventosEspeciales === 'function') cargarListadoEventosEspeciales();
+    } else {
+      throw new Error(data?.error || 'No se pudo actualizar el evento especial');
     }
-  };
+  } catch (e) {
+    console.error('Error modificando evento especial:', e);
+    Swal.fire('Error', e.message || 'No se pudo editar el evento especial', 'error');
+  }
+};
+
 
   // Carga inicial de eventos
   if (contenedorListaEE) cargarListadoEventosEspeciales();
