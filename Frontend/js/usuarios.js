@@ -254,11 +254,11 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
 
   const buildProRow = (areaNombre = "", nivel = "") => `
     <div class="pro-row">
-      <select class="swal2-select pro-area">
+      <select class="swal2-select pro-area" aria-label="Área profesional">
         <option value="">-- Área --</option>
         ${AREA_OPTS}
       </select>
-      <select class="swal2-select pro-nivel">
+      <select class="swal2-select pro-nivel" aria-label="Nivel">
         <option value="">Nivel...</option>
         <option value="Junior">Junior</option>
         <option value="Senior">Senior</option>
@@ -268,7 +268,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
 
   const buildCoordRow = (areaNombre = "") => `
     <div class="coord-row">
-      <select class="swal2-select coord-area">
+      <select class="swal2-select coord-area" aria-label="Área coordinada">
         <option value="">-- Área --</option>
         ${AREA_OPTS}
       </select>
@@ -302,8 +302,6 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         .two-col { display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
         .swal2-confirm{ background:#2f72c4 !important;color:#fff !important;font-weight:700;padding:8px 20px;border-radius:8px; }
         .swal2-cancel { background:#e53935 !important;color:#fff !important;font-weight:700;padding:8px 20px; }
-
-        /* Secciones */
         #pasanteSection{ display:none; grid-column:1 / -1; max-width:100%; }
         #genericAreaSection{ display:none; }
         #seguroExtraRow{ display:none; }
@@ -313,54 +311,91 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         <div class="form-container">
           <!-- Col 1 -->
           <div class="form-column">
+            <label for="nombreApellido">Nombre y Apellido</label>
             <input class="swal2-input" id="nombreApellido" placeholder="Nombre y Apellido" autocomplete="off">
-            <input class="swal2-input" id="apodo" placeholder="Apodo (opcional)" autocomplete="off"> <!-- NUEVO -->
+
+            <label for="apodo">Apodo (opcional)</label>
+            <input class="swal2-input" id="apodo" placeholder="Apodo (opcional)" autocomplete="off">
+
+            <label for="fechaNacimiento">Fecha de nacimiento</label>
             <input class="swal2-input" id="fechaNacimiento" type="date" placeholder="Fecha de Nacimiento" autocomplete="off">
+
+            <label for="domicilio">Domicilio</label>
             <input class="swal2-input" id="domicilio" placeholder="Domicilio" autocomplete="off">
+
+            <label for="dni">DNI</label>
             <input class="swal2-input" id="dni" placeholder="DNI" autocomplete="off">
+
+            <label for="cuit">CUIT</label>
             <input class="swal2-input" id="cuit" placeholder="CUIT" autocomplete="off">
 
+            <label for="matricula">Matrícula</label>
             <input class="swal2-input" id="matricula" placeholder="Matrícula" autocomplete="off">
-            <label><small>Vencimiento matrícula (opcional)</small></label>
-            <input class="swal2-input" id="vencimientoMatricula" type="date" placeholder="Vencimiento matrícula" autocomplete="off"> <!-- NUEVO -->
 
-            <label><strong>Jurisdicción:</strong></label>
+            <label for="vencimientoMatricula"><small>Vencimiento matrícula (opcional)</small></label>
+            <input class="swal2-input" id="vencimientoMatricula" type="date" placeholder="Vencimiento matrícula" autocomplete="off">
+
+            <label for="jurisdiccion"><strong>Jurisdicción</strong></label>
             <select id="jurisdiccion" class="swal2-select">
               <option value="">Seleccionar...</option>
               <option value="Provincial">Provincial</option>
               <option value="Nacional">Nacional</option>
             </select>
 
+            <label for="registroNacionalDePrestadores">Registro Nacional de Prestadores</label>
             <input class="swal2-input" id="registroNacionalDePrestadores" placeholder="Registro Nacional de Prestadores" autocomplete="off">
-            <label><small>Vencimiento RNP (opcional)</small></label>
-            <input class="swal2-input" id="vencimientoRegistroNacionalDePrestadores" type="date" placeholder="Vencimiento RNP" autocomplete="off"> <!-- NUEVO -->
 
+            <label for="vencimientoRegistroNacionalDePrestadores"><small>Vencimiento RNP (opcional)</small></label>
+            <input class="swal2-input" id="vencimientoRegistroNacionalDePrestadores" type="date" placeholder="Vencimiento RNP" autocomplete="off">
+
+            <label for="whatsapp">Whatsapp</label>
             <input class="swal2-input" id="whatsapp" placeholder="Whatsapp" autocomplete="off">
+
+            <label for="mail">Mail</label>
             <input class="swal2-input" id="mail" placeholder="Mail" autocomplete="off">
 
             <div class="two-col">
               <div>
+                <label for="salarioAcuerdo">Salario acordado</label>
                 <input class="swal2-input" id="salarioAcuerdo" placeholder="Salario acordado" autocomplete="off" inputmode="numeric">
+
+                <label for="salarioAcuerdoObs">Obs. salario (opcional)</label>
                 <input class="swal2-input" id="salarioAcuerdoObs" placeholder="Obs. salario (opcional)" autocomplete="off">
               </div>
               <div>
+                <label for="fijoAcuerdo">Fijo acordado</label>
                 <input class="swal2-input" id="fijoAcuerdo" placeholder="Fijo acordado" autocomplete="off" inputmode="numeric">
+
+                <label for="fijoAcuerdoObs">Obs. fijo (opcional)</label>
                 <input class="swal2-input" id="fijoAcuerdoObs" placeholder="Obs. fijo (opcional)" autocomplete="off">
               </div>
             </div>
 
+            <label for="banco">Banco</label>
             <input class="swal2-input" id="banco" placeholder="Banco" autocomplete="off">
+
+            <label for="cbu">CBU</label>
             <input class="swal2-input" id="cbu" placeholder="CBU" autocomplete="off">
+
+            <label for="numeroCuenta">Número de cuenta</label>
             <input class="swal2-input" id="numeroCuenta" placeholder="Número de cuenta" autocomplete="off">
+
+            <label for="numeroSucursal">Número de sucursal</label>
             <input class="swal2-input" id="numeroSucursal" placeholder="Número de sucursal" autocomplete="off">
+
+            <label for="alias">Alias</label>
             <input class="swal2-input" id="alias" placeholder="Alias" autocomplete="off">
+
+            <label for="nombreFiguraExtracto">Nombre como figura en extracto</label>
             <input class="swal2-input" id="nombreFiguraExtracto" placeholder="Nombre como figura en extracto" autocomplete="off">
+
+            <label for="tipoCuenta">Tipo de cuenta</label>
             <input class="swal2-input" id="tipoCuenta" placeholder="Tipo de cuenta" autocomplete="off">
           </div>
 
           <!-- Col 2 -->
           <div class="form-column">
-            <label><strong>Rol asignado:</strong></label>
+            <label for="rol"><strong>Rol asignado</strong></label>
             <select id="rol" class="swal2-select">
               <option value="">Seleccionar...</option>
               <option value="Administrador">Administrador</option>
@@ -376,13 +411,13 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
 
             <!-- Pasante (exclusivo) -->
             <div id="pasanteSection" class="block">
-              <label><strong>Pasantía (área + nivel):</strong></label>
+              <label><strong>Pasantía (área + nivel)</strong></label>
               <div class="pro-row">
-                <select id="pasanteArea" class="swal2-select pro-area">
+                <select id="pasanteArea" class="swal2-select pro-area" aria-label="Área de pasantía">
                   <option value="">-- Área --</option>
                   ${AREA_OPTS}
                 </select>
-                <select id="pasanteNivel" class="swal2-select pro-nivel">
+                <select id="pasanteNivel" class="swal2-select pro-nivel" aria-label="Nivel de pasantía">
                   <option value="">Nivel...</option>
                   <option value="Junior">Junior</option>
                   <option value="Senior">Senior</option>
@@ -393,21 +428,21 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
 
             <!-- Profesional -->
             <div id="proSection" class="block">
-              <label><strong>Áreas como profesional (con nivel):</strong></label>
+              <label><strong>Áreas como profesional (con nivel)</strong></label>
               <div id="proList"></div>
               <button type="button" id="btnAddPro" class="mini-btn">+ Agregar área profesional</button>
             </div>
 
             <!-- Coordinador -->
             <div id="coordSection" class="block">
-              <label><strong>Áreas como coordinador:</strong></label>
+              <label><strong>Áreas como coordinador</strong></label>
               <div id="coordList"></div>
               <button type="button" id="btnAddCoord" class="mini-btn">+ Agregar área a coordinar</button>
             </div>
 
             <!-- Roles comunes -->
             <div id="genericAreaSection" class="block">
-              <label><strong>Área asignada:</strong></label>
+              <label for="genericArea"><strong>Área asignada</strong></label>
               <select id="genericArea" class="swal2-select">
                 <option value="">-- Área --</option>
                 ${AREA_OPTS}
@@ -415,11 +450,11 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
             </div>
 
             <!-- Seguro (solo roles habilitados) -->
-            <label id="labelSeguro" style="display:none;margin-top:10px;"><strong>Seguro de mala praxis:</strong></label>
+            <label id="labelSeguro" for="seguroMalaPraxis" style="display:none;margin-top:10px;"><strong>Seguro de mala praxis</strong></label>
             <input class="swal2-input" id="seguroMalaPraxis" placeholder="Número de póliza o compañía" style="display:none" autocomplete="off">
             <div id="seguroExtraRow" class="two-col">
               <div>
-                <label><small>Vencimiento seguro (opcional)</small></label>
+                <label for="vencimientoSeguroMalaPraxis"><small>Vencimiento seguro (opcional)</small></label>
                 <input class="swal2-input" id="vencimientoSeguroMalaPraxis" type="date" placeholder="Vencimiento seguro" autocomplete="off">
               </div>
             </div>
@@ -427,24 +462,28 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
 
           <!-- Col 3 -->
           <div class="form-column">
-            <label><strong>Usuario y Contraseña:</strong></label>
+            <label><strong>Usuario y Contraseña</strong></label>
+
+            <label for="usuario">Usuario (email)</label>
             <input class="swal2-input" id="usuario" placeholder="Usuario (email)"
                    autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
 
+            <label for="contrasena">Contraseña</label>
             <div style="position:relative; display:flex; align-items:center;">
               <input class="swal2-input" id="contrasena" type="password" placeholder="Contraseña"
                      style="flex:1; padding-right:44px;" autocomplete="new-password">
               <button type="button" id="togglePass"
-                      style="position:absolute; right:10px; height:32px; width:32px; border:none; background:transparent; cursor:pointer;">
+                      style="position:absolute; right:10px; height:32px; width:32px; border:none; background:transparent; cursor:pointer;"
+                      title="Mostrar/ocultar contraseña">
                 <i id="togglePassIcon" class="fa-solid fa-eye"></i>
               </button>
             </div>
 
-            <label><strong>Documentos:</strong></label>
+            <label for="documentos"><strong>Documentos</strong></label>
             <input type="file" id="documentos" name="documentos" class="swal2-input" multiple accept=".pdf,image/*,.doc,.docx,.txt">
 
             <div id="docsExistentes" class="block" style="display:none; margin-top:8px;">
-              <label><strong>Documentos existentes:</strong></label>
+              <label><strong>Documentos existentes</strong></label>
               <ul id="docsList" style="margin:6px 0; padding-left:18px;"></ul>
             </div>
           </div>
@@ -472,25 +511,24 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         const el = document.getElementById(id);
         if (!el) return;
         if (!val) { el.value = ""; return; }
-        // val puede venir como ISO; tomamos YYYY-MM-DD
         const d = String(val).split("T")[0];
         el.value = d || "";
       };
 
       if (modoEdicion) {
         set("nombreApellido", u.nombreApellido);
-        set("apodo", u.apodo || ""); // NUEVO
+        set("apodo", u.apodo || "");
         setDate("fechaNacimiento", u.fechaNacimiento);
         set("domicilio", u.domicilio);
         set("dni", u.dni);
         set("cuit", u.cuit);
         set("matricula", u.matricula);
-        setDate("vencimientoMatricula", u.vencimientoMatricula); // NUEVO
+        setDate("vencimientoMatricula", u.vencimientoMatricula);
 
         if (u.jurisdiccion) document.getElementById("jurisdiccion").value = u.jurisdiccion;
 
         set("registroNacionalDePrestadores", u.registroNacionalDePrestadores);
-        setDate("vencimientoRegistroNacionalDePrestadores", u.vencimientoRegistroNacionalDePrestadores); // NUEVO
+        setDate("vencimientoRegistroNacionalDePrestadores", u.vencimientoRegistroNacionalDePrestadores);
 
         set("whatsapp", u.whatsapp);
         set("mail", u.mail);
@@ -517,7 +555,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         if (u.pasanteArea)  document.getElementById("pasanteArea").value =
           (typeof u.pasanteArea === "string" ? u.pasanteArea : (u.pasanteArea?.areaNombre || ""));
         if (u.seguroMalaPraxis) document.getElementById("seguroMalaPraxis").value = u.seguroMalaPraxis;
-        setDate("vencimientoSeguroMalaPraxis", u.vencimientoSeguroMalaPraxis); // NUEVO
+        setDate("vencimientoSeguroMalaPraxis", u.vencimientoSeguroMalaPraxis);
       } else {
         const usuarioEl = document.getElementById("usuario");
         const passEl    = document.getElementById("contrasena");
@@ -571,7 +609,6 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
       function syncVisibility() {
         const rol = rolSelect.value;
 
-        // Reset visibles
         proSection.style.display     = "none";
         coordSection.style.display   = "none";
         pasanteSection.style.display = "none";
@@ -589,14 +626,14 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
           proSection.style.display = "block";
           labelSeguro.style.display = "block";
           inputSeguro.style.display = "block";
-          seguroExtraRow.style.display = "grid"; // mostrar vencimiento del seguro
+          seguroExtraRow.style.display = "grid";
           if (!proList.querySelector(".pro-row")) addProRow();
         }
         if (ROLES_COORD.has(rol)) {
           coordSection.style.display = "block";
           labelSeguro.style.display = "block";
           inputSeguro.style.display = "block";
-          seguroExtraRow.style.display = "grid"; // mostrar vencimiento del seguro
+          seguroExtraRow.style.display = "grid";
           if (!coordList.querySelector(".coord-row")) addCoordRow();
         }
         if (ROLES_COMMON.has(rol)) {
@@ -615,7 +652,6 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
           coordList.innerHTML = "";
           u.areasCoordinadas.forEach(ac => addCoordRow(ac.areaNombre || ""));
         }
-        // Para roles comunes, tomar primer área (coordinadas > profesional)
         const firstGeneric =
           (Array.isArray(u.areasCoordinadas) && u.areasCoordinadas[0]?.areaNombre) ||
           (Array.isArray(u.areasProfesional) && u.areasProfesional[0]?.areaNombre) ||
@@ -625,7 +661,7 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
 
       rolSelect.addEventListener("change", syncVisibility);
 
-      // Render docs + eliminar
+      // Render docs + eliminar (CORREGIDO)
       const docsBox  = document.getElementById("docsExistentes");
       const docsList = document.getElementById("docsList");
       function renderDocs(docs = []) {
@@ -727,7 +763,6 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
       const ROLES_PAS    = new Set(["Pasante"]);
       const ROLES_COMMON = new Set(["Administrador","Directoras","Administrativo","Recepcionista","Área"]);
 
-      // Reglas de obligatoriedad (se mantienen)
       if (ROLES_PROF.has(rol) && areasProfesional.length === 0) {
         Swal.showValidationMessage("Agregá al menos un área con nivel para el rol profesional.");
         return false;
@@ -755,7 +790,6 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         const val = get("pasanteArea");
         pasanteAreaObj = val ? { areaNombre: val } : undefined;
       } else if (ROLES_COMMON.has(rol)) {
-        // Solo un área simple (sin nivel)
         finalAreasProfesional = [];
         finalAreasCoordinadas = genericArea ? [{ areaNombre: genericArea }] : [];
         pasanteNivel = undefined;
@@ -767,16 +801,16 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
 
       return {
         nombreApellido: get("nombreApellido"),
-        apodo: get("apodo") || undefined, // NUEVO
+        apodo: get("apodo") || undefined,
         fechaNacimiento: get("fechaNacimiento"),
         domicilio: get("domicilio"),
         dni: get("dni"),
         cuit: get("cuit"),
         matricula: get("matricula"),
-        vencimientoMatricula: get("vencimientoMatricula") || undefined, // NUEVO
+        vencimientoMatricula: get("vencimientoMatricula") || undefined,
         jurisdiccion: get("jurisdiccion"),
         registroNacionalDePrestadores: get("registroNacionalDePrestadores"),
-        vencimientoRegistroNacionalDePrestadores: get("vencimientoRegistroNacionalDePrestadores") || undefined, // NUEVO
+        vencimientoRegistroNacionalDePrestadores: get("vencimientoRegistroNacionalDePrestadores") || undefined,
         whatsapp: get("whatsapp"),
         mail: get("mail"),
         salarioAcuerdo: onlyDigits(get("salarioAcuerdo")),
@@ -795,9 +829,8 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         pasanteArea: pasanteAreaObj,
         usuario: get("usuario"),
         contrasena: get("contrasena"),
-        // Seguro (visible/permitido solo en roles habilitados por schema)
         seguroMalaPraxis: get("seguroMalaPraxis") || undefined,
-        vencimientoSeguroMalaPraxis: get("vencimientoSeguroMalaPraxis") || undefined, // NUEVO
+        vencimientoSeguroMalaPraxis: get("vencimientoSeguroMalaPraxis") || undefined,
         areasProfesional: finalAreasProfesional,
         areasCoordinadas: finalAreasCoordinadas
       };
