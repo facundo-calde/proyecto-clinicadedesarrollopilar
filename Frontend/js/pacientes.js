@@ -372,13 +372,13 @@ async function modificarPaciente(dni) {
       AREAS    = Array.isArray(a) ? a : [];
       USUARIOS = Array.isArray(u) ? u : [];
 
-      // Intento 1: endpoint dedicado
+      // ✅ Endpoint correcto de eventos especiales
       try {
-        const me = await apiFetchJson(`/modulos-especiales`);
+        const me = await apiFetchJson(`/modulos/evento-especial`);
         if (Array.isArray(me) && me.length) MODULOS_ESP = me;
       } catch (_) {}
 
-      // Intento 2 (fallback): derivar de MODULOS
+      // Fallback: intentar derivar
       if (!MODULOS_ESP.length && Array.isArray(MODULOS)) {
         MODULOS_ESP = MODULOS.filter(m =>
           m?.esEspecial === true ||
@@ -402,7 +402,14 @@ async function modificarPaciente(dni) {
       ? AREAS.map(a => `<option value="${a._id}">${a.nombre}</option>`).join("")
       : `<option value="">No disponible</option>`;
 
-    // ---- Helpers de filtro por área/rol (reforzados) ----
+    // Áreas externas (excluye Fono / Psico) para "especiales"
+    const AREA_OPTS_ESPECIALES = AREAS.length
+      ? AREAS
+          .filter(a => !/fonoaudiolog[ií]a/i.test(a.nombre) && !/psicopedagog[ií]a/i.test(a.nombre))
+          .map(a => `<option value="${a._id}">${a.nombre}</option>`).join("")
+      : `<option value="">No disponible</option>`;
+
+    // ---- Helpers de filtro por área/rol ----
     const norm = (s) => (s ?? "").toString()
       .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
       .toLowerCase().trim();
@@ -480,6 +487,7 @@ async function modificarPaciente(dni) {
       return false;
     }
 
+    // Usuarios para módulos comunes (roles asignables, opcionalmente filtrados por área)
     const profesionalesDeArea = (areaId) => {
       const selId = String(areaId || "");
       const lista = (USUARIOS || [])
@@ -501,7 +509,44 @@ async function modificarPaciente(dni) {
         }).join("");
     };
 
-    // ---- Template común de cada bloque de módulo ----
+    // Usuarios para módulos ESPECIALES: SOLO externos (no Fono/Psico) y SOLO Coordinadores/Directoras
+    function esExterno(u) {
+      const pools = [
+        ...(Array.isArray(u.areasProfesionalDetalladas) ? u.areasProfesionalDetalladas : []),
+        ...(Array.isArray(u.areasCoordinadasDetalladas) ? u.areasCoordinadasDetalladas : []),
+        ...(Array.isArray(u.areasProfesional) ? u.areasProfesional : []),
+        ...(Array.isArray(u.areasCoordinadas) ? u.areasCoordinadas : []),
+        ...(Array.isArray(u.areas) ? u.areas : []),
+        u.area, u.areaNombre
+      ].filter(Boolean);
+      const hasFP = pools.some(x => {
+        const n = typeof x === 'string'
+          ? x
+          : (x?.nombre || x?.name || x?.area || x?.areaNombre || '');
+        const s = String(n || '');
+        return /fonoaudiolog[ií]a/i.test(s) || /psicopedagog[ií]a/i.test(s);
+      });
+      return !hasFP;
+    }
+    const profesionalesDeAreaEspecial = (areaId) => {
+      const selId = String(areaId || "");
+      const lista = (USUARIOS || [])
+        .filter(u => {
+          if (!esExterno(u)) return false;
+          const R = userRoles(u);
+          const okRol = R.has('coordinador de área') || R.has('directoras') || R.has('coordinador');
+          if (!okRol) return false;
+          if (!selId) return true;
+          return userBelongsToArea(u, selId);
+        })
+        .sort((a,b)=> (a.nombreApellido || "").localeCompare(b.nombreApellido || "", "es"));
+
+      if (!lista.length) return `<option value="">Sin usuarios externos para el área</option>`;
+      return `<option value="">-- Seleccionar --</option>` +
+        lista.map(u => `<option value="${u._id}">${u.nombreApellido || u.nombre || u.usuario} — ${ (userRoles(u).has('directoras') ? 'Directora' : 'Coordinador/a') }</option>`).join('');
+    };
+
+    // ---- Template de cada bloque de módulo (COMÚN) ----
     const renderModuloSelect = (index, optsHtml) => `
       <div class="modulo-row" data-index="${index}"
            style="margin-bottom:15px; padding:10px; border:1px solid #ddd; border-radius:6px;">
@@ -544,27 +589,56 @@ async function modificarPaciente(dni) {
       </div>
     `;
 
-    // ---- Responsables iniciales (con documento opcional) ----
+    // ---- Template de cada bloque de módulo (ESPECIAL) — SIN CANTIDAD ----
+    const renderModuloEspecialSelect = (index, optsHtml) => `
+      <div class="modulo-row mod-esp" data-index="${index}"
+           style="margin-bottom:15px; padding:10px; border:1px solid #ddd; border-radius:6px;">
+        <div style="display:grid; grid-template-columns:minmax(0,1fr); gap:10px; margin-bottom:10px;">
+          <div style="min-width:0;">
+            <label>Módulo especial:</label>
+            <select class="modulo-select swal2-select" style="width:100%; margin:0;">
+              <option value="">-- Seleccionar --</option>
+              ${optsHtml}
+            </select>
+          </div>
+        </div>
+
+        <div class="profesionales-container" style="margin-top:10px;">
+          <h5 style="margin:8px 0;">Usuarios (solo Coordinadores/Directoras de <u>áreas externas</u>):</h5>
+          <div class="profesional-row" style="display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:8px;">
+            <select class="area-select swal2-select" style="width:100%; margin:0;">
+              <option value="">-- Área externa --</option>
+              ${AREA_OPTS_ESPECIALES}
+            </select>
+            <select class="profesional-select swal2-select" style="width:100%; margin:0;">
+              <option value="">-- Seleccionar usuario --</option>
+            </select>
+          </div>
+        </div>
+
+        <button type="button" class="btnAgregarProfesional"
+          style="margin-top:8px; padding:4px 10px; border:1px solid #ccc; border-radius:5px; background:#eee; cursor:pointer;">
+          ➕ Agregar otro
+        </button>
+      </div>
+    `;
+
+    // ---- Responsables iniciales ----
     const responsablesIniciales = Array.isArray(p.responsables) && p.responsables.length
       ? p.responsables.slice(0, 3).map(r => ({
-          relacion: r.relacion,
-          nombre: r.nombre,
-          whatsapp: r.whatsapp,
-          email: r.email || "",
-          documento: r.documento || ""
+          relacion: r.relacion, nombre: r.nombre, whatsapp: r.whatsapp,
+          email: r.email || "", documento: r.documento || ""
         }))
       : (() => {
           const arr = [];
-          if (p.tutor?.nombre && p.tutor?.whatsapp) {
+          if (p.tutor?.nombre && p.tutor?.whatsapp)
             arr.push({ relacion: 'tutor', nombre: p.tutor.nombre, whatsapp: p.tutor.whatsapp, email: "", documento: "" });
-          }
           if (p.madrePadre) {
             arr.push({
               relacion: /madre/i.test(p.madrePadre) ? 'madre' : 'padre',
               nombre: String(p.madrePadre).replace(/^(madre|padre)\s*:\s*/i, '').trim(),
               whatsapp: p.whatsappMadrePadre || '',
-              email: "",
-              documento: ""
+              email: "", documento: ""
             });
           }
           return arr.slice(0, 3);
@@ -665,7 +739,7 @@ async function modificarPaciente(dni) {
 
         // desc estado
         const estadoSel = document.getElementById("estado");
-        theEstadoDescWrap = document.getElementById("estadoDescWrap"); // conservar nombre previo
+        const theEstadoDescWrap = document.getElementById("estadoDescWrap");
         const estadoInicial = p.estado || "En espera";
         const toggleDesc = () => {
           theEstadoDescWrap.style.display = (estadoSel.value !== estadoInicial) ? "block" : "none";
@@ -704,6 +778,10 @@ async function modificarPaciente(dni) {
           cont.lastElementChild.querySelector('.btn-remove')
             .addEventListener('click', () => cont.removeChild(document.getElementById(rowId)));
         };
+        const responsablesIniciales =
+          (Array.isArray(p.responsables) && p.responsables.length)
+            ? p.responsables.slice(0, 3)
+            : (p.tutor?.nombre && p.tutor?.whatsapp ? [{ relacion:'tutor', nombre:p.tutor.nombre, whatsapp:p.tutor.whatsapp }] : []);
         if (responsablesIniciales.length) responsablesIniciales.forEach(r => addRespRow(r));
         else addRespRow({ relacion: 'tutor' });
         btnAdd.addEventListener('click', () => addRespRow());
@@ -791,46 +869,46 @@ async function modificarPaciente(dni) {
           addModuloRow();
         });
 
-        // ====== Módulos ESPECIALES ======
+        // ====== Módulos ESPECIALES (SIN cantidad) ======
         const modEspCont = document.getElementById("modulosEspecialesContainer");
+
+        const attachAgregarProfesionalEspecial = (modRowEl) => {
+          const btn = modRowEl.querySelector(".btnAgregarProfesional");
+          const container = modRowEl.querySelector(".profesionales-container");
+          if (!btn || !container) return;
+
+          const buildRow = () => `
+            <div class="profesional-row" style="margin-top:5px; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:8px;">
+              <select class="area-select swal2-select" style="width:100%; margin:0;">
+                <option value="">-- Área externa --</option>
+                ${AREA_OPTS_ESPECIALES}
+              </select>
+              <select class="profesional-select swal2-select" style="width:100%; margin:0;">
+                <option value="">-- Seleccionar usuario --</option>
+              </select>
+            </div>`;
+
+          const wireFilter = (row) => {
+            const areaSel = row.querySelector(".area-select");
+            const profSel = row.querySelector(".profesional-select");
+            const render = () => { profSel.innerHTML = profesionalesDeAreaEspecial(areaSel.value); };
+            areaSel.addEventListener("change", render);
+            render();
+          };
+
+          btn.addEventListener("click", () => {
+            container.insertAdjacentHTML("beforeend", buildRow());
+            wireFilter(container.lastElementChild);
+          });
+
+          wireFilter(container.querySelector(".profesional-row"));
+        };
 
         const addModuloEspecialRow = () => {
           const index = modEspCont.querySelectorAll(".modulo-row").length;
-          modEspCont.insertAdjacentHTML("beforeend", renderModuloSelect(index, MOD_ESP_OPTS));
+          modEspCont.insertAdjacentHTML("beforeend", renderModuloEspecialSelect(index, MOD_ESP_OPTS));
           const modRowEl = modEspCont.lastElementChild;
-          // reutilizamos el mismo attach
-          (function attachAgregarProfesional(modRowEl) {
-            const btn = modRowEl.querySelector(".btnAgregarProfesional");
-            const container = modRowEl.querySelector(".profesionales-container");
-            if (!btn || !container) return;
-
-            const buildRow = () => `
-              <div class="profesional-row" style="margin-top:5px; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:8px;">
-                <select class="area-select swal2-select" style="width:100%; margin:0;">
-                  <option value="">-- Área --</option>
-                  ${AREA_OPTS}
-                </select>
-                <select class="profesional-select swal2-select" style="width:100%; margin:0;">
-                  <option value="">-- Seleccionar usuario --</option>
-                </select>
-              </div>`;
-
-            const wireFilter = (row) => {
-              const areaSel = row.querySelector(".area-select");
-              const profSel = row.querySelector(".profesional-select");
-              const render = () => { profSel.innerHTML = profesionalesDeArea(areaSel.value); };
-              areaSel.addEventListener("change", render);
-              render();
-            };
-
-            btn.addEventListener("click", () => {
-              container.insertAdjacentHTML("beforeend", buildRow());
-              wireFilter(container.lastElementChild);
-            });
-
-            wireFilter(container.querySelector(".profesional-row"));
-          })(modRowEl);
-
+          attachAgregarProfesionalEspecial(modRowEl);
           return modRowEl;
         };
 
@@ -844,9 +922,7 @@ async function modificarPaciente(dni) {
           existentesEsp.forEach(m => {
             const row = addModuloEspecialRow();
             const selMod = row.querySelector(".modulo-select");
-            const selCant = row.querySelector(".cantidad-select");
             if (selMod) selMod.value = String(m.moduloId || "");
-            if (selCant) selCant.value = String(m.cantidad ?? "0");
 
             const contProf = row.querySelector(".profesionales-container");
             const ensureRows = (n) => {
@@ -958,19 +1034,18 @@ async function modificarPaciente(dni) {
           }
         });
 
-        // === Recolectar módulos ESPECIALES
+        // === Recolectar módulos ESPECIALES (SIN cantidad → siempre 1)
         const modulosEspecialesAsignados = [];
         document.querySelectorAll("#modulosEspecialesContainer .modulo-row").forEach((row) => {
           const moduloId = row.querySelector(".modulo-select")?.value;
-          const cantidad = parseFloat(row.querySelector(".cantidad-select")?.value);
-          if (moduloId && cantidad > 0) {
+          if (moduloId) {
             const profesionalesAsignados = [];
             row.querySelectorAll(".profesional-row").forEach(profRow => {
               const areaId = profRow.querySelector(".area-select")?.value;
               const profesionalId = profRow.querySelector(".profesional-select")?.value;
               if (profesionalId && areaId) profesionalesAsignados.push({ profesionalId, areaId });
             });
-            modulosEspecialesAsignados.push({ moduloId, cantidad, profesionales: profesionalesAsignados });
+            modulosEspecialesAsignados.push({ moduloId, cantidad: 1, profesionales: profesionalesAsignados });
           }
         });
 
