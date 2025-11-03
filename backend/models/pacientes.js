@@ -105,7 +105,7 @@ const pacienteSchema = new mongoose.Schema({
   documentosPersonales: { type: [documentoPersonalSchema], default: [] },
   diagnosticos:         { type: [diagnosticoSchema],       default: [] },
 
-  // Módulos asignados
+  // Módulos asignados (normales)
   modulosAsignados: [{
     moduloId: { type: mongoose.Schema.Types.ObjectId, ref: 'Modulo' },
     nombre: String, // por compatibilidad
@@ -115,6 +115,21 @@ const pacienteSchema = new mongoose.Schema({
       areaId:        { type: mongoose.Schema.Types.ObjectId, ref: 'Area' },
       area:          String,
       nombre:        String
+    }]
+  }],
+
+  // 🔸 Módulos de EVENTO ESPECIAL asignados
+  //    - Misma estructura por compatibilidad.
+  //    - cantidad: opcional, default 1 (si tu UI no la pide).
+  modulosEspecialesAsignados: [{
+    moduloId: { type: mongoose.Schema.Types.ObjectId, ref: 'Modulo' }, // o 'ModuloEspecial' si usás colección separada
+    nombre:   { type: String },                                         // fallback si no hay ref
+    cantidad: { type: Number, default: 1, min: 1, max: 1 },             // en EE suele ser 1
+    profesionales: [{
+      profesionalId: { type: mongoose.Schema.Types.ObjectId, ref: 'Usuario', required: true },
+      areaId:        { type: mongoose.Schema.Types.ObjectId, ref: 'Area' },
+      area:          { type: String },
+      nombre:        { type: String }
     }]
   }],
 
