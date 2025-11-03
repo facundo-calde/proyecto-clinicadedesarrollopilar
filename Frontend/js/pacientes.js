@@ -31,7 +31,7 @@ document.getElementById("busquedaInput").addEventListener("input", async () => {
 
 
 // ─────────────────────────────────────────────────────────────────────────────
-// RENDER FICHA (solo muestra RESUMEN DE ESTADOS; se quitó el historial detallado)
+// RENDER FICHA (RESUMEN + módulos comunes y módulos ESPECIALES)
 // ─────────────────────────────────────────────────────────────────────────────
 async function renderFichaPaciente(p) {
 
@@ -54,8 +54,39 @@ async function renderFichaPaciente(p) {
     return res.json();
   }
 
+  // Intenta varios endpoints para módulos especiales y si no hay, deriva desde /modulos
+  async function fetchModulosEspecialesRobusto() {
+    const candidatos = [
+      '/modulos/evento-especial',
+      '/moduloseventoespecial',
+      '/modulos-especiales',
+      '/modulosEspeciales',
+      '/eventos-especiales'
+    ];
+    for (const url of candidatos) {
+      try {
+        const res = await apiFetchJson(url);
+        if (Array.isArray(res) && res.length) return res;
+      } catch (_) {}
+    }
+    // Fallback: filtrar desde /modulos
+    try {
+      const mods = await apiFetchJson('/modulos');
+      if (Array.isArray(mods)) {
+        return mods.filter(m =>
+          m?.esEspecial === true ||
+          m?.especial === true ||
+          (typeof m?.tipo === 'string' && m.tipo.toLowerCase() === 'especial') ||
+          (typeof m?.nombre === 'string' && /especial/i.test(m.nombre))
+        );
+      }
+    } catch (_) {}
+    return [];
+  }
+
   async function loadCats() {
-    if (!cache.modulos || !cache.areas || !cache.usersTried) {
+    if (!cache.modulos || !cache.areas || !cache.usersTried || !cache.modulosEspTried) {
+      // comunes
       try {
         const [modulos, areas] = await Promise.all([
           apiFetchJson(`/modulos`),
@@ -71,12 +102,21 @@ async function renderFichaPaciente(p) {
       cache.users = [];
       try { cache.users = await apiFetchJson(`/usuarios`); }
       catch { cache.users = []; }
-
       cache.usersTried = true;
 
-      cache.modById = new Map(cache.modulos.map(m => [String(m._id), m]));
-      cache.areaById = new Map(cache.areas.map(a => [String(a._id), a]));
-      cache.userById = new Map(cache.users.map(u => [String(u._id), u]));
+      // especiales
+      try {
+        cache.modulosEsp = await fetchModulosEspecialesRobusto();
+      } catch {
+        cache.modulosEsp = [];
+      }
+      cache.modulosEspTried = true;
+
+      // mapas
+      cache.modById     = new Map(cache.modulos.map(m => [String(m._id), m]));
+      cache.modEspById  = new Map(cache.modulosEsp.map(m => [String(m._id), m]));
+      cache.areaById    = new Map(cache.areas.map(a => [String(a._id), a]));
+      cache.userById    = new Map(cache.users.map(u => [String(u._id), u]));
     }
   }
   await loadCats();
@@ -184,7 +224,7 @@ async function renderFichaPaciente(p) {
     `;
   }
 
-  // ── MÓDULOS (sin “undefined”) ─────────────────────────────────────────────
+  // ── MÓDULOS COMUNES ───────────────────────────────────────────────────────
   const modulosHTML = (Array.isArray(p.modulosAsignados) && p.modulosAsignados.length)
     ? (() => {
       const items = p.modulosAsignados
@@ -198,14 +238,14 @@ async function renderFichaPaciente(p) {
 
           const det = (Array.isArray(m.profesionales) && m.profesionales.length)
             ? `<ul style="margin:4px 0 0 18px;">
-                  ${m.profesionales.map(pr => {
-              const u = cache.userById.get(String(pr.profesionalId));
-              const profNom = u ? (u.nombreApellido || u.nombre || u.usuario) : "Profesional";
-              const aVal = pr.areaId ?? pr.area;
-              const aNom = areaName(aVal);
-              return `<li>${profNom}${aNom ? ` — ${aNom}` : ""}</li>`;
-            }).join("")}
-                </ul>`
+                ${m.profesionales.map(pr => {
+                  const u = cache.userById.get(String(pr.profesionalId));
+                  const profNom = u ? (u.nombreApellido || u.nombre || u.usuario) : "Profesional";
+                  const aVal = pr.areaId ?? pr.area;
+                  const aNom = areaName(aVal);
+                  return `<li>${profNom}${aNom ? ` — ${aNom}` : ""}</li>`;
+                }).join("")}
+               </ul>`
             : "";
 
           if (!m.moduloId && nombreSeguro === "Módulo") return "";
@@ -217,6 +257,42 @@ async function renderFichaPaciente(p) {
       return `<ul style="margin:5px 0; padding-left:20px;">${items.join("")}</ul>`;
     })()
     : "Sin módulos asignados";
+
+  // ── MÓDULOS ESPECIALES ────────────────────────────────────────────────────
+  const modulosEspecialesHTML = (Array.isArray(p.modulosEspecialesAsignados) && p.modulosEspecialesAsignados.length)
+    ? (() => {
+      const items = p.modulosEspecialesAsignados
+        .map(m => {
+          const mod = cache.modEspById.get(String(m.moduloId))       // primero buscar en el mapa de especiales
+                  || cache.modById.get(String(m.moduloId))           // si no, buscar en comunes (por si comparten colección)
+                  || null;
+          const nombreSeguro =
+            (mod?.nombre) ||
+            (typeof mod?.numero !== "undefined" ? `Módulo ${mod.numero}` : null) ||
+            m.moduloNombre || m.nombre || "Módulo especial";
+          const cant = (typeof m.cantidad !== "undefined" && m.cantidad !== null) ? m.cantidad : "-";
+
+          const det = (Array.isArray(m.profesionales) && m.profesionales.length)
+            ? `<ul style="margin:4px 0 0 18px;">
+                ${m.profesionales.map(pr => {
+                  const u = cache.userById.get(String(pr.profesionalId));
+                  const profNom = u ? (u.nombreApellido || u.nombre || u.usuario) : "Profesional";
+                  const aVal = pr.areaId ?? pr.area;
+                  const aNom = areaName(aVal);
+                  return `<li>${profNom}${aNom ? ` — ${aNom}` : ""}</li>`;
+                }).join("")}
+               </ul>`
+            : "";
+
+          if (!m.moduloId && nombreSeguro === "Módulo especial") return "";
+          return `<li>${nombreSeguro} - Cantidad: ${cant}${det}</li>`;
+        })
+        .filter(Boolean);
+
+      if (!items.length) return "Sin módulos especiales asignados";
+      return `<ul style="margin:5px 0; padding-left:20px;">${items.join("")}</ul>`;
+    })()
+    : "Sin módulos especiales asignados";
 
   // mails
   const clickableMail = (mail) =>
@@ -230,15 +306,15 @@ async function renderFichaPaciente(p) {
       return `
         <ul style="margin:5px 0; padding-left:20px;">
           ${p.responsables.slice(0, 3).map(r => {
-        const rel = cap(r.relacion ?? "");
-        const nom = r.nombre ?? "sin nombre";
-        const wspHTML = r.whatsapp
-          ? ` 📱 <a href="https://wa.me/${r.whatsapp}" target="_blank" style="color:#25d366; text-decoration:none;">${r.whatsapp}</a>`
-          : "";
-        const docHTML = r.documento ? ` 🧾 ${r.documento}` : "";
-        const mailHTML = r.email ? ` ✉️ ${clickableMail(r.email)}` : "";
-        return `<li><strong>${rel}:</strong> ${nom}${wspHTML}${docHTML}${mailHTML}</li>`;
-      }).join("")}
+            const rel = cap(r.relacion ?? "");
+            const nom = r.nombre ?? "sin nombre";
+            const wspHTML = r.whatsapp
+              ? ` 📱 <a href="https://wa.me/${r.whatsapp}" target="_blank" style="color:#25d366; text-decoration:none;">${r.whatsapp}</a>`
+              : "";
+            const docHTML = r.documento ? ` 🧾 ${r.documento}` : "";
+            const mailHTML = r.email ? ` ✉️ ${clickableMail(r.email)}` : "";
+            return `<li><strong>${rel}:</strong> ${nom}${wspHTML}${docHTML}${mailHTML}</li>`;
+          }).join("")}
         </ul>`;
     }
     const tutorLinea = (p.tutor?.nombre || p.tutor?.whatsapp)
@@ -273,9 +349,9 @@ async function renderFichaPaciente(p) {
           </div>
 
           ${p.estado === "Baja"
-      ? `<p><strong>Fecha de baja:</strong> ${p.fechaBaja ?? "-"}</p>
+            ? `<p><strong>Fecha de baja:</strong> ${p.fechaBaja ?? "-"}</p>
                <p><strong>Motivo de baja:</strong> ${p.motivoBaja ?? "-"}</p>`
-      : ""}
+            : ""}
         </div>
 
         <div class="ficha-bloque">
@@ -303,6 +379,12 @@ async function renderFichaPaciente(p) {
         <h4>Plan</h4>
         <p><strong>Módulos asignados:</strong></p>
         ${modulosHTML}
+
+        <div style="height:8px;"></div>
+
+        <p><strong>Módulos especiales asignados:</strong></p>
+        ${modulosEspecialesHTML}
+
         ${p.planPaciente ? `<div style="margin-top:8px;"><strong>Plan:</strong><br><pre style="white-space:pre-wrap;margin:0;">${p.planPaciente}</pre></div>` : ""}
       </div>
 
@@ -315,46 +397,6 @@ async function renderFichaPaciente(p) {
   `;
 }
 
-
-async function apiFetch(path, init = {}) {
-  const token = localStorage.getItem("token") || sessionStorage.getItem("token") || "";
-  const headers = {
-    "Content-Type": "application/json",
-    ...(init.headers || {}),
-    ...(token ? { Authorization: `Bearer ${token}`, "x-access-token": token } : {}),
-  };
-  return fetch(`/api${path}`, { ...init, headers });
-}
-
-// BORRAR documento: usa id si está, si no usa ?index
-async function borrarDocumento(dni, id, index, after) {
-  const url = id ? `/pacientes/${dni}/documentos/${id}` : `/pacientes/${dni}/documentos?index=${index}`;
-  const ok = confirm("¿Eliminar este documento? Esta acción no se puede deshacer.");
-  if (!ok) return;
-
-  const res = await apiFetch(url, { method: "DELETE" });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    alert(err.error || "No se pudo eliminar el documento");
-    return;
-  }
-  if (typeof after === "function") after(); // refrescá la lista
-}
-
-// BORRAR diagnóstico
-async function borrarDiagnostico(dni, id, index, after) {
-  const url = id ? `/pacientes/${dni}/diagnosticos/${id}` : `/pacientes/${dni}/diagnosticos?index=${index}`;
-  const ok = confirm("¿Eliminar este diagnóstico?");
-  if (!ok) return;
-
-  const res = await apiFetch(url, { method: "DELETE" });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    alert(err.error || "No se pudo eliminar el diagnóstico");
-    return;
-  }
-  if (typeof after === "function") after();
-}
 
 
 async function modificarPaciente(dni) {
