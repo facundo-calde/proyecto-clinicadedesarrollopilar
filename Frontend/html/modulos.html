@@ -27,6 +27,10 @@
   <hr />
 
   <main class="content">
+
+    <!-- =============================== -->
+    <!-- SECCIÓN MÓDULOS NORMALES -->
+    <!-- =============================== -->
     <div class="search-bar">
       <input type="text" id="busquedaModulo" placeholder="Número del módulo" autocomplete="off" />
       <span class="search-icon">🔍</span>
@@ -35,12 +39,39 @@
     </div>
 
     <h3>Listado de módulos</h3>
-
     <div id="fichaModuloContainer" style="margin-top: 30px;"></div>
+
+    <!-- =============================== -->
+    <!-- SECCIÓN EVENTOS ESPECIALES -->
+    <!-- =============================== -->
+    <hr style="margin: 32px 0;" />
+
+    <h3>Eventos especiales</h3>
+
+    <div class="search-bar" style="margin-bottom: 12px;">
+      <input type="text"
+             id="busquedaEventoEspecial"
+             placeholder="Buscar evento especial por nombre"
+             autocomplete="off" />
+      <span class="search-icon">🔍</span>
+      <button class="search-btn" type="button">BUSCAR</button>
+
+      <!-- Sugerencias de búsqueda -->
+      <ul id="sugerenciasEventoEspecial" class="sugerencias-lista"></ul>
+    </div>
+
+    <!-- Ficha de evento individual -->
+    <div id="fichaEventoEspecial" style="margin-top: 20px;"></div>
+
+    <!-- Listado general de eventos -->
+    <div id="listaEventosEspeciales" style="margin-top: 20px;"></div>
   </main>
 
+  <!-- =============================== -->
+  <!-- SCRIPTS -->
+  <!-- =============================== -->
   <script src="/js/config.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-  <script src="/js/modulos.js?v=20251009"></script>
+  <script src="/js/modulos.js?v=20251103"></script>
 </body>
 </html>
