@@ -31,7 +31,7 @@ document.getElementById("busquedaInput").addEventListener("input", async () => {
 
 
 // ─────────────────────────────────────────────────────────────────────────────
-// RENDER FICHA (RESUMEN + módulos comunes y módulos ESPECIALES)
+// RENDER FICHA (incluye Módulos especiales asignados)
 // ─────────────────────────────────────────────────────────────────────────────
 async function renderFichaPaciente(p) {
 
@@ -54,67 +54,31 @@ async function renderFichaPaciente(p) {
     return res.json();
   }
 
-  // Intenta varios endpoints para módulos especiales y si no hay, deriva desde /modulos
-  async function fetchModulosEspecialesRobusto() {
-    const candidatos = [
-      '/modulos/evento-especial',
-      '/moduloseventoespecial',
-      '/modulos-especiales',
-      '/modulosEspeciales',
-      '/eventos-especiales'
-    ];
-    for (const url of candidatos) {
-      try {
-        const res = await apiFetchJson(url);
-        if (Array.isArray(res) && res.length) return res;
-      } catch (_) {}
-    }
-    // Fallback: filtrar desde /modulos
-    try {
-      const mods = await apiFetchJson('/modulos');
-      if (Array.isArray(mods)) {
-        return mods.filter(m =>
-          m?.esEspecial === true ||
-          m?.especial === true ||
-          (typeof m?.tipo === 'string' && m.tipo.toLowerCase() === 'especial') ||
-          (typeof m?.nombre === 'string' && /especial/i.test(m.nombre))
-        );
-      }
-    } catch (_) {}
-    return [];
-  }
-
   async function loadCats() {
-    if (!cache.modulos || !cache.areas || !cache.usersTried || !cache.modulosEspTried) {
-      // comunes
+    if (!cache.modulos || !cache.areas || !cache.usersTried || !cache.especialesLoaded) {
       try {
-        const [modulos, areas] = await Promise.all([
-          apiFetchJson(`/modulos`),
-          apiFetchJson(`/areas`),
+        const [modulos, areas, especiales] = await Promise.all([
+          apiFetchJson(`/modulos`).catch(() => []),
+          apiFetchJson(`/areas`).catch(() => []),
+          apiFetchJson(`/modulos/evento-especial`).catch(() => [])  // catálogo de especiales
         ]);
-        cache.modulos = Array.isArray(modulos) ? modulos : [];
-        cache.areas = Array.isArray(areas) ? areas : [];
+
+        cache.modulos    = Array.isArray(modulos)    ? modulos    : [];
+        cache.areas      = Array.isArray(areas)      ? areas      : [];
+        cache.especiales = Array.isArray(especiales) ? especiales : [];
       } catch {
-        cache.modulos = [];
-        cache.areas = [];
+        cache.modulos = cache.areas = cache.especiales = [];
       }
 
       cache.users = [];
       try { cache.users = await apiFetchJson(`/usuarios`); }
       catch { cache.users = []; }
-      cache.usersTried = true;
 
-      // especiales
-      try {
-        cache.modulosEsp = await fetchModulosEspecialesRobusto();
-      } catch {
-        cache.modulosEsp = [];
-      }
-      cache.modulosEspTried = true;
+      cache.usersTried   = true;
+      cache.especialesLoaded = true;
 
-      // mapas
       cache.modById     = new Map(cache.modulos.map(m => [String(m._id), m]));
-      cache.modEspById  = new Map(cache.modulosEsp.map(m => [String(m._id), m]));
+      cache.modEspById  = new Map(cache.especiales.map(e => [String(e._id), e]));
       cache.areaById    = new Map(cache.areas.map(a => [String(a._id), a]));
       cache.userById    = new Map(cache.users.map(u => [String(u._id), u]));
     }
@@ -224,7 +188,7 @@ async function renderFichaPaciente(p) {
     `;
   }
 
-  // ── MÓDULOS COMUNES ───────────────────────────────────────────────────────
+  // ── MÓDULOS normales ─────────────────────────────────────────────────────
   const modulosHTML = (Array.isArray(p.modulosAsignados) && p.modulosAsignados.length)
     ? (() => {
       const items = p.modulosAsignados
@@ -238,13 +202,13 @@ async function renderFichaPaciente(p) {
 
           const det = (Array.isArray(m.profesionales) && m.profesionales.length)
             ? `<ul style="margin:4px 0 0 18px;">
-                ${m.profesionales.map(pr => {
-                  const u = cache.userById.get(String(pr.profesionalId));
-                  const profNom = u ? (u.nombreApellido || u.nombre || u.usuario) : "Profesional";
-                  const aVal = pr.areaId ?? pr.area;
-                  const aNom = areaName(aVal);
-                  return `<li>${profNom}${aNom ? ` — ${aNom}` : ""}</li>`;
-                }).join("")}
+                  ${m.profesionales.map(pr => {
+                    const u = cache.userById.get(String(pr.profesionalId));
+                    const profNom = u ? (u.nombreApellido || u.nombre || u.usuario) : "Profesional";
+                    const aVal = pr.areaId ?? pr.area;
+                    const aNom = areaName(aVal);
+                    return `<li>${profNom}${aNom ? ` — ${aNom}` : ""}</li>`;
+                  }).join("")}
                </ul>`
             : "";
 
@@ -259,40 +223,58 @@ async function renderFichaPaciente(p) {
     : "Sin módulos asignados";
 
   // ── MÓDULOS ESPECIALES ────────────────────────────────────────────────────
-  const modulosEspecialesHTML = (Array.isArray(p.modulosEspecialesAsignados) && p.modulosEspecialesAsignados.length)
-    ? (() => {
-      const items = p.modulosEspecialesAsignados
-        .map(m => {
-          const mod = cache.modEspById.get(String(m.moduloId))       // primero buscar en el mapa de especiales
-                  || cache.modById.get(String(m.moduloId))           // si no, buscar en comunes (por si comparten colección)
-                  || null;
-          const nombreSeguro =
-            (mod?.nombre) ||
-            (typeof mod?.numero !== "undefined" ? `Módulo ${mod.numero}` : null) ||
-            m.moduloNombre || m.nombre || "Módulo especial";
-          const cant = (typeof m.cantidad !== "undefined" && m.cantidad !== null) ? m.cantidad : "-";
+  function getEspecialesDelPaciente(p) {
+    const keys = [
+      'modulosEspecialesAsignados',
+      'modulosEspeciales',
+      'eventosEspecialesAsignados',
+      'modulosEventoEspecial',
+      'modulos_evento_especial',
+      'modulosEspecialesDelPaciente'
+    ];
+    for (const k of keys) {
+      const v = p?.[k];
+      if (Array.isArray(v) && v.length) return v;
+    }
+    return [];
+  }
 
-          const det = (Array.isArray(m.profesionales) && m.profesionales.length)
-            ? `<ul style="margin:4px 0 0 18px;">
-                ${m.profesionales.map(pr => {
-                  const u = cache.userById.get(String(pr.profesionalId));
-                  const profNom = u ? (u.nombreApellido || u.nombre || u.usuario) : "Profesional";
-                  const aVal = pr.areaId ?? pr.area;
-                  const aNom = areaName(aVal);
-                  return `<li>${profNom}${aNom ? ` — ${aNom}` : ""}</li>`;
-                }).join("")}
-               </ul>`
-            : "";
+  const modulosEspecialesHTML = (() => {
+    const arr = getEspecialesDelPaciente(p);
+    if (!arr.length) return "Sin módulos especiales asignados";
 
-          if (!m.moduloId && nombreSeguro === "Módulo especial") return "";
-          return `<li>${nombreSeguro} - Cantidad: ${cant}${det}</li>`;
-        })
-        .filter(Boolean);
+    const items = arr.map(m => {
+      // buscar en catálogo de especiales
+      const esp = cache.modEspById.get(String(m.moduloId));
+      const nombreSeguro =
+        (esp?.nombre) ||
+        m.moduloNombre || m.nombre || "Módulo especial";
 
-      if (!items.length) return "Sin módulos especiales asignados";
-      return `<ul style="margin:5px 0; padding-left:20px;">${items.join("")}</ul>`;
-    })()
-    : "Sin módulos especiales asignados";
+      // por reglas de negocio suele ser 1; si vino otra cosa, se muestra igual
+      const cant = (typeof m.cantidad !== "undefined" && m.cantidad !== null) ? m.cantidad : 1;
+
+      // profesionales pueden venir en m.profesionales o m.coordinadoresExternos (compat)
+      const listaProf = Array.isArray(m.profesionales) ? m.profesionales
+                       : (Array.isArray(m.coordinadoresExternos) ? m.coordinadoresExternos : []);
+
+      const det = (listaProf.length)
+        ? `<ul style="margin:4px 0 0 18px;">
+             ${listaProf.map(pr => {
+               const u = cache.userById.get(String(pr.profesionalId || pr.usuario || pr.usuarioId || pr._id));
+               const nom = u ? (u.nombreApellido || u.nombre || u.usuario) : "Profesional";
+               const aVal = pr.areaId ?? pr.area;
+               const aNom = areaName(aVal);
+               return `<li>${nom}${aNom ? ` — ${aNom}` : ""}</li>`;
+             }).join("")}
+           </ul>`
+        : "";
+
+      return `<li>${nombreSeguro} - Cantidad: ${cant}${det}</li>`;
+    }).filter(Boolean);
+
+    if (!items.length) return "Sin módulos especiales asignados";
+    return `<ul style="margin:5px 0; padding-left:20px;">${items.join("")}</ul>`;
+  })();
 
   // mails
   const clickableMail = (mail) =>
@@ -379,12 +361,8 @@ async function renderFichaPaciente(p) {
         <h4>Plan</h4>
         <p><strong>Módulos asignados:</strong></p>
         ${modulosHTML}
-
-        <div style="height:8px;"></div>
-
-        <p><strong>Módulos especiales asignados:</strong></p>
+        <p style="margin-top:10px;"><strong>Módulos especiales asignados:</strong></p>
         ${modulosEspecialesHTML}
-
         ${p.planPaciente ? `<div style="margin-top:8px;"><strong>Plan:</strong><br><pre style="white-space:pre-wrap;margin:0;">${p.planPaciente}</pre></div>` : ""}
       </div>
 
@@ -396,6 +374,7 @@ async function renderFichaPaciente(p) {
     </div>
   `;
 }
+
 
 
 
