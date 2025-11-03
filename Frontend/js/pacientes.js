@@ -1359,7 +1359,10 @@ async function verDocumentos(dni) {
       const obs   = esc(doc.observaciones ?? '-');
 
       // ← acepta varias claves posibles
-      const href  = doc.archivoURL || doc.archivoUrl || doc.url || doc.fileUrl || doc.publicUrl || '';
+      const href =
+  doc.archivoURL || doc.archivoUrl || doc.url || doc.fileUrl || doc.publicUrl ||
+  (doc.archivoKey ? `${R2_BASE}/${R2_BUCKET_PACIENTES}/${encodeURIComponent(doc.archivoKey)}` : '');
+
 
       return `
         <tr>
@@ -1367,7 +1370,7 @@ async function verDocumentos(dni) {
           <td>${tipo}</td>
           <td>${obs}</td>
           <td>
-            ${href ? `<a href="${href}" target="_blank" rel="noopener" title="Ver archivo"><i class="fa-solid fa-file-pdf"></i></a>` : '-'}
+            ${href ? `<a href="${href}" target="_blank" rel="noopener" title="Ver archivo"><i class="fa-solid fa-file-pdf"></i> Ver</a>` : '-'}
           </td>
           <td>
             <button onclick="editarDocumento('${dni}', ${i})" title="Editar"><i class="fa-solid fa-pen"></i></button>
@@ -1608,7 +1611,10 @@ async function verDiagnosticos(dni) {
       const area  = esc(d.area || '');
       const obs   = esc(d.observaciones ?? '-');
 
-      const href  = d.archivoURL || d.archivoUrl || d.url || d.fileUrl || d.publicUrl || '';
+      const href =
+  d.archivoURL || d.archivoUrl || d.url || d.fileUrl || d.publicUrl ||
+  (d.archivoKey ? `${R2_BASE}/${R2_BUCKET_PACIENTES}/${encodeURIComponent(d.archivoKey)}` : '');
+
 
       return `
         <tr>
@@ -1616,7 +1622,7 @@ async function verDiagnosticos(dni) {
           <td>${area}</td>
           <td>${obs}</td>
           <td>
-            ${href ? `<a href="${href}" target="_blank" rel="noopener"><i class="fa-solid fa-file-pdf"></i></a>` : '-'}
+            ${href ? `<a href="${href}" target="_blank" rel="noopener"><i class="fa-solid fa-file-pdf"></i> Ver</a>` : '-'}
           </td>
           <td>
             <button onclick="editarDiagnostico('${dni}', ${i})" title="Editar"><i class="fa-solid fa-pen"></i></button>
