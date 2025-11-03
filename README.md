@@ -111,6 +111,18 @@ R2_BUCKET_URL=
 
 ---
 
+## Despliegue en producción
+
+El sistema se encuentra desplegado en un servidor **AWS Lightsail**, configurado con **Caddy** como proxy reverso y **PM2** para la gestión de procesos.
+El entorno incluye conexión a **MongoDB Atlas** y almacenamiento de archivos en **Cloudflare R2**.
+
+**URL de producción:**
+[https://app.clinicadesarrollopilar.com.ar](https://app.clinicadesarrollopilar.com.ar)
+
+El despliegue contempla variables de entorno seguras, manejo de logs, y actualizaciones continuas mediante Git y PM2.
+
+---
+
 ## Tecnologías utilizadas
 
 * Node.js / Express
@@ -118,7 +130,7 @@ R2_BUCKET_URL=
 * Cloudflare R2 (almacenamiento de archivos)
 * SweetAlert2 (modales en el frontend)
 * CORS / JWT / dotenv / bcrypt
-* PM2 (producción)
+* PM2 (entorno de producción)
 * Caddy (proxy reverso en entorno productivo)
 
 ---
