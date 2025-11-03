@@ -3,12 +3,12 @@
 // ==========================
 
 document.addEventListener('DOMContentLoaded', () => {
-  const botonCargar           = document.getElementById('btnCargarModulo');
-  const botonCargarEspecial   = document.getElementById('btnCargarModuloEspecial'); 
-  const inputBusqueda         = document.getElementById('busquedaModulo');
-  const sugerencias           = document.getElementById('sugerencias');
-  const contenedorFicha       = document.getElementById('fichaModuloContainer');
-  const contenedorLista       = document.getElementById('listaModulos') || contenedorFicha;
+  const botonCargar         = document.getElementById('btnCargarModulo');
+  const botonCargarEspecial = document.getElementById('btnCargarModuloEspecial'); 
+  const inputBusqueda       = document.getElementById('busquedaModulo');
+  const sugerencias         = document.getElementById('sugerencias');
+  const contenedorFicha     = document.getElementById('fichaModuloContainer');
+  const contenedorLista     = document.getElementById('listaModulos') || contenedorFicha;
 
   // ---------- Helpers ----------
   const getNumberOrZero = (id) => {
@@ -23,10 +23,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const calcular = () => {
       const paciente   = parseFloat(pacienteInput.value);
-      thePorcentaje = parseFloat(porcentajeInput.value);
+      const porcentaje = parseFloat(porcentajeInput.value); // <-- fix: sin globales
       profesionalInput.value =
-        (!isNaN(paciente) && !isNaN(thePorcentaje))
-          ? (paciente * (thePorcentaje / 100)).toFixed(3)
+        (!isNaN(paciente) && !isNaN(porcentaje))
+          ? (paciente * (porcentaje / 100)).toFixed(3)
           : '';
     };
 
@@ -108,7 +108,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (valor.length < 2) return;
 
       try {
-        // AHORA busca por nombre
+        // Busca por nombre
         const res = await apiFetch(`/modulos/buscar?nombre=${encodeURIComponent(valor)}`);
         const modulos = await res.json();
 
@@ -186,203 +186,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-// ===============================
-// EVENTOS ESPECIALES – Frontend
-// ===============================
-(() => {
-  const inputBusquedaEE   = document.getElementById('busquedaEventoEspecial');
-  const sugerenciasEE     = document.getElementById('sugerenciasEventoEspecial');
-  const contenedorFichaEE = document.getElementById('fichaEventoEspecial');
-  const contenedorListaEE = document.getElementById('listaEventosEspeciales') || contenedorFichaEE;
-
-  // ------- Helpers -------
-  const getNombre = (e) => e?.nombre || e?.titulo || e?.nombreEvento || '';
-  const getFecha  = (e) => new Date(e?.updatedAt || e?.createdAt || Date.now()).toLocaleDateString('es-AR');
-  const moneyAR   = (v) => Number(v ?? 0).toLocaleString('es-AR', { style:'currency', currency:'ARS' });
-  const len       = (arr) => Array.isArray(arr) ? arr.length : 0;
-
-  // ---------- Listado completo ----------
-  async function cargarListadoEventosEspeciales() {
-    try {
-      const res = await apiFetch('/modulos/evento-especial');
-      const eventos = await res.json();
-
-      if (!Array.isArray(eventos) || eventos.length === 0) {
-        contenedorListaEE.innerHTML = `
-          <div class="table-container">
-            <div style="padding:12px;color:#666;font-style:italic;">
-              No hay eventos especiales cargados todavía.
-            </div>
-          </div>`;
-        return;
-      }
-
-      renderListadoEventosEspeciales(eventos);
-    } catch (e) {
-      console.error('Error listando eventos especiales:', e);
-      contenedorListaEE.innerHTML = `
-        <div class="table-container">
-          <div style="padding:12px;color:#b91c1c;">
-            Error al cargar el listado de eventos especiales.
-          </div>
-        </div>`;
-    }
-  }
-
-  function renderListadoEventosEspeciales(eventos) {
-    const rows = eventos.map(ev => {
-      const nombre = getNombre(ev);
-      return `
-        <tr>
-          <td>${nombre}</td>
-          <td>${getFecha(ev)}</td>
-          <td>${moneyAR(ev.valorPadres)}</td>
-          <td>${len(ev.profesionales)}</td>
-          <td>${len(ev.coordinadores)}</td>
-          <td>Activo</td>
-          <td>
-            <button class="btn-modificar" onclick="modificarEventoEspecial('${encodeURIComponent(nombre)}')">✏️</button>
-            <button class="btn-borrar"    onclick="borrarEventoEspecial('${encodeURIComponent(nombre)}')">🗑️</button>
-          </td>
-        </tr>
-      `;
-    }).join('');
-
-    contenedorListaEE.innerHTML = `
-      <div class="table-container">
-        <table class="modulo-detalle">
-          <thead>
-            <tr>
-              <th>Evento especial</th>
-              <th>Última modificación</th>
-              <th>Valor padres</th>
-              <th># Profesionales</th>
-              <th># Coordinadores</th>
-              <th>Estado</th>
-              <th>Acción</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>`;
-  }
-
-  // ---------- Autocompletado / búsqueda ----------
-  if (inputBusquedaEE) {
-    inputBusquedaEE.addEventListener('input', async () => {
-      const valor = inputBusquedaEE.value.trim();
-      if (sugerenciasEE)   sugerenciasEE.innerHTML = '';
-      if (contenedorFichaEE) contenedorFichaEE.innerHTML = '';
-
-      if (valor.length < 2) return;
-
-      try {
-        const res = await apiFetch(`/modulos/evento-especial/buscar?nombre=${encodeURIComponent(valor)}`);
-        const eventos = await res.json();
-
-        if (Array.isArray(eventos) && sugerenciasEE) {
-          eventos.forEach(ev => {
-            const nombre = getNombre(ev);
-            const li = document.createElement('li');
-            li.textContent = `Evento ${nombre}`;
-            li.style.cursor = 'pointer';
-            li.addEventListener('click', () => {
-              inputBusquedaEE.value = nombre;
-              sugerenciasEE.innerHTML = '';
-              mostrarFichaEventoEspecial(ev);
-            });
-            sugerenciasEE.appendChild(li);
-          });
-        }
-      } catch (error) {
-        console.error('Error al buscar eventos especiales:', error);
-      }
-    });
-  }
-
-  function mostrarFichaEventoEspecial(ev) {
-    const nombre = getNombre(ev);
-    contenedorFichaEE.innerHTML = `
-      <div class="table-container">
-        <table class="modulo-detalle">
-          <thead>
-            <tr>
-              <th>Evento especial</th>
-              <th>Valor padres</th>
-              <th># Profesionales</th>
-              <th># Coordinadores</th>
-              <th>Acción</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>${nombre}</td>
-              <td>${moneyAR(ev.valorPadres)}</td>
-              <td>${len(ev.profesionales)}</td>
-              <td>${len(ev.coordinadores)}</td>
-              <td>
-                <button class="btn-modificar" onclick="modificarEventoEspecial('${encodeURIComponent(nombre)}')">✏️</button>
-                <button class="btn-borrar"    onclick="borrarEventoEspecial('${encodeURIComponent(nombre)}')">🗑️</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>`;
-  }
-
-  // ---------- Borrar evento especial (usa nombre o id) ----------
-  window.borrarEventoEspecial = async (idOrNombre) => {
-    try {
-      const { isConfirmed } = await Swal.fire({
-        title: '¿Eliminar evento especial?',
-        text: 'Esta acción no se puede deshacer.',
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonText: 'Sí, eliminar',
-        cancelButtonText: 'Cancelar'
-      });
-      if (!isConfirmed) return;
-
-      const res = await apiFetch(`/modulos/evento-especial/${idOrNombre}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || 'No se pudo eliminar');
-
-      await Swal.fire('Eliminado', 'Evento especial eliminado correctamente', 'success');
-      cargarListadoEventosEspeciales();
-    } catch (e) {
-      console.error('Error eliminando evento especial:', e);
-      Swal.fire('Error', e.message || 'No se pudo eliminar el evento especial', 'error');
-    }
-  };
-
-  // ---------- Modificar (stub para que no rompa si no lo tenés aún) ----------
-  window.modificarEventoEspecial = async (idOrNombre) => {
-    try {
-      // Si ya tenés un formulario similar al de módulos, llamalo acá.
-      // Ejemplo: abrirEventoEspecialForm(idOrNombre);
-      const res = await apiFetch(`/modulos/evento-especial/${idOrNombre}`);
-      const ev = await res.json();
-      if (!res.ok) throw new Error(ev?.error || 'No se pudo obtener el evento especial');
-
-      // TODO: Reutilizar el form de “modificar módulo” adaptándolo al esquema de evento especial.
-      console.log('Evento especial para editar:', ev);
-      await Swal.fire('Editar', 'Acá abrirías tu formulario de edición de evento especial', 'info');
-    } catch (e) {
-      console.error('Error obteniendo evento especial:', e);
-      Swal.fire('Error', e.message || 'No se pudo abrir el editor del evento especial', 'error');
-    }
-  };
-
-  // Carga inicial opcional
-  if (contenedorListaEE) cargarListadoEventosEspeciales();
-})();
-
-
-
-
-
-
-  /// ---------- Crear módulo (una columna | Fonoaudiología + Psicopedagogía | muestra Área — Nivel + ARS) ----------
+  // ---------- Crear módulo normal ----------
   if (botonCargar) {
     botonCargar.addEventListener('click', async () => {
       const formatARS = (v) => new Intl.NumberFormat("es-AR", {
@@ -606,7 +410,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
           if (!nombre) return Swal.showValidationMessage('⚠️ El nombre del módulo es obligatorio');
 
-          // ✅ Validación igual al schema: letras, números, espacios y _.-#
           const reNombre = /^[\p{L}\p{N}\s._\-#]+$/u;
           if (!reNombre.test(nombre)) {
             return Swal.showValidationMessage('⚠️ El nombre solo admite letras, números, espacios y _.-#');
@@ -642,7 +445,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         const data = await res.json();
         if (!res.ok) {
-          // 👇 Mensaje claro si ya existe
           if (res.status === 409) throw new Error('Ya existe un módulo con ese nombre.');
           throw new Error(data?.error || 'No se pudo guardar');
         }
@@ -656,15 +458,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 👉 Botón: crear MÓDULO DE EVENTO ESPECIAL (solo ÁREAS EXTERNAS y solo Coordinadores/Directoras)
+  // Botón: crear MÓDULO DE EVENTO ESPECIAL (usa función global)
   if (botonCargarEspecial) {
     botonCargarEspecial.addEventListener('click', crearModuloEventoEspecial);
   }
 
-  // === Editar módulo (compatible con la UI de "Crear módulo") ===
+  // === Editar módulo ===
   window.modificarModulo = async (nombre) => {
     try {
-      // 0) Helpers base
       const formatARS = (v) => new Intl.NumberFormat("es-AR", {
         style: "currency",
         currency: "ARS",
@@ -735,7 +536,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return list;
       };
 
-      // Filtro por Fonoaudiología + Psicopedagogía
       const isFono     = (s='') => /fonoaudiolog[ií]a/i.test(s);
       const isPsicoPed = (s='') => /psicopedagog[ií]a/i.test(s);
       const hasAreaFP  = (u) => getAreasDetailed(u).some(a => isFono(a.nombre) || isPsicoPed(a.nombre));
@@ -751,7 +551,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return list.map(a => a.nivel ? `${a.nombre} — ${a.nivel}` : a.nombre).join(' | ');
       };
 
-      // Roles canónicos
       const mapRolCanonical = (r = '') => {
         const s = String(r).trim().toLowerCase();
         switch (s) {
@@ -777,7 +576,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return wanted.some(w => R.has(w));
       };
 
-      // 1) Traer módulo y usuarios (por NOMBRE)
       const [resModulo, resUsers] = await Promise.all([
         apiFetch(`/modulos/${encodeURIComponent(nombre)}`),
         apiFetch(`/usuarios`, { method: 'GET' })
@@ -788,21 +586,17 @@ document.addEventListener('DOMContentLoaded', () => {
       let usuarios = [];
       if (resUsers.ok) usuarios = await resUsers.json();
 
-      // 2) Buckets internos/externos
       const candidatos       = usuarios.filter(u => hasRolCanon(u, 'profesional', 'coordinador', 'directora', 'pasante'));
-      const candidatosFP     = candidatos.filter(u => hasAreaFP(u));     // Internos
-      const candidatosExtern = candidatos.filter(u => !hasAreaFP(u));    // Externos
+      const candidatosFP     = candidatos.filter(u => hasAreaFP(u));
+      const candidatosExtern = candidatos.filter(u => !hasAreaFP(u));
 
-      // Internos
       const profesionales     = candidatosFP.filter(u => hasRolCanon(u, 'profesional'));
       const coordinadores     = candidatosFP.filter(u => hasRolCanon(u, 'coordinador', 'directora'));
       const pasantes          = candidatosFP.filter(u => hasRolCanon(u, 'pasante'));
-      // Externos
       const profesionalesExt  = candidatosExtern.filter(u => hasRolCanon(u, 'profesional'));
       const coordinadoresExt  = candidatosExtern.filter(u => hasRolCanon(u, 'coordinador', 'directora'));
       const pasantesExt       = candidatosExtern.filter(u => hasRolCanon(u, 'pasante'));
 
-      // 3) Prefills
       const toMap = (arr=[]) => {
         const m = new Map();
         arr.forEach(x => { if (x?.usuario) m.set(String(x.usuario._id || x.usuario), Number(x.monto)||0); });
@@ -821,7 +615,6 @@ document.addEventListener('DOMContentLoaded', () => {
       const getMonto = (scope, rol, userId) =>
         (scope === 'interno' ? mapInterno[rol] : mapExterno[rol]).get(String(userId)) || 0;
 
-      // 4) Render rows (con value prellenado)
       const renderRows = (arrUsers, rolKey, titulo, scope) => {
         if (!arrUsers.length) return `<div class="empty">No hay ${titulo}</div>`;
         return `
@@ -860,7 +653,6 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
       };
 
-      // 5) Modal edición
       const { value: formValues } = await Swal.fire({
         title: `Modificar módulo ${modulo.nombre ?? nombre}`,
         width: '700px',
@@ -918,15 +710,13 @@ document.addEventListener('DOMContentLoaded', () => {
             .filter(x => x.usuario && x.monto > 0);
 
           return {
-            nombre: modulo.nombre ?? nombre, // mantener el identificador
+            nombre: modulo.nombre ?? nombre,
             valorPadres: Number.isNaN(valorPadres) ? 0 : valorPadres,
 
-            // Internos (Fono/Psico)
             profesionales: take('profesional', 'interno'),
             coordinadores: take('coordinador', 'interno'),
             pasantes:      take('pasante',     'interno'),
 
-            // Externos
             profesionalesExternos: take('profesional', 'externo'),
             coordinadoresExternos: take('coordinador', 'externo'),
             pasantesExternos:      take('pasante',     'externo'),
@@ -936,7 +726,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (!formValues) return;
 
-      // 6) Guardar (PUT por NOMBRE)
       const resUpdate = await apiFetch(`/modulos/${encodeURIComponent(modulo.nombre ?? nombre)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -956,7 +745,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  // 👉 Al entrar a la pantalla, cargamos el listado
+  // Carga inicial
   cargarListadoModulos();
 });
 
@@ -991,7 +780,6 @@ if (usuarioSesion && usuarioSesion.nombreApellido) {
   if (userNameEl) userNameEl.textContent = usuarioSesion.nombreApellido;
 }
 
-// fetchAuth local (si no usás apiFetch)
 async function fetchAuth(url, options = {}) {
   const opts = {
     ...options,
@@ -1023,10 +811,9 @@ if (btnLogout) {
    FUNCIÓN: crearModuloEventoEspecial
    - Solo ÁREAS EXTERNAS
    - Solo Coordinadores y Directoras
-   - Guarda en /moduloseventoespecial (ajustá si tu ruta es otra)
+   - Guarda en /modulos/evento-especial
    =========================================================== */
 async function crearModuloEventoEspecial() {
-  // Helpers reusables
   const formatARS = (v) => new Intl.NumberFormat("es-AR", {
     style: "currency",
     currency: "ARS",
@@ -1176,7 +963,6 @@ async function crearModuloEventoEspecial() {
     confirmButtonText: 'Guardar',
     cancelButtonText: 'Cancelar',
     preConfirm: () => {
-      // 👇 scopeado al modal para no tomar inputs fuera
       const modal = Swal.getHtmlContainer();
       const nombreEl = modal.querySelector('#modulo_nombre_es');
       const padresEl = modal.querySelector('#valor_padres_es');
@@ -1201,14 +987,14 @@ async function crearModuloEventoEspecial() {
       return {
         nombre,
         valorPadres: Number.isNaN(valorPadres) ? 0 : valorPadres,
-        coordinadoresExternos // solo estos en evento especial
+        coordinadoresExternos
       };
     }
   });
 
   if (!formValues) return;
 
-  // ✅ Endpoint correcto del router: /modulos/evento-especial
+  // Guarda en /modulos/evento-especial
   try {
     const res = await apiFetch(`/modulos/evento-especial`, {
       method: 'POST',
@@ -1222,9 +1008,194 @@ async function crearModuloEventoEspecial() {
     }
 
     Swal.fire('Éxito', 'Evento especial guardado correctamente', 'success');
-    // cargarListadoModulos(); // activalo si querés refrescar la lista principal
+    // Si querés refrescar listados: cargarListadoEventosEspeciales(); (desde el bloque de eventos)
   } catch (error) {
     console.error('Error guardando evento especial:', error);
     Swal.fire('Error', error?.message || 'Ocurrió un error al guardar el evento especial', 'error');
   }
 }
+
+// ===============================
+// EVENTOS ESPECIALES – Listado/Búsqueda
+// ===============================
+(() => {
+  const inputBusquedaEE   = document.getElementById('busquedaEventoEspecial');
+  const sugerenciasEE     = document.getElementById('sugerenciasEventoEspecial');
+  const contenedorFichaEE = document.getElementById('fichaEventoEspecial');
+  const contenedorListaEE = document.getElementById('listaEventosEspeciales') || contenedorFichaEE;
+
+  const getNombre = (e) => e?.nombre || e?.titulo || e?.nombreEvento || '';
+  const getFecha  = (e) => new Date(e?.updatedAt || e?.createdAt || Date.now()).toLocaleDateString('es-AR');
+  const moneyAR   = (v) => Number(v ?? 0).toLocaleString('es-AR', { style:'currency', currency:'ARS' });
+  const len       = (arr) => Array.isArray(arr) ? arr.length : 0;
+
+  async function cargarListadoEventosEspeciales() {
+    try {
+      const res = await apiFetch('/modulos/evento-especial');
+      const eventos = await res.json();
+
+      if (!Array.isArray(eventos) || eventos.length === 0) {
+        contenedorListaEE.innerHTML = `
+          <div class="table-container">
+            <div style="padding:12px;color:#666;font-style:italic;">
+              No hay eventos especiales cargados todavía.
+            </div>
+          </div>`;
+        return;
+      }
+
+      renderListadoEventosEspeciales(eventos);
+    } catch (e) {
+      console.error('Error listando eventos especiales:', e);
+      contenedorListaEE.innerHTML = `
+        <div class="table-container">
+          <div style="padding:12px;color:#b91c1c;">
+            Error al cargar el listado de eventos especiales.
+          </div>
+        </div>`;
+    }
+  }
+
+  function renderListadoEventosEspeciales(eventos) {
+    const rows = eventos.map(ev => {
+      const nombre = getNombre(ev);
+      return `
+        <tr>
+          <td>${nombre}</td>
+          <td>${getFecha(ev)}</td>
+          <td>${moneyAR(ev.valorPadres)}</td>
+          <td>${len(ev.profesionales)}</td>
+          <td>${len(ev.coordinadores)}</td>
+          <td>Activo</td>
+          <td>
+            <button class="btn-modificar" onclick="modificarEventoEspecial('${encodeURIComponent(nombre)}')">✏️</button>
+            <button class="btn-borrar"    onclick="borrarEventoEspecial('${encodeURIComponent(nombre)}')">🗑️</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    contenedorListaEE.innerHTML = `
+      <div class="table-container">
+        <table class="modulo-detalle">
+          <thead>
+            <tr>
+              <th>Evento especial</th>
+              <th>Última modificación</th>
+              <th>Valor padres</th>
+              <th># Profesionales</th>
+              <th># Coordinadores</th>
+              <th>Estado</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  }
+
+  if (inputBusquedaEE) {
+    inputBusquedaEE.addEventListener('input', async () => {
+      const valor = inputBusquedaEE.value.trim();
+      if (sugerenciasEE)   sugerenciasEE.innerHTML = '';
+      if (contenedorFichaEE) contenedorFichaEE.innerHTML = '';
+
+      if (valor.length < 2) return;
+
+      try {
+        const res = await apiFetch(`/modulos/evento-especial/buscar?nombre=${encodeURIComponent(valor)}`);
+        const eventos = await res.json();
+
+        if (Array.isArray(eventos) && sugerenciasEE) {
+          eventos.forEach(ev => {
+            const nombre = getNombre(ev);
+            const li = document.createElement('li');
+            li.textContent = `Evento ${nombre}`;
+            li.style.cursor = 'pointer';
+            li.addEventListener('click', () => {
+              inputBusquedaEE.value = nombre;
+              sugerenciasEE.innerHTML = '';
+              mostrarFichaEventoEspecial(ev);
+            });
+            sugerenciasEE.appendChild(li);
+          });
+        }
+      } catch (error) {
+        console.error('Error al buscar eventos especiales:', error);
+      }
+    });
+  }
+
+  function mostrarFichaEventoEspecial(ev) {
+    const nombre = getNombre(ev);
+    contenedorFichaEE.innerHTML = `
+      <div class="table-container">
+        <table class="modulo-detalle">
+          <thead>
+            <tr>
+              <th>Evento especial</th>
+              <th>Valor padres</th>
+              <th># Profesionales</th>
+              <th># Coordinadores</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>${nombre}</td>
+              <td>${moneyAR(ev.valorPadres)}</td>
+              <td>${len(ev.profesionales)}</td>
+              <td>${len(ev.coordinadores)}</td>
+              <td>
+                <button class="btn-modificar" onclick="modificarEventoEspecial('${encodeURIComponent(nombre)}')">✏️</button>
+                <button class="btn-borrar"    onclick="borrarEventoEspecial('${encodeURIComponent(nombre)}')">🗑️</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  window.borrarEventoEspecial = async (idOrNombre) => {
+    try {
+      const { isConfirmed } = await Swal.fire({
+        title: '¿Eliminar evento especial?',
+        text: 'Esta acción no se puede deshacer.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, eliminar',
+        cancelButtonText: 'Cancelar'
+      });
+      if (!isConfirmed) return;
+
+      const res = await apiFetch(`/modulos/evento-especial/${idOrNombre}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'No se pudo eliminar');
+
+      await Swal.fire('Eliminado', 'Evento especial eliminado correctamente', 'success');
+      cargarListadoEventosEspeciales();
+    } catch (e) {
+      console.error('Error eliminando evento especial:', e);
+      Swal.fire('Error', e.message || 'No se pudo eliminar el evento especial', 'error');
+    }
+  };
+
+  window.modificarEventoEspecial = async (idOrNombre) => {
+    try {
+      const res = await apiFetch(`/modulos/evento-especial/${idOrNombre}`);
+      const ev = await res.json();
+      if (!res.ok) throw new Error(ev?.error || 'No se pudo obtener el evento especial');
+
+      // Stub: integrar con tu form si querés editarlo igual que módulos
+      console.log('Evento especial para editar:', ev);
+      await Swal.fire('Editar', 'Acá abrirías tu formulario de edición de evento especial', 'info');
+    } catch (e) {
+      console.error('Error obteniendo evento especial:', e);
+      Swal.fire('Error', e.message || 'No se pudo abrir el editor del evento especial', 'error');
+    }
+  };
+
+  // Carga inicial de eventos
+  if (contenedorListaEE) cargarListadoEventosEspeciales();
+})();
+
