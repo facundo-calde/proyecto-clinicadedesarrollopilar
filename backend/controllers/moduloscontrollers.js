@@ -1,6 +1,7 @@
 // backend/controllers/moduloscontrollers.js
 const mongoose = require('mongoose');
 const Modulo = require('../models/modulos');
+const ModuloEventoEspecial = require('../models/moduloEventoEspecial');
 
 /* ====================== Helpers ====================== */
 const isValidId = (id) =>
@@ -47,6 +48,7 @@ const normAsignaciones = (v) => {
     .filter(x => isValidId(x.usuario));
 };
 
+/* ========== Sanitizadores para MÓDULO estándar ========== */
 // Sanitiza body según nuevo esquema (solo NOMBRE)
 const sanitizeBody = (body = {}) => {
   const out = {};
@@ -126,7 +128,7 @@ async function findByIdOrNombre(idParam) {
   return null;
 }
 
-/* ====================== CRUD ====================== */
+/* ====================== CRUD MÓDULOS ====================== */
 // POST /modulos
 const crearModulo = async (req, res) => {
   try {
@@ -272,12 +274,182 @@ const eliminarModulo = async (req, res) => {
   }
 };
 
+/* ==========================================================
+   CRUD MÓDULO EVENTO ESPECIAL
+   (solo nombre, valorPadres y coordinadoresExternos [{usuario,monto}])
+   Endpoints esperados por el front:
+   - POST   /moduloseventoespecial
+   - GET    /moduloseventoespecial
+   - GET    /moduloseventoespecial/buscar?nombre=...
+   - GET    /moduloseventoespecial/:nombre
+   - PUT    /moduloseventoespecial/:nombre
+   - DELETE /moduloseventoespecial/:nombre
+   ========================================================== */
+
+// Sanitizador específico
+const sanitizeEventoEspecial = (body = {}) => {
+  const out = {};
+  if (body.nombre !== undefined) out.nombre = toStr(body.nombre, '');
+  if (body.valorPadres !== undefined) out.valorPadres = toNum(body.valorPadres, 0);
+  if (body.coordinadoresExternos !== undefined) {
+    out.coordinadoresExternos = normAsignaciones(body.coordinadoresExternos);
+  }
+  return out;
+};
+
+const populateEventoEspecial = (q) =>
+  q.populate([
+    { path: 'coordinadoresExternos.usuario', select: 'nombre nombreApellido apellido rol roles areasProfesional areasCoordinadas' }
+  ]);
+
+// find by id/nombre (case-insensitive por nombre)
+async function findEventoByIdOrNombre(idParam) {
+  if (!idParam) return null;
+  if (isValidId(idParam)) {
+    const byId = await ModuloEventoEspecial.findById(idParam);
+    if (byId) return byId;
+  }
+  const byNombre = await ModuloEventoEspecial
+    .findOne({ nombre: idParam })
+    .collation({ locale: 'es', strength: 1 });
+  return byNombre || null;
+}
+
+// POST /moduloseventoespecial
+const crearEventoEspecial = async (req, res) => {
+  try {
+    const data = sanitizeEventoEspecial(req.body);
+    if (!data.nombre || !String(data.nombre).trim()) {
+      return res.status(400).json({ error: 'El campo "nombre" es obligatorio.' });
+    }
+    const doc = await ModuloEventoEspecial.create(data);
+    res.status(201).json(doc);
+  } catch (e) {
+    if (e?.code === 11000) return res.status(409).json({ error: 'Ya existe un evento especial con ese nombre' });
+    console.error('❌ crearEventoEspecial:', e);
+    res.status(400).json({ error: e.message || 'No se pudo crear el evento especial' });
+  }
+};
+
+// GET /moduloseventoespecial
+const listarEventosEspeciales = async (_req, res) => {
+  try {
+    const lista = await ModuloEventoEspecial.find().sort({ updatedAt: -1 }).lean();
+    res.json(lista);
+  } catch (e) {
+    console.error('❌ listarEventosEspeciales:', e);
+    res.status(500).json({ error: 'Error al listar eventos especiales' });
+  }
+};
+
+// GET /moduloseventoespecial/buscar?nombre=...
+const buscarEventosEspeciales = async (req, res) => {
+  try {
+    const { nombre } = req.query;
+    if (!nombre || !String(nombre).trim()) {
+      return res.status(400).json({ error: 'Parámetro "nombre" inválido' });
+    }
+    const regex = new RegExp(
+      String(nombre).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+      'i'
+    );
+    const docs = await ModuloEventoEspecial.find({ nombre: { $regex: regex } })
+      .select('_id nombre')
+      .sort({ nombre: 1 })
+      .limit(10)
+      .lean();
+    res.json(docs);
+  } catch (e) {
+    console.error('❌ buscarEventosEspeciales:', e);
+    res.status(500).json({ error: 'Error en la búsqueda' });
+  }
+};
+
+// GET /moduloseventoespecial/:nombre
+const obtenerEventoEspecial = async (req, res) => {
+  try {
+    const idParam = getIdParam(req);
+    if (!idParam) return res.status(400).json({ error: 'Parámetro faltante' });
+
+    const base = await findEventoByIdOrNombre(idParam);
+    if (!base) return res.status(404).json({ error: 'Evento especial no encontrado' });
+
+    const doc = await populateEventoEspecial(
+      ModuloEventoEspecial.findById(base._id).lean()
+    );
+    res.json(await doc);
+  } catch (e) {
+    console.error('❌ obtenerEventoEspecial:', e);
+    res.status(500).json({ error: 'Error al obtener evento especial' });
+  }
+};
+
+// PUT /moduloseventoespecial/:nombre
+const actualizarEventoEspecial = async (req, res) => {
+  try {
+    const idParam = getIdParam(req);
+    if (!idParam) return res.status(400).json({ error: 'Parámetro faltante' });
+
+    const current = await findEventoByIdOrNombre(idParam);
+    if (!current) return res.status(404).json({ error: 'Evento especial no encontrado' });
+
+    const data = sanitizeEventoEspecial(req.body);
+    const $set = {};
+    ['nombre', 'valorPadres', 'coordinadoresExternos'].forEach(k => {
+      if (data[k] !== undefined && data[k] !== null && data[k] !== '') $set[k] = data[k];
+    });
+
+    if ($set.nombre !== undefined && !String($set.nombre).trim()) {
+      return res.status(400).json({ error: 'El campo "nombre" no puede quedar vacío.' });
+    }
+
+    await ModuloEventoEspecial.findByIdAndUpdate(current._id, { $set }, { new: false });
+
+    const actualizado = await populateEventoEspecial(
+      ModuloEventoEspecial.findById(current._id).lean()
+    );
+
+    res.json({ mensaje: 'Evento especial actualizado', evento: await actualizado });
+  } catch (e) {
+    if (e?.code === 11000) return res.status(409).json({ error: 'Nombre duplicado' });
+    console.error('❌ actualizarEventoEspecial:', e);
+    res.status(500).json({ error: 'Error al actualizar evento especial' });
+  }
+};
+
+// DELETE /moduloseventoespecial/:nombre
+const eliminarEventoEspecial = async (req, res) => {
+  try {
+    const idParam = getIdParam(req);
+    if (!idParam) return res.status(400).json({ error: 'Parámetro faltante' });
+
+    const current = await findEventoByIdOrNombre(idParam);
+    if (!current) return res.status(404).json({ error: 'Evento especial no encontrado' });
+
+    await ModuloEventoEspecial.findByIdAndDelete(current._id);
+    res.json({ mensaje: 'Evento especial eliminado' });
+  } catch (e) {
+    console.error('❌ eliminarEventoEspecial:', e);
+    res.status(500).json({ error: 'Error al eliminar evento especial' });
+  }
+};
+
+/* ====================== Exports ====================== */
 module.exports = {
+  // Módulos
   crearModulo,
   obtenerModulos,
   buscarModulos,
   obtenerModulo,
   actualizarModulo,
   eliminarModulo,
+
+  // Módulos Evento Especial
+  crearEventoEspecial,
+  listarEventosEspeciales,
+  buscarEventosEspeciales,
+  obtenerEventoEspecial,
+  actualizarEventoEspecial,
+  eliminarEventoEspecial,
 };
 
