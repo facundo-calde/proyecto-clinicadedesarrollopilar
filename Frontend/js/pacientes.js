@@ -62,10 +62,10 @@ async function renderFichaPaciente(p) {
           apiFetchJson(`/areas`),
         ]);
         cache.modulos = Array.isArray(modulos) ? modulos : [];
-        cache.areas   = Array.isArray(areas)   ? areas   : [];
+        cache.areas = Array.isArray(areas) ? areas : [];
       } catch {
         cache.modulos = [];
-        cache.areas   = [];
+        cache.areas = [];
       }
 
       cache.users = [];
@@ -74,7 +74,7 @@ async function renderFichaPaciente(p) {
 
       cache.usersTried = true;
 
-      cache.modById  = new Map(cache.modulos.map(m => [String(m._id), m]));
+      cache.modById = new Map(cache.modulos.map(m => [String(m._id), m]));
       cache.areaById = new Map(cache.areas.map(a => [String(a._id), a]));
       cache.userById = new Map(cache.users.map(u => [String(u._id), u]));
     }
@@ -107,7 +107,7 @@ async function renderFichaPaciente(p) {
   const userLabel = (cp) => {
     if (!cp) return "";
     if (typeof cp === "object") {
-      if (cp.nombre)  return cp.nombre;
+      if (cp.nombre) return cp.nombre;
       if (cp.usuario) return cp.usuario;
       if (cp.usuarioId) {
         const u = cache.userById.get(String(cp.usuarioId));
@@ -124,7 +124,7 @@ async function renderFichaPaciente(p) {
   // ── RESUMEN: creado (En espera), Alta, Baja ───────────────────────────────
   function buildEstadoResumen() {
     const hist = Array.isArray(p.estadoHistorial) ? [...p.estadoHistorial].filter(h => h && h.fecha) : [];
-    hist.sort((a,b) => new Date(a.fecha) - new Date(b.fecha)); // asc
+    hist.sort((a, b) => new Date(a.fecha) - new Date(b.fecha)); // asc
 
     // creado/en espera
     let creado = null;
@@ -134,7 +134,7 @@ async function renderFichaPaciente(p) {
         creado = {
           actor: userLabel(h.cambiadoPor),
           fecha: h.fecha,
-          obs:   h.descripcion || ""
+          obs: h.descripcion || ""
         };
         break;
       }
@@ -143,7 +143,7 @@ async function renderFichaPaciente(p) {
       creado = {
         actor: userLabel(p.creadoPor || p.createdBy || p.creadoPorId),
         fecha: p.createdAt || p.fechaCreacion || p.creadoEl || "",
-        obs:   p.observacionCreacion || ""
+        obs: p.observacionCreacion || ""
       };
     }
 
@@ -173,49 +173,49 @@ async function renderFichaPaciente(p) {
       if (!data) return "";
       const actor = data.actor || "—";
       const fecha = data.fecha ? ` — <span style="color:#777;">(${fmtDateTime(data.fecha)})</span>` : "";
-      const obs   = data.obs   ? ` — <span style="color:#555;">${data.obs}</span>` : "";
+      const obs = data.obs ? ` — <span style="color:#555;">${data.obs}</span>` : "";
       return `<p><strong>${lbl}:</strong> ${actor}${fecha}${obs}</p>`;
     };
 
     return `
       ${line("Creado (En espera) por", creado)}
-      ${line("Dado de Alta por",       alta)}
-      ${line("Dado de Baja por",       baja)}
+      ${line("Dado de Alta por", alta)}
+      ${line("Dado de Baja por", baja)}
     `;
   }
 
   // ── MÓDULOS (sin “undefined”) ─────────────────────────────────────────────
   const modulosHTML = (Array.isArray(p.modulosAsignados) && p.modulosAsignados.length)
     ? (() => {
-        const items = p.modulosAsignados
-          .map(m => {
-            const mod = cache.modById.get(String(m.moduloId));
-            const nombreSeguro =
-              (mod?.nombre) ||
-              (typeof mod?.numero !== "undefined" ? `Módulo ${mod.numero}` : null) ||
-              m.moduloNombre || m.nombre || "Módulo";
-            const cant = (typeof m.cantidad !== "undefined" && m.cantidad !== null) ? m.cantidad : "-";
+      const items = p.modulosAsignados
+        .map(m => {
+          const mod = cache.modById.get(String(m.moduloId));
+          const nombreSeguro =
+            (mod?.nombre) ||
+            (typeof mod?.numero !== "undefined" ? `Módulo ${mod.numero}` : null) ||
+            m.moduloNombre || m.nombre || "Módulo";
+          const cant = (typeof m.cantidad !== "undefined" && m.cantidad !== null) ? m.cantidad : "-";
 
-            const det = (Array.isArray(m.profesionales) && m.profesionales.length)
-              ? `<ul style="margin:4px 0 0 18px;">
+          const det = (Array.isArray(m.profesionales) && m.profesionales.length)
+            ? `<ul style="margin:4px 0 0 18px;">
                   ${m.profesionales.map(pr => {
-                    const u = cache.userById.get(String(pr.profesionalId));
-                    const profNom = u ? (u.nombreApellido || u.nombre || u.usuario) : "Profesional";
-                    const aVal = pr.areaId ?? pr.area;
-                    const aNom = areaName(aVal);
-                    return `<li>${profNom}${aNom ? ` — ${aNom}` : ""}</li>`;
-                  }).join("")}
+              const u = cache.userById.get(String(pr.profesionalId));
+              const profNom = u ? (u.nombreApellido || u.nombre || u.usuario) : "Profesional";
+              const aVal = pr.areaId ?? pr.area;
+              const aNom = areaName(aVal);
+              return `<li>${profNom}${aNom ? ` — ${aNom}` : ""}</li>`;
+            }).join("")}
                 </ul>`
-              : "";
+            : "";
 
-            if (!m.moduloId && nombreSeguro === "Módulo") return "";
-            return `<li>${nombreSeguro} - Cantidad: ${cant}${det}</li>`;
-          })
-          .filter(Boolean);
+          if (!m.moduloId && nombreSeguro === "Módulo") return "";
+          return `<li>${nombreSeguro} - Cantidad: ${cant}${det}</li>`;
+        })
+        .filter(Boolean);
 
-        if (!items.length) return "Sin módulos asignados";
-        return `<ul style="margin:5px 0; padding-left:20px;">${items.join("")}</ul>`;
-      })()
+      if (!items.length) return "Sin módulos asignados";
+      return `<ul style="margin:5px 0; padding-left:20px;">${items.join("")}</ul>`;
+    })()
     : "Sin módulos asignados";
 
   // mails
@@ -230,26 +230,26 @@ async function renderFichaPaciente(p) {
       return `
         <ul style="margin:5px 0; padding-left:20px;">
           ${p.responsables.slice(0, 3).map(r => {
-            const rel = cap(r.relacion ?? "");
-            const nom = r.nombre ?? "sin nombre";
-            const wspHTML = r.whatsapp
-              ? ` 📱 <a href="https://wa.me/${r.whatsapp}" target="_blank" style="color:#25d366; text-decoration:none;">${r.whatsapp}</a>`
-              : "";
-            const docHTML = r.documento ? ` 🧾 ${r.documento}` : "";
-            const mailHTML = r.email ? ` ✉️ ${clickableMail(r.email)}` : "";
-            return `<li><strong>${rel}:</strong> ${nom}${wspHTML}${docHTML}${mailHTML}</li>`;
-          }).join("")}
+        const rel = cap(r.relacion ?? "");
+        const nom = r.nombre ?? "sin nombre";
+        const wspHTML = r.whatsapp
+          ? ` 📱 <a href="https://wa.me/${r.whatsapp}" target="_blank" style="color:#25d366; text-decoration:none;">${r.whatsapp}</a>`
+          : "";
+        const docHTML = r.documento ? ` 🧾 ${r.documento}` : "";
+        const mailHTML = r.email ? ` ✉️ ${clickableMail(r.email)}` : "";
+        return `<li><strong>${rel}:</strong> ${nom}${wspHTML}${docHTML}${mailHTML}</li>`;
+      }).join("")}
         </ul>`;
     }
     const tutorLinea = (p.tutor?.nombre || p.tutor?.whatsapp)
       ? `<li><strong>Tutor/a:</strong> ${p.tutor?.nombre ?? "sin datos"}${p.tutor?.whatsapp
-          ? ` 📱 <a href="https://wa.me/${p.tutor.whatsapp}" target="_blank" style="color:#25d366; text-decoration:none;">${p.tutor.whatsapp}</a>`
-          : ""}</li>`
+        ? ` 📱 <a href="https://wa.me/${p.tutor.whatsapp}" target="_blank" style="color:#25d366; text-decoration:none;">${p.tutor.whatsapp}</a>`
+        : ""}</li>`
       : "";
     const mpLinea = (p.madrePadre || p.whatsappMadrePadre)
       ? `<li><strong>Padre o Madre:</strong> ${p.madrePadre ?? "sin datos"}${p.whatsappMadrePadre
-          ? ` 📱 <a href="https://wa.me/${p.whatsappMadrePadre}" target="_blank" style="color:#25d366; text-decoration:none;">${p.whatsappMadrePadre}</a>`
-          : ""}</li>`
+        ? ` 📱 <a href="https://wa.me/${p.whatsappMadrePadre}" target="_blank" style="color:#25d366; text-decoration:none;">${p.whatsappMadrePadre}</a>`
+        : ""}</li>`
       : "";
     if (!tutorLinea && !mpLinea) return "Sin responsables cargados";
     return `<ul style="margin:5px 0; padding-left:20px;">${mpLinea}${tutorLinea}</ul>`;
@@ -273,9 +273,9 @@ async function renderFichaPaciente(p) {
           </div>
 
           ${p.estado === "Baja"
-            ? `<p><strong>Fecha de baja:</strong> ${p.fechaBaja ?? "-"}</p>
+      ? `<p><strong>Fecha de baja:</strong> ${p.fechaBaja ?? "-"}</p>
                <p><strong>Motivo de baja:</strong> ${p.motivoBaja ?? "-"}</p>`
-            : ""}
+      : ""}
         </div>
 
         <div class="ficha-bloque">
@@ -329,10 +329,10 @@ async function modificarPaciente(dni) {
         apiFetchJson(`/areas`),
         apiFetchJson(`/usuarios`),
       ]);
-      MODULOS  = Array.isArray(m) ? m : [];
-      AREAS    = Array.isArray(a) ? a : [];
+      MODULOS = Array.isArray(m) ? m : [];
+      AREAS = Array.isArray(a) ? a : [];
       USUARIOS = Array.isArray(u) ? u : [];
-    } catch (_) {}
+    } catch (_) { }
 
     // 👇 usa m.nombre del esquema actual
     const MOD_OPTS = MODULOS.length
@@ -498,28 +498,28 @@ async function modificarPaciente(dni) {
     // ---- Responsables iniciales (ahora con documento opcional) ----
     const responsablesIniciales = Array.isArray(p.responsables) && p.responsables.length
       ? p.responsables.slice(0, 3).map(r => ({
-          relacion: r.relacion,
-          nombre: r.nombre,
-          whatsapp: r.whatsapp,
-          email: r.email || "",
-          documento: r.documento || ""
-        }))
+        relacion: r.relacion,
+        nombre: r.nombre,
+        whatsapp: r.whatsapp,
+        email: r.email || "",
+        documento: r.documento || ""
+      }))
       : (() => {
-          const arr = [];
-          if (p.tutor?.nombre && p.tutor?.whatsapp) {
-            arr.push({ relacion: 'tutor', nombre: p.tutor.nombre, whatsapp: p.tutor.whatsapp, email: "", documento: "" });
-          }
-          if (p.madrePadre) {
-            arr.push({
-              relacion: /madre/i.test(p.madrePadre) ? 'madre' : 'padre',
-              nombre: String(p.madrePadre).replace(/^(madre|padre)\s*:\s*/i, '').trim(),
-              whatsapp: p.whatsappMadrePadre || '',
-              email: "",
-              documento: ""
-            });
-          }
-          return arr.slice(0, 3);
-        })();
+        const arr = [];
+        if (p.tutor?.nombre && p.tutor?.whatsapp) {
+          arr.push({ relacion: 'tutor', nombre: p.tutor.nombre, whatsapp: p.tutor.whatsapp, email: "", documento: "" });
+        }
+        if (p.madrePadre) {
+          arr.push({
+            relacion: /madre/i.test(p.madrePadre) ? 'madre' : 'padre',
+            nombre: String(p.madrePadre).replace(/^(madre|padre)\s*:\s*/i, '').trim(),
+            whatsapp: p.whatsappMadrePadre || '',
+            email: "",
+            documento: ""
+          });
+        }
+        return arr.slice(0, 3);
+      })();
 
     // ---- Modal principal ----
     const { isConfirmed, value: data } = await Swal.fire({
@@ -850,7 +850,7 @@ async function modificarPaciente(dni) {
 
     if (!putRes.ok) {
       let msg = "Error al guardar";
-      try { const j = await putRes.json(); msg = j?.error || msg; } catch {}
+      try { const j = await putRes.json(); msg = j?.error || msg; } catch { }
       if (putRes.status === 401) msg = 'Token requerido o inválido. Iniciá sesión nuevamente.';
       throw new Error(msg);
     }
@@ -1123,15 +1123,15 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
           profSel.innerHTML = lista.length === 0
             ? `<option value="">Sin usuarios para el área</option>`
             : `<option value="">-- Seleccionar --</option>` +
-              lista.map(u => {
-                const roles = [...userRoles(u)].filter(r => ROLES_OK.has(r));
-                const rolMostrar = roles.includes("directoras")
-                  ? "Directora"
-                  : (roles[0] || (u.rol || ""));
-                return `<option value="${u._id}">
+            lista.map(u => {
+              const roles = [...userRoles(u)].filter(r => ROLES_OK.has(r));
+              const rolMostrar = roles.includes("directoras")
+                ? "Directora"
+                : (roles[0] || (u.rol || ""));
+              return `<option value="${u._id}">
                           ${u.nombreApellido || u.nombre || u.usuario} — ${rolMostrar}
                         </option>`;
-              }).join("");
+            }).join("");
         }
 
         renderProfesionales();
@@ -1341,7 +1341,7 @@ const nfISO = (d) => {
 };
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, m => ({
-  '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
 })[m]);
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1352,33 +1352,40 @@ async function verDocumentos(dni) {
     const paciente = await apiFetchJson(`/pacientes/${dni}`);
     const documentos = Array.isArray(paciente.documentosPersonales) ? paciente.documentosPersonales : [];
 
-   const htmlTabla = documentos.length
-  ? documentos.map((doc, i) => {
-      const fecha = doc.fecha ? nfISO(doc.fecha) : '-';
-      const tipo  = esc(doc.tipo ?? '-');
-      const obs   = esc(doc.observaciones ?? '-');
+    const htmlTabla = documentos.length
+      ? documentos.map((doc, i) => {
+        const fecha = doc.fecha ? nfISO(doc.fecha) : '-';
+        const tipo = esc(doc.tipo ?? '-');
+        const obs = esc(doc.observaciones ?? '-');
 
-      // ← acepta varias claves posibles
-      const href =
-  doc.archivoURL || doc.archivoUrl || doc.url || doc.fileUrl || doc.publicUrl ||
-  (doc.archivoKey ? `${R2_BASE}/${R2_BUCKET_PACIENTES}/${encodeURIComponent(doc.archivoKey)}` : '');
+        // ← acepta varias claves posibles
+        const href =
+          doc.archivoURL || doc.archivoUrl || doc.url || doc.fileUrl || doc.publicUrl ||
+          (doc.archivoKey || doc.key || doc.r2Key
+            ? `${R2_BASE}/${R2_BUCKET_PACIENTES}/${encodeURIComponent(doc.archivoKey || doc.key || doc.r2Key)}`
+            : "");
 
 
-      return `
+        return `
         <tr>
           <td>${fecha}</td>
           <td>${tipo}</td>
           <td>${obs}</td>
           <td>
-            ${href ? `<a href="${href}" target="_blank" rel="noopener" title="Ver archivo"><i class="fa-solid fa-file-pdf"></i> Ver</a>` : '-'}
-          </td>
+  ${href
+            ? `<a href="${href}" target="_blank" rel="noopener" title="Ver archivo">
+         <i class="fa-solid fa-file-pdf"></i> Ver
+       </a>`
+            : "-"}
+</td>
+
           <td>
             <button onclick="editarDocumento('${dni}', ${i})" title="Editar"><i class="fa-solid fa-pen"></i></button>
             <button onclick="eliminarDocumento('${dni}', ${i})" title="Eliminar"><i class="fa-solid fa-trash"></i></button>
           </td>
         </tr>`;
-    }).join('')
-  : `<tr><td colspan="5" style="text-align:center;">No hay documentos cargados.</td></tr>`;
+      }).join('')
+      : `<tr><td colspan="5" style="text-align:center;">No hay documentos cargados.</td></tr>`;
 
 
     await Swal.fire({
@@ -1423,7 +1430,7 @@ async function agregarDocumento(dni) {
     cancelButtonText: "Cancelar",
     preConfirm: async () => {
       const fecha = document.getElementById("docFecha").value;
-      const tipo  = document.getElementById("docTipo").value.trim();
+      const tipo = document.getElementById("docTipo").value.trim();
       const observaciones = document.getElementById("docObs").value.trim();
       const archivo = document.getElementById("docArchivo").files[0];
 
@@ -1451,9 +1458,9 @@ async function agregarDocumento(dni) {
       });
       if (!res.ok) {
         // rollback en R2 si falla persistencia
-        try { await r2Delete({ bucket: R2_BUCKET_PACIENTES, key }); } catch {}
+        try { await r2Delete({ bucket: R2_BUCKET_PACIENTES, key }); } catch { }
         let msg = "No se pudo guardar el documento";
-        try { const j = await res.json(); msg = j?.error || msg; } catch {}
+        try { const j = await res.json(); msg = j?.error || msg; } catch { }
         throw new Error(msg);
       }
       return true;
@@ -1491,7 +1498,7 @@ async function editarDocumento(dni, index) {
       cancelButtonText: "Cancelar",
       preConfirm: () => {
         const fecha = document.getElementById("docFecha").value;
-        const tipo  = document.getElementById("docTipo").value.trim();
+        const tipo = document.getElementById("docTipo").value.trim();
         const observaciones = document.getElementById("docObs").value.trim();
         const file = document.getElementById("docArchivo").files[0] || null;
         if (!fecha || !tipo) {
@@ -1536,16 +1543,16 @@ async function editarDocumento(dni, index) {
     if (!res.ok) {
       // si subimos archivo nuevo y falló persistencia, borramos el nuevo en R2
       if (value.file) {
-        try { await r2Delete({ bucket: R2_BUCKET_PACIENTES, key: newKey }); } catch {}
+        try { await r2Delete({ bucket: R2_BUCKET_PACIENTES, key: newKey }); } catch { }
       }
       let msg = "No se pudo actualizar el documento";
-      try { const j = await res.json(); msg = j?.error || msg; } catch {}
+      try { const j = await res.json(); msg = j?.error || msg; } catch { }
       throw new Error(msg);
     }
 
     // si hubo archivo nuevo y la actualización fue OK: borrar el viejo de R2
     if (value.file && doc.archivoKey && doc.archivoKey !== newKey) {
-      try { await r2Delete({ bucket: R2_BUCKET_PACIENTES, key: doc.archivoKey }); } catch {}
+      try { await r2Delete({ bucket: R2_BUCKET_PACIENTES, key: doc.archivoKey }); } catch { }
     }
 
     Swal.fire("✅ Documento actualizado", "", "success").then(() => verDocumentos(dni));
@@ -1581,13 +1588,13 @@ async function eliminarDocumento(dni, index) {
     const res = await apiFetch(url, { method: 'DELETE' });
     if (!res.ok) {
       let msg = "No se pudo eliminar el documento";
-      try { const j = await res.json(); msg = j?.error || msg; } catch {}
+      try { const j = await res.json(); msg = j?.error || msg; } catch { }
       throw new Error(msg);
     }
 
     // 2) R2: borra el objeto (best effort)
     if (doc.archivoKey) {
-      try { await r2Delete({ bucket: R2_BUCKET_PACIENTES, key: doc.archivoKey }); } catch {}
+      try { await r2Delete({ bucket: R2_BUCKET_PACIENTES, key: doc.archivoKey }); } catch { }
     }
 
     Swal.fire("✅ Documento eliminado", "", "success").then(() => verDocumentos(dni));
@@ -1606,31 +1613,39 @@ async function verDiagnosticos(dni) {
     const diagnosticos = Array.isArray(paciente.diagnosticos) ? paciente.diagnosticos : [];
 
     const htmlTabla = diagnosticos.length
-  ? diagnosticos.map((d, i) => {
-      const fecha = d.fecha ? nfISO(d.fecha) : '-';
-      const area  = esc(d.area || '');
-      const obs   = esc(d.observaciones ?? '-');
+      ? diagnosticos.map((d, i) => {
+        const fecha = d.fecha ? nfISO(d.fecha) : '-';
+        const area = esc(d.area || '');
+        const obs = esc(d.observaciones ?? '-');
 
-      const href =
-  d.archivoURL || d.archivoUrl || d.url || d.fileUrl || d.publicUrl ||
-  (d.archivoKey ? `${R2_BASE}/${R2_BUCKET_PACIENTES}/${encodeURIComponent(d.archivoKey)}` : '');
+        const href =
+          d.archivoURL || d.archivoUrl || d.url || d.fileUrl || d.publicUrl ||
+          (d.archivoKey || d.key || d.r2Key
+            ? `${R2_BASE}/${R2_BUCKET_PACIENTES}/${encodeURIComponent(d.archivoKey || d.key || d.r2Key)}`
+            : "");
 
 
-      return `
+
+        return `
         <tr>
           <td>${fecha}</td>
           <td>${area}</td>
           <td>${obs}</td>
-          <td>
-            ${href ? `<a href="${href}" target="_blank" rel="noopener"><i class="fa-solid fa-file-pdf"></i> Ver</a>` : '-'}
-          </td>
+        <td>
+  ${href
+            ? `<a href="${href}" target="_blank" rel="noopener" title="Ver archivo">
+         <i class="fa-solid fa-file-pdf"></i> Ver
+       </a>`
+            : "-"}
+</td>
+
           <td>
             <button onclick="editarDiagnostico('${dni}', ${i})" title="Editar"><i class="fa-solid fa-pen"></i></button>
             <button onclick="eliminarDiagnostico('${dni}', ${i})" title="Eliminar"><i class="fa-solid fa-trash"></i></button>
           </td>
         </tr>`;
-    }).join('')
-  : `<tr><td colspan="5" style="text-align:center;">No hay diagnósticos cargados.</td></tr>`;
+      }).join('')
+      : `<tr><td colspan="5" style="text-align:center;">No hay diagnósticos cargados.</td></tr>`;
 
 
     await Swal.fire({
@@ -1675,7 +1690,7 @@ async function agregarDiagnostico(dni) {
     cancelButtonText: "Cancelar",
     preConfirm: async () => {
       const fecha = document.getElementById("dxFecha").value;
-      const area  = document.getElementById("dxArea").value.trim();
+      const area = document.getElementById("dxArea").value.trim();
       const observaciones = document.getElementById("dxObs").value.trim();
       const archivo = document.getElementById("dxArchivo").files[0];
 
@@ -1702,9 +1717,9 @@ async function agregarDiagnostico(dni) {
         })
       });
       if (!res.ok) {
-        try { await r2Delete({ bucket: R2_BUCKET_PACIENTES, key }); } catch {}
+        try { await r2Delete({ bucket: R2_BUCKET_PACIENTES, key }); } catch { }
         let msg = "No se pudo guardar el diagnóstico";
-        try { const j = await res.json(); msg = j?.error || msg; } catch {}
+        try { const j = await res.json(); msg = j?.error || msg; } catch { }
         throw new Error(msg);
       }
       return true;
@@ -1742,7 +1757,7 @@ async function editarDiagnostico(dni, index) {
       cancelButtonText: "Cancelar",
       preConfirm: () => {
         const fecha = document.getElementById("dxFecha").value;
-        const area  = document.getElementById("dxArea").value.trim();
+        const area = document.getElementById("dxArea").value.trim();
         const observaciones = document.getElementById("dxObs").value.trim();
         const file = document.getElementById("dxArchivo").files[0] || null;
         if (!fecha || !area) {
@@ -1782,14 +1797,14 @@ async function editarDiagnostico(dni, index) {
       })
     });
     if (!res.ok) {
-      if (value.file) { try { await r2Delete({ bucket: R2_BUCKET_PACIENTES, key: newKey }); } catch {} }
+      if (value.file) { try { await r2Delete({ bucket: R2_BUCKET_PACIENTES, key: newKey }); } catch { } }
       let msg = "No se pudo actualizar el diagnóstico";
-      try { const j = await res.json(); msg = j?.error || msg; } catch {}
+      try { const j = await res.json(); msg = j?.error || msg; } catch { }
       throw new Error(msg);
     }
 
     if (value.file && dx.archivoKey && dx.archivoKey !== newKey) {
-      try { await r2Delete({ bucket: R2_BUCKET_PACIENTES, key: dx.archivoKey }); } catch {}
+      try { await r2Delete({ bucket: R2_BUCKET_PACIENTES, key: dx.archivoKey }); } catch { }
     }
 
     Swal.fire("✅ Diagnóstico actualizado", "", "success").then(() => verDiagnosticos(dni));
@@ -1824,12 +1839,12 @@ async function eliminarDiagnostico(dni, index) {
     const res = await apiFetch(url, { method: 'DELETE' });
     if (!res.ok) {
       let msg = "No se pudo eliminar el diagnóstico";
-      try { const j = await res.json(); msg = j?.error || msg; } catch {}
+      try { const j = await res.json(); msg = j?.error || msg; } catch { }
       throw new Error(msg);
     }
 
     if (dx.archivoKey) {
-      try { await r2Delete({ bucket: R2_BUCKET_PACIENTES, key: dx.archivoKey }); } catch {}
+      try { await r2Delete({ bucket: R2_BUCKET_PACIENTES, key: dx.archivoKey }); } catch { }
     }
 
     Swal.fire("✅ Diagnóstico eliminado", "", "success").then(() => verDiagnosticos(dni));
