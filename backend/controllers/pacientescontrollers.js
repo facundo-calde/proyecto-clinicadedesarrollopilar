@@ -11,14 +11,9 @@ const CP_OK   = new Set(["Obra Social", "Particular", "Obra Social + Particular"
 const ESTADOS = new Set(["Alta", "Baja", "En espera"]);
 
 // --- Helpers ---
-function toStr(x) {
-  return (x ?? "").toString();
-}
-function onlyDigits(s) {
-  return toStr(s).replace(/\D+/g, "");
-}
+function toStr(x) { return (x ?? "").toString(); }
+function onlyDigits(s) { return toStr(s).replace(/\D+/g, ""); }
 function getActor(req) {
-  // Estructura flexible, por si tu middleware usa otros nombres
   const id = req.user?._id || req.user?.id || req.userId || null;
   const usuario = req.user?.usuario || req.user?.email || null;
   const nombre  = req.user?.nombreApellido || req.user?.nombre || null;
@@ -43,17 +38,33 @@ function sanitizeResponsables(responsables) {
 
     const r = { relacion, nombre, whatsapp };
     if (emailRaw) {
-      if (!MAIL_RE.test(emailRaw)) continue; // si el mail viene mal, descartamos ese responsable
+      if (!MAIL_RE.test(emailRaw)) continue;
       r.email = emailRaw;
     }
     if (documento && DOC_RE.test(documento)) {
-      r.documento = documento; // ← guardar solo si pasa validación
+      r.documento = documento;
     }
 
     out.push(r);
     if (out.length >= 3) break;
   }
   return out;
+}
+
+// --- Normalizador de módulos especiales (acepta variantes de nombres)
+function pickModulosEspeciales(body) {
+  // nombres posibles que podrían venir desde el front/legacy
+  const candidates = [
+    "modulosEspecialesAsignados",
+    "modulosEspeciales",
+    "eventosEspecialesAsignados",
+    "modulosEventoEspecial",
+    "modulos_evento_especial"
+  ];
+  for (const k of candidates) {
+    if (Array.isArray(body?.[k])) return body[k];
+  }
+  return undefined;
 }
 
 // Construye payload permitido; ignora campos no soportados.
@@ -96,9 +107,27 @@ function buildPacienteData(body, existing = null) {
     if (resp.length) data.responsables = resp;
   }
 
-  // Módulos (valida mongoose a nivel schema)
+  // Módulos comunes (el schema valida)
   if (Array.isArray(body.modulosAsignados)) {
     data.modulosAsignados = body.modulosAsignados;
+  }
+
+  // ✅ Módulos ESPECIALES (NUEVO): acepta varios nombres y lo mapea a modulosEspecialesAsignados
+  const especiales = pickModulosEspeciales(body);
+  if (Array.isArray(especiales)) {
+    // opcional: asegurar forma { moduloId, cantidad, profesionales[] }
+    data.modulosEspecialesAsignados = especiales.map(e => {
+      const moduloId = e?.moduloId || e?.modulo || e?.id || e?._id;
+      const cantidad = (e?.cantidad == null ? 1 : Number(e.cantidad));
+      const profesionales = Array.isArray(e?.profesionales) ? e.profesionales
+                         : Array.isArray(e?.coordinadoresExternos) ? e.coordinadoresExternos
+                         : [];
+      return {
+        moduloId,
+        cantidad: isNaN(cantidad) ? 1 : cantidad,
+        profesionales
+      };
+    });
   }
 
   // Limpieza de strings
@@ -112,7 +141,6 @@ function buildPacienteData(body, existing = null) {
 // ========================= Controllers =========================
 
 // GET /api/pacientes/buscar?nombre=...
-// Busca por nombre parcial o DNI (case-insensitive)
 const buscarPaciente = async (req, res) => {
   try {
     const q = toStr(req.query.nombre).trim();
@@ -161,20 +189,16 @@ const crearPaciente = async (req, res) => {
     const actor = getActor(req);
     const observacion = toStr(req.body.observacionCreacion || req.body.descripcionEstado).trim();
 
-    // Estado inicial siempre "En espera"
     data.estado = "En espera";
-
-    // Historial inicial (creación)
     data.estadoHistorial = [{
       estadoAnterior: undefined,
       estadoNuevo: "En espera",
-      estado: "En espera", // snapshot
+      estado: "En espera",
       fecha: new Date(),
       descripcion: observacion || "Estado inicial",
       cambiadoPor: actor
     }];
 
-    // Auditoría de creación opcional (si lo agregaste al schema)
     if ('creadoPor' in Paciente.schema.paths) {
       data.creadoPor = actor.usuarioId;
     }
@@ -210,7 +234,7 @@ const actualizarPaciente = async (req, res) => {
     const data = buildPacienteData(req.body, paciente);
     const actor = getActor(req);
 
-    // Cambio de estado → agregar a historial con estadoAnterior/estadoNuevo
+    // Cambio de estado → historial
     const nuevoEstado = req.body.estado;
     const descripcionEstado = toStr(req.body.descripcionEstado || req.body.estadoDescripcion).trim();
 
@@ -226,7 +250,7 @@ const actualizarPaciente = async (req, res) => {
       paciente.estadoHistorial.push({
         estadoAnterior: anterior,
         estadoNuevo: nuevo,
-        estado: nuevo, // snapshot del estado resultante
+        estado: nuevo,
         fecha: new Date(),
         descripcion: descripcionEstado || undefined,
         cambiadoPor: actor
@@ -234,7 +258,6 @@ const actualizarPaciente = async (req, res) => {
 
       paciente.estado = nuevo;
 
-      // Si pasó a Baja, persiste extras si vienen
       if (nuevo === "Baja") {
         if (req.body.fechaBaja)  paciente.fechaBaja  = toStr(req.body.fechaBaja).trim();
         if (req.body.motivoBaja) paciente.motivoBaja = toStr(req.body.motivoBaja).trim();
@@ -267,7 +290,6 @@ const listarPacientes = async (req, res) => {
     const { nombre, dni, limit = 20, sort } = req.query;
     const LIM = Math.min(parseInt(limit, 10) || 20, 100);
 
-    // si vienen filtros, delego a la búsqueda parcial
     if (nombre || dni) {
       const qNombre = (nombre || '').toString().trim();
       const qDni    = (dni || '').toString().trim();
@@ -278,7 +300,7 @@ const listarPacientes = async (req, res) => {
       if (qDni)    where.push({ dni: new RegExp(qDni, 'i') });
 
       const pacientes = await Paciente.find(where.length ? { $or: where } : {})
-        .select('nombre dni estado condicionDePago') // proyección liviana
+        .select('nombre dni estado condicionDePago')
         .sort(sort === 'created' ? { createdAt: -1 } : { nombre: 1 })
         .limit(LIM)
         .lean();
@@ -286,7 +308,6 @@ const listarPacientes = async (req, res) => {
       return res.json(pacientes);
     }
 
-    // sin filtros → listado inicial
     const pacientes = await Paciente.find({})
       .select('nombre dni estado condicionDePago')
       .sort(sort === 'created' ? { createdAt: -1 } : { nombre: 1 })
@@ -301,9 +322,7 @@ const listarPacientes = async (req, res) => {
 };
 
 /* ============================================================================
-   DOCUMENTOS PERSONALES (metadata R2) 
-   Frontend sube a R2 (Worker). Acá solo persistimos/eliminamos metadata.
-   Campos esperados: { fecha, tipo, observaciones, archivoKey, archivoURL }
+   DOCUMENTOS PERSONALES (metadata R2)
    ============================================================================ */
 
 // POST /api/pacientes/:dni/documentos
@@ -405,7 +424,6 @@ const eliminarDocumento = async (req, res) => {
 
     const removed = p.documentosPersonales.splice(idx, 1)[0];
     await p.save();
-    // Nota: el borrado del objeto en R2 lo hace el frontend (ya lo implementaste).
     res.json({ ok: true, eliminado: removed, documentos: p.documentosPersonales });
   } catch (err) {
     console.error("❌ eliminarDocumento:", err);
@@ -415,7 +433,6 @@ const eliminarDocumento = async (req, res) => {
 
 /* ============================================================================
    DIAGNÓSTICOS (metadata R2)
-   Campos: { fecha, area, observaciones, archivoKey, archivoURL }
    ============================================================================ */
 
 // POST /api/pacientes/:dni/diagnosticos
@@ -517,7 +534,6 @@ const eliminarDiagnostico = async (req, res) => {
 
     const removed = p.diagnosticos.splice(idx, 1)[0];
     await p.save();
-    // Nota: el borrado del objeto en R2 lo hace el frontend (best-effort).
     res.json({ ok: true, eliminado: removed, diagnosticos: p.diagnosticos });
   } catch (err) {
     console.error("❌ eliminarDiagnostico:", err);
@@ -526,14 +542,12 @@ const eliminarDiagnostico = async (req, res) => {
 };
 
 module.exports = {
-  // existentes
   listarPacientes,
   buscarPaciente,
   obtenerPorDNI,
   crearPaciente,
   actualizarPaciente,
 
-  // nuevos (R2 metadata)
   agregarDocumento,
   actualizarDocumento,
   eliminarDocumento,
@@ -542,3 +556,4 @@ module.exports = {
   actualizarDiagnostico,
   eliminarDiagnostico
 };
+
