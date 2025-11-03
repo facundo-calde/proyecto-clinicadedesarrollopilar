@@ -80,17 +80,38 @@ proyecto-clinicadedesarrollopilar/
    R2_BUCKET_URL=
    ```
 
-4. Iniciar el servidor:
+4. Iniciar el servidor local:
 
    ```bash
    npm start
    ```
 
-   o en entorno de desarrollo:
+   o en modo desarrollo:
 
    ```bash
    npm run dev
    ```
+
+---
+
+## Ejecución en producción (PM2)
+
+El sistema está preparado para ejecutarse bajo **PM2** en entornos Linux.
+Para iniciar, detener o reiniciar el servicio:
+
+```bash
+# Iniciar la aplicación
+pm2 start backend/server.js --name clinica
+
+# Ver logs en tiempo real
+pm2 logs clinica
+
+# Reiniciar con nuevas variables o cambios
+pm2 restart clinica --update-env
+
+# Ver el estado de todos los procesos
+pm2 list
+```
 
 ---
 
@@ -140,9 +161,3 @@ El despliegue contempla variables de entorno seguras, manejo de logs, y actualiz
 **Facundo Calderón**
 Desarrollador Full Stack
 Contacto: [calderonquintanapablofacundo@gmail.com](mailto:calderonquintanapablofacundo@gmail.com)
-
----
-
-## Licencia
-
-Este proyecto se distribuye bajo la licencia **MIT**, lo que permite su uso, copia y modificación con atribución al autor original.
