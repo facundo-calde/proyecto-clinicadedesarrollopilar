@@ -173,7 +173,7 @@ function renderSugerencias(lista = []) {
     li.addEventListener("click", () => {
       $input.value = p.nombre ?? "";
       $sugerencias.innerHTML = "";
-      renderEstadoDeCuenta(p);
+      mostrarFichaPaciente(p);
     });
     $sugerencias.appendChild(li);
   });
@@ -268,3 +268,67 @@ if (btnDescargar) {
   });
 }
 
+// Mostrar ficha del paciente en un modal SweetAlert
+async function mostrarFichaPaciente(p) {
+  const prestador = p.prestador ?? "sin datos";
+  const credencial = p.credencial ?? "sin datos";
+  const tipo = p.tipo ?? "sin datos";
+  const madre = p.madre ?? (p.responsables?.find(r => /madre/i.test(r.relacion || ""))?.nombre ?? "sin datos");
+  const padre = p.padre ?? (p.responsables?.find(r => /padre/i.test(r.relacion || ""))?.nombre ?? "sin datos");
+  const wspMadre = p.whatsappMadre ?? (p.responsables?.find(r => /madre/i.test(r.relacion || ""))?.whatsapp ?? "");
+  const wspPadre = p.whatsappPadre ?? (p.responsables?.find(r => /padre/i.test(r.relacion || ""))?.whatsapp ?? "");
+  const mailMadre = p.emailMadre ?? (p.responsables?.find(r => /madre/i.test(r.relacion || ""))?.email ?? "");
+  const mailPadre = p.emailPadre ?? (p.responsables?.find(r => /padre/i.test(r.relacion || ""))?.email ?? "");
+  const tutor = p.tutor?.nombre ?? "sin datos";
+
+  const wspLink = (num) => num ? `<a href="https://wa.me/${num}" target="_blank" style="color:#25d366;text-decoration:none;">${num}</a>` : "sin datos";
+  const mailLink = (mail) => mail ? `<a href="mailto:${mail}" style="color:#1a73e8;text-decoration:none;">${mail}</a>` : "sin datos";
+
+  const html = `
+  <div style="text-align:left;font-family:'Segoe UI',sans-serif;color:#222;max-width:900px;margin:auto;">
+    <h2 style="margin:0 0 10px 0;">${p.nombre ?? "Sin nombre"} - DNI ${p.dni ?? "-"}</h2>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:space-between;">
+      <div style="flex:1;min-width:260px;border:1px solid #ccc;border-radius:8px;padding:10px;">
+        <p><strong>Abonado:</strong> ${p.condicionDePago ?? "sin datos"}</p>
+        <p><strong>Estado:</strong> ${p.estado ?? "sin datos"}</p>
+        <p><strong>Fecha de nacimiento:</strong> ${p.fechaNacimiento ?? "sin datos"}</p>
+        <p><strong>Colegio:</strong> ${p.colegio ?? "sin datos"}</p>
+        <p><strong>Curso / Nivel:</strong> ${p.curso ?? "sin datos"}</p>
+      </div>
+
+      <div style="flex:1;min-width:260px;border:1px solid #ccc;border-radius:8px;padding:10px;">
+        <p><strong>Padres / Tutores:</strong></p>
+        <p><strong>Madre:</strong> ${madre}</p>
+        <p>Whatsapp: ${wspLink(wspMadre)}</p>
+        <p>Mail: ${mailLink(mailMadre)}</p>
+        <hr>
+        <p><strong>Padre:</strong> ${padre}</p>
+        <p>Whatsapp: ${wspLink(wspPadre)}</p>
+        <p>Mail: ${mailLink(mailPadre)}</p>
+        ${tutor !== "sin datos" ? `<hr><p><strong>Tutor:</strong> ${tutor}</p>` : ""}
+      </div>
+
+      <div style="flex:1;min-width:260px;border:1px solid #ccc;border-radius:8px;padding:10px;">
+        <p><strong>Obra Social:</strong></p>
+        <p><strong>Prestador:</strong> ${prestador}</p>
+        <p><strong>Credencial:</strong> ${credencial}</p>
+        <p><strong>Tipo:</strong> ${tipo}</p>
+      </div>
+    </div>
+  </div>
+  `;
+
+  await Swal.fire({
+    title: 'Ficha del Paciente',
+    html,
+    width: 1000,
+    showCloseButton: true,
+    showCancelButton: true,
+    confirmButtonText: 'Ver estado de cuenta',
+    cancelButtonText: 'Cerrar',
+    focusConfirm: false,
+    customClass: { popup: 'swal-wide' }
+  }).then((r) => {
+    if (r.isConfirmed) renderEstadoDeCuenta(p);
+  });
+}
