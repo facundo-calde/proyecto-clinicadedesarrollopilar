@@ -62,5 +62,148 @@ if (btnLogout) {
   });
 }
 
+// ==============================
+// ESTADO DE CUENTA – LÓGICA
+// ==============================
+
+// --- Helper para obtener JSON autenticado ---
+async function apiFetchJson(path, init = {}) {
+  const res = await fetchAuth(`/api${path}`, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(init.headers || {}),
+    },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+// ==============================
+// BUSCADOR DE PACIENTES
+// ==============================
+const $input = document.getElementById("busquedaInputEDC");
+const $btnBuscar = document.getElementById("btnBuscarEDC");
+const $sugerencias = document.getElementById("sugerenciasEDC");
+const $contenedor = document.getElementById("estadoCuentaContainer");
+
+// debounce simple (evita consultas en cada letra)
+function debounce(fn, delay = 300) {
+  let timeout;
+  return (...args) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => fn(...args), delay);
+  };
+}
+
+// Buscar pacientes por nombre o DNI
+async function buscarPacientesEDC(termino) {
+  const q = termino.trim();
+  $sugerencias.innerHTML = "";
+
+  if (q.length < 2) return;
+
+  try {
+    let pacientes = [];
+    const esDni = /^\d+$/.test(q);
+
+    if (esDni) {
+      // Si existe la ruta directa por DNI
+      const paciente = await apiFetchJson(`/pacientes/${q}`).catch(() => null);
+      pacientes = paciente ? [paciente] : [];
+    } else {
+      // Búsqueda por nombre parcial
+      pacientes = await apiFetchJson(`/pacientes?nombre=${encodeURIComponent(q)}`).catch(() => []);
+    }
+
+    if (!Array.isArray(pacientes)) pacientes = [];
+    renderSugerencias(pacientes);
+  } catch (err) {
+    console.error("Error al buscar pacientes:", err);
+  }
+}
+
+// Mostrar sugerencias bajo el input
+function renderSugerencias(lista = []) {
+  $sugerencias.innerHTML = "";
+  if (!Array.isArray(lista) || !lista.length) return;
+
+  lista.forEach((p) => {
+    const li = document.createElement("li");
+    li.textContent = `${p.nombre ?? "Sin nombre"} — DNI ${p.dni ?? "-"}`;
+    li.addEventListener("click", () => {
+      $input.value = p.nombre ?? "";
+      $sugerencias.innerHTML = "";
+      renderEstadoDeCuenta(p);
+    });
+    $sugerencias.appendChild(li);
+  });
+}
+
+// Eventos de búsqueda
+const debouncedInput = debounce(() => buscarPacientesEDC($input.value), 300);
+
+$input.addEventListener("input", debouncedInput);
+$btnBuscar.addEventListener("click", (e) => {
+  e.preventDefault();
+  buscarPacientesEDC($input.value);
+});
+$input.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    buscarPacientesEDC($input.value);
+  }
+});
+
+// ==============================
+// RENDER DEL ESTADO DE CUENTA
+// ==============================
+async function renderEstadoDeCuenta(paciente) {
+  $contenedor.innerHTML = `<p>Cargando estado de cuenta de <strong>${paciente.nombre}</strong>...</p>`;
+
+  try {
+    // ⚙️ Ajustá esta ruta según tu backend real
+    const estado = await apiFetchJson(`/estado-de-cuenta/${paciente.dni}`);
+
+    if (!estado || !Array.isArray(estado.movimientos)) {
+      $contenedor.innerHTML = `<p>No se encontraron datos de estado de cuenta para ${paciente.nombre}.</p>`;
+      return;
+    }
+
+    const total = estado.movimientos.reduce((sum, m) => sum + (m.monto || 0), 0);
+
+    let html = `
+      <h3>Estado de cuenta de ${paciente.nombre} (DNI ${paciente.dni})</h3>
+      <p><strong>Total actual:</strong> $ ${total.toLocaleString("es-AR")}</p>
+      <table border="1" cellpadding="6" cellspacing="0">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Concepto</th>
+            <th>Monto</th>
+            <th>Tipo</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+
+    estado.movimientos.forEach((m) => {
+      html += `
+        <tr>
+          <td>${m.fecha ?? "-"}</td>
+          <td>${m.descripcion ?? "-"}</td>
+          <td>$ ${(m.monto ?? 0).toLocaleString("es-AR")}</td>
+          <td>${m.tipo ?? "-"}</td>
+        </tr>
+      `;
+    });
+
+    html += `</tbody></table>`;
+    $contenedor.innerHTML = html;
+  } catch (err) {
+    console.error("Error al cargar estado de cuenta:", err);
+    $contenedor.innerHTML = `<p>Error al obtener el estado de cuenta.</p>`;
+  }
+}
 
 

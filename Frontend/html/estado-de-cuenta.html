@@ -2,39 +2,43 @@
 <html lang="es">
 
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Pacientes</title>
-    <link rel="icon" href="/img/fc885963d690a6787ca787cf208cdd25_1778x266_fit.png" type="image/png">
-    <link rel="stylesheet" href="/css/estado-de-cuentas.css" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Estado de Cuenta</title>
+  <link rel="icon" href="/img/fc885963d690a6787ca787cf208cdd25_1778x266_fit.png" type="image/png">
+  <link rel="stylesheet" href="/css/estado-de-cuentas.css" />
 </head>
 
 <body>
-    <header class="top-bar">
-        <div class="nav-left">
-            <a href="dashboard.html" class="btn">INICIO</a>
-            <button class="btn active">PACIENTES</button>
-            <button class="btn">Cargar nuevo paciente</button>
-        </div>
+  <header class="top-bar">
+    <div class="nav-left">
+      <a href="dashboard.html" class="btn">INICIO</a>
+      <button class="btn active">ESTADO DE CUENTA</button>
+      <button class="btn">Cargar nuevo paciente</button>
+    </div>
 
-        <div class="nav-right">
-            <span class="user-icon">👤</span>
-            <span class="user-info">USUARIO: <strong id="userName">—</strong></span>
-            <button class="logout-btn" id="btnLogout">CERRAR SESIÓN</button>
-        </div>
-    </header>
+    <div class="nav-right">
+      <span class="user-icon">👤</span>
+      <span class="user-info">USUARIO: <strong id="userName">—</strong></span>
+      <button class="logout-btn" id="btnLogout">CERRAR SESIÓN</button>
+    </div>
+  </header>
 
-    <hr />
+  <hr />
 
-    <main class="content">
-        <div class="search-bar">
-            <input type="text" placeholder="Ingresar nombre y apellido" />
-            <span class="search-icon">🔍</span>
-            <button class="search-btn">BUSCAR</button>
-        </div>
-    </main>
-    <script src="/js/config.js"></script>
-    <script src="/js/estado-de-cuenta.js?v=20251009"></script>
+  <main class="content">
+    <div class="search-bar">
+      <input id="busquedaInputEDC" type="text" placeholder="Ingresar nombre y apellido o DNI" />
+      <span class="search-icon">🔍</span>
+      <button class="search-btn" id="btnBuscarEDC">BUSCAR</button>
+      <ul id="sugerenciasEDC"></ul>
+    </div>
+
+    <div id="estadoCuentaContainer"></div>
+  </main>
+
+  <script src="/js/config.js"></script>
+  <script src="/js/estado-de-cuenta.js?v=20251104"></script>
 </body>
 
 </html>
