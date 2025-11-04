@@ -363,14 +363,17 @@
         </div>
       </div>
 
-      <div style="margin-top:14px;border:1px solid #ccc;border-radius:10px;padding:12px;">
-        <label for="edcSelArea"><strong>Área para ver el estado de cuenta</strong></label>
-        <select id="edcSelArea" class="swal2-select" style="width:100%;margin-top:6px;">
-          <option value="">(Todas las áreas)</option>
-          ${areaOptions}
-        </select>
-      </div>
-    </div>`;
+  <div style="margin-top:14px;border:1px solid #ccc;border-radius:10px;padding:12px;">
+  <label for="edcSelArea" style="display:block;margin-bottom:6px;"><strong>Área para ver el estado de cuenta</strong></label>
+  <div style="display:flex;justify-content:center;">
+    <select id="edcSelArea" class="swal2-select"
+      style="width:95%;max-width:420px;padding:6px 8px;border-radius:8px;border:1px solid #bbb;">
+      <option value="">(Todas las áreas)</option>
+      ${areaOptions}
+    </select>
+  </div>
+</div>
+`;
 
     const dlg = await Swal.fire({
       title: 'Ficha del Paciente',
