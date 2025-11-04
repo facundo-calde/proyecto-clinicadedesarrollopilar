@@ -228,3 +228,22 @@ async function renderEstadoDeCuenta(paciente) {
   }
 }
 
+
+const btnDescargar = document.getElementById("btnDescargarEDC");
+if (btnDescargar) {
+  btnDescargar.addEventListener("click", async () => {
+    try {
+      // ejemplo: descargar PDF con el estado de cuenta actual
+      const paciente = $input.value.trim();
+      if (!paciente) return alert("Primero buscá un paciente.");
+      
+      // ruta de descarga (ajustá según tu backend)
+      const url = `/api/estado-de-cuenta/descargar?nombre=${encodeURIComponent(paciente)}`;
+      window.open(url, "_blank");
+    } catch (err) {
+      console.error(err);
+      alert("No se pudo descargar el estado de cuenta.");
+    }
+  });
+}
+

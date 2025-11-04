@@ -14,7 +14,8 @@
     <div class="nav-left">
       <a href="dashboard.html" class="btn">INICIO</a>
       <button class="btn active">ESTADO DE CUENTA</button>
-      <button class="btn">Cargar nuevo paciente</button>
+      <!-- 🔽 reemplazado el botón -->
+      <button class="btn" id="btnDescargarEDC">Descargar estado de cuenta</button>
     </div>
 
     <div class="nav-right">
@@ -27,15 +28,17 @@
   <hr />
 
   <main class="content">
-    <!-- 🔍 Barra de búsqueda -->
-    <div class="search-bar">
-      <input id="busquedaInputEDC" type="text" placeholder="Ingresar nombre y apellido o DNI" />
-      <span class="search-icon">🔍</span>
-      <button class="search-btn" id="btnBuscarEDC">BUSCAR</button>
-    </div>
+    <!-- ✅ Wrapper para mantener la UL debajo del input -->
+    <div id="buscadorEDC">
+      <div class="search-bar">
+        <input id="busquedaInputEDC" type="text" placeholder="Ingresar nombre y apellido o DNI" />
+        <span class="search-icon">🔍</span>
+        <button class="search-btn" id="btnBuscarEDC">BUSCAR</button>
+      </div>
 
-    <!-- 🔽 Lista de sugerencias (fuera del contenedor flex) -->
-    <ul id="sugerenciasEDC"></ul>
+      <!-- 🔽 Sugerencias debajo del input -->
+      <ul id="sugerenciasEDC"></ul>
+    </div>
 
     <!-- Contenedor de resultados -->
     <div id="estadoCuentaContainer"></div>
