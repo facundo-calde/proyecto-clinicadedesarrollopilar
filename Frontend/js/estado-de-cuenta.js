@@ -17,21 +17,21 @@ const token = localStorage.getItem('token');
 // Guard inmediato
 if (!token) goLogin();
 
-// Anti-BFCache: si vuelven con atrás y la página se restaura desde caché
+// Anti-BFCache
 window.addEventListener('pageshow', (e) => {
   const nav = performance.getEntriesByType('navigation')[0];
   const fromBF = e.persisted || nav?.type === 'back_forward';
   if (fromBF && !localStorage.getItem('token')) goLogin();
 });
 
-// Anti-atrás: si no hay token, mandá a login; si hay, re-inyectá el estado
+// Anti-atrás
 history.pushState(null, '', location.href);
 window.addEventListener('popstate', () => {
   if (!localStorage.getItem('token')) goLogin();
   else history.pushState(null, '', location.href);
 });
 
-// Pintar nombre en top bar (si existe id="userName")
+// Pintar nombre en top bar
 if (usuarioSesion?.nombreApellido) {
   const userNameEl = document.getElementById('userName');
   if (userNameEl) userNameEl.textContent = usuarioSesion.nombreApellido;
@@ -66,6 +66,30 @@ if (btnLogout) {
   });
 }
 
+/* ==========================
+   💄 Estilos inline (JS)
+   ========================== */
+(function injectEDCStyles() {
+  if (document.getElementById('edc-inline-styles')) return;
+  const css = `
+    /* Wrapper para controlar ancho y apilar buscador + lista */
+    #buscadorEDC{max-width:980px;margin:0 auto;display:block}
+    /* Barra de búsqueda grande */
+    .search-bar{display:flex;align-items:center;gap:12px}
+    .search-bar input#busquedaInputEDC{flex:1;height:46px;padding:10px 14px;font-size:16px;border-radius:10px}
+    .search-bar .search-btn#btnBuscarEDC{height:46px;padding:0 18px;font-size:15px;border-radius:10px}
+    /* Lista de sugerencias debajo y ancha */
+    #sugerenciasEDC{list-style:none;margin:8px 0 0 0;padding:0;background:#fff;border:1px solid #d0d0d0;border-radius:10px;
+      max-height:280px;overflow:auto}
+    #sugerenciasEDC li{padding:12px 14px}
+    #sugerenciasEDC li:hover{background:#f5f7f8}
+  `;
+  const style = document.createElement('style');
+  style.id = 'edc-inline-styles';
+  style.textContent = css;
+  document.head.appendChild(style);
+})();
+
 // ==============================
 // ESTADO DE CUENTA – LÓGICA
 // ==============================
@@ -91,7 +115,7 @@ const $btnBuscar = document.getElementById("btnBuscarEDC");
 const $sugerencias = document.getElementById("sugerenciasEDC");
 const $contenedor = document.getElementById("estadoCuentaContainer");
 
-// debounce simple (evita consultas en cada letra)
+// debounce simple
 function debounce(fn, delay = 300) {
   let timeout;
   return (...args) => {
@@ -111,23 +135,22 @@ async function buscarPacientesEDC(termino) {
     const esSoloDigitos = /^\d+$/.test(q);
 
     if (esSoloDigitos) {
-      // 1️⃣ Buscar por DNI exacto
+      // DNI exacto
       const exacto = await apiFetchJson(`/pacientes/${q}`).catch(() => null);
       if (exacto) {
         pacientes = [exacto];
       } else {
-        // 2️⃣ Intentar búsqueda parcial por DNI
+        // DNI parcial (si tu backend lo soporta)
         try {
           const parciales = await apiFetchJson(`/pacientes?dni=${encodeURIComponent(q)}`);
           if (Array.isArray(parciales)) pacientes = parciales;
         } catch {
-          // 3️⃣ Fallback: buscar por nombre con el mismo valor
           const fallback = await apiFetchJson(`/pacientes?nombre=${encodeURIComponent(q)}`).catch(() => []);
           if (Array.isArray(fallback)) pacientes = fallback;
         }
       }
     } else {
-      // Búsqueda por nombre
+      // Nombre
       pacientes = await apiFetchJson(`/pacientes?nombre=${encodeURIComponent(q)}`).catch(() => []);
     }
 
@@ -138,7 +161,7 @@ async function buscarPacientesEDC(termino) {
   }
 }
 
-// Mostrar sugerencias bajo el input
+// Mostrar sugerencias
 function renderSugerencias(lista = []) {
   $sugerencias.innerHTML = "";
   if (!Array.isArray(lista) || !lista.length) return;
@@ -158,7 +181,6 @@ function renderSugerencias(lista = []) {
 
 // Eventos de búsqueda
 const debouncedInput = debounce(() => buscarPacientesEDC($input.value), 300);
-
 $input.addEventListener("input", debouncedInput);
 $btnBuscar.addEventListener("click", (e) => {
   e.preventDefault();
@@ -184,7 +206,7 @@ async function renderEstadoDeCuenta(paciente) {
   $contenedor.innerHTML = `<p>Cargando estado de cuenta de <strong>${paciente.nombre}</strong>...</p>`;
 
   try {
-    // ⚙️ Ajustá esta ruta según tu backend real
+    // Ajustá esta ruta si tu backend usa otra
     const estado = await apiFetchJson(`/estado-de-cuenta/${paciente.dni}`);
 
     if (!estado || !Array.isArray(estado.movimientos)) {
@@ -228,16 +250,15 @@ async function renderEstadoDeCuenta(paciente) {
   }
 }
 
-
+// ==============================
+// Descargar estado de cuenta
+// ==============================
 const btnDescargar = document.getElementById("btnDescargarEDC");
 if (btnDescargar) {
   btnDescargar.addEventListener("click", async () => {
     try {
-      // ejemplo: descargar PDF con el estado de cuenta actual
       const paciente = $input.value.trim();
       if (!paciente) return alert("Primero buscá un paciente.");
-      
-      // ruta de descarga (ajustá según tu backend)
       const url = `/api/estado-de-cuenta/descargar?nombre=${encodeURIComponent(paciente)}`;
       window.open(url, "_blank");
     } catch (err) {
