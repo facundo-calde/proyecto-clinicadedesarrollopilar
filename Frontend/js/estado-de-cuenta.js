@@ -57,15 +57,6 @@ async function fetchAuth(url, options = {}) {
   return res;
 }
 
-// 🔹 Logout
-const btnLogout = document.getElementById('btnLogout');
-if (btnLogout) {
-  btnLogout.addEventListener('click', () => {
-    localStorage.clear();
-    goLogin();
-  });
-}
-
 /* ==========================
    💄 Estilos inline (JS)
    ========================== */
@@ -76,9 +67,8 @@ if (btnLogout) {
     .search-bar{display:flex;align-items:center;gap:12px}
     .search-bar input#busquedaInputEDC{flex:1;height:46px;padding:10px 14px;font-size:16px;border-radius:10px}
     .search-bar .search-btn#btnBuscarEDC{height:46px;padding:0 18px;font-size:15px;border-radius:10px}
-    #sugerenciasEDC{list-style:none;margin:8px 0 0 0;padding:0;background:#fff;border:1px solid #d0d0d0;border-radius:10px;
-      max-height:280px;overflow:auto}
-    #sugerenciasEDC li{padding:12px 14px}
+    #sugerenciasEDC{list-style:none;margin:8px 0 0 0;padding:0;background:#fff;border:1px solid #d0d0d0;border-radius:10px;max-height:280px;overflow:auto}
+    #sugerenciasEDC li{padding:12px 14px;cursor:pointer}
     #sugerenciasEDC li:hover{background:#f5f7f8}
   `;
   const style = document.createElement('style');
@@ -118,36 +108,43 @@ function debounce(fn, delay = 300) {
   };
 }
 
+// Devuelve SIEMPRE una lista de pacientes con campos completos (usa /pacientes/buscar o exacto por DNI)
 async function buscarPacientesEDC(termino) {
   const q = (termino || "").trim();
   $sugerencias.innerHTML = "";
   if (q.length < 2) return;
 
   try {
-    let pacientes = [];
     const esSoloDigitos = /^\d+$/.test(q);
+    let pacientes = [];
 
-    if (esSoloDigitos) {
+    if (esSoloDigitos && q.length >= 7) {
+      // 1) Intentar exacto por DNI → /pacientes/:dni (doc completo)
       const exacto = await apiFetchJson(`/pacientes/${q}`).catch(() => null);
-      if (exacto) {
-        pacientes = [exacto];
-      } else {
-        try {
-          const parciales = await apiFetchJson(`/pacientes?dni=${encodeURIComponent(q)}`);
-          if (Array.isArray(parciales)) pacientes = parciales;
-        } catch {
-          const fallback = await apiFetchJson(`/pacientes?nombre=${encodeURIComponent(q)}`).catch(() => []);
-          if (Array.isArray(fallback)) pacientes = fallback;
-        }
+      if (exacto) pacientes = [exacto];
+      else {
+        // 2) Búsqueda por regex usando /pacientes/buscar?nombre=q (server la matchea contra nombre o dni)
+        pacientes = await apiFetchJson(`/pacientes/buscar?nombre=${encodeURIComponent(q)}`).catch(() => []);
       }
     } else {
-      pacientes = await apiFetchJson(`/pacientes?nombre=${encodeURIComponent(q)}`).catch(() => []);
+      // Nombre o texto mixto → /pacientes/buscar (sin .select → trae todo)
+      pacientes = await apiFetchJson(`/pacientes/buscar?nombre=${encodeURIComponent(q)}`).catch(() => []);
     }
 
     if (!Array.isArray(pacientes)) pacientes = [];
     renderSugerencias(pacientes);
   } catch (err) {
     console.error("Error al buscar pacientes:", err);
+  }
+}
+
+// Helper para traer SIEMPRE el doc completo por DNI antes del modal
+async function fetchFullPacienteByDNI(dni) {
+  if (!dni) return null;
+  try {
+    return await apiFetchJson(`/pacientes/${encodeURIComponent(dni)}`);
+  } catch {
+    return null;
   }
 }
 
@@ -158,11 +155,13 @@ function renderSugerencias(lista = []) {
   lista.forEach((p) => {
     const li = document.createElement("li");
     li.textContent = `${p.nombre ?? "Sin nombre"} — DNI ${p.dni ?? "-"}`;
-    li.style.cursor = "pointer";
-    li.addEventListener("click", () => {
+    li.addEventListener("click", async () => {
       $input.value = p.nombre ?? "";
       $sugerencias.innerHTML = "";
-      mostrarFichaPaciente(p);
+
+      // ⚠️ Garantizar doc completo: volver a pedir por DNI
+      const full = await fetchFullPacienteByDNI(p.dni);
+      mostrarFichaPaciente(full || p); // fallback por las dudas
     });
     $sugerencias.appendChild(li);
   });
@@ -190,7 +189,7 @@ document.addEventListener("click", (e) => {
 // RENDER DEL ESTADO DE CUENTA
 // ==============================
 async function renderEstadoDeCuenta(paciente) {
-  $contenedor.innerHTML = `<p>Cargando estado de cuenta de <strong>${paciente.nombre}</strong>...</p>`;
+  $contenedor.innerHTML = `<p>Cargando estado de cuenta de <strong>${paciente?.nombre || "-"}</strong>...</p>`;
 
   try {
     const estado = await apiFetchJson(`/estado-de-cuenta/${paciente.dni}`);
@@ -255,52 +254,58 @@ if (btnDescargar) {
 }
 
 // ==============================
-// Mostrar ficha del paciente
+// Mostrar ficha del paciente (SweetAlert)
 // ==============================
 const getDeep = (obj, path) =>
   path.split('.').reduce((o, k) => (o && o[k] !== undefined ? o[k] : undefined), obj);
-const val = (v, fb = "sin datos") => (v ? v : fb);
+const val = (v, fb = "sin datos") => (v === undefined || v === null || v === "" ? fb : v);
 function pickResponsable(p, tipo) {
   const arr = Array.isArray(p?.responsables) ? p.responsables : [];
   const rx = new RegExp(tipo, "i");
   return arr.find(r => rx.test(r.relacion || "")) || null;
 }
 
-async function mostrarFichaPaciente(p) {
+async function mostrarFichaPaciente(p = {}) {
+  // console.log("📋 Paciente recibido:", p);
+
+  // Campos planos según tu controller (buildPacienteData)
   const abonado = val(p.condicionDePago);
-  const estado = val(p.estado);
-  const fechaN = val(p.fechaNacimiento);
+  const estado  = val(p.estado);
+  const fechaN  = val(p.fechaNacimiento);
   const colegio = val(p.colegio);
-  const curso = val(p.curso || p.nivel);
+  const curso   = val(p.curso);
 
-  const prestador = val(getDeep(p, "obraSocial.prestador") ?? p.prestador);
-  const credencial = val(getDeep(p, "obraSocial.credencial") ?? p.credencial);
-  const tipoOS = val(getDeep(p, "obraSocial.tipo") ?? p.tipo);
+  // Obra social → planos (prestador, credencial, tipo). Fallback a anidado por si tenés legacy.
+  const prestador  = val(p.prestador ?? getDeep(p, "obraSocial.prestador"));
+  const credencial = val(p.credencial ?? getDeep(p, "obraSocial.credencial"));
+  const tipoOS     = val(p.tipo ?? getDeep(p, "obraSocial.tipo"));
 
+  // Responsables (array normalizado)
   const rMadre = pickResponsable(p, "madre");
   const rPadre = pickResponsable(p, "padre");
   const rTutor = pickResponsable(p, "tutor");
 
-  const madreNombre = val(p.madre ?? rMadre?.nombre);
-  const madreWsp = val(p.whatsappMadre ?? rMadre?.whatsapp);
-  const madreMail = val(p.emailMadre ?? rMadre?.email);
+  const madreNombre = val(rMadre?.nombre);
+  const madreWsp    = val(rMadre?.whatsapp);
+  const madreMail   = val(rMadre?.email);
 
-  const padreNombre = val(p.padre ?? rPadre?.nombre);
-  const padreWsp = val(p.whatsappPadre ?? rPadre?.whatsapp);
-  const padreMail = val(p.emailPadre ?? rPadre?.email);
+  const padreNombre = val(rPadre?.nombre);
+  const padreWsp    = val(rPadre?.whatsapp);
+  const padreMail   = val(rPadre?.email);
 
+  // Esquema nuevo: p.tutor { nombre, whatsapp, email } como fallback
   const tutorNombre = val(getDeep(p, "tutor.nombre") ?? rTutor?.nombre);
-  const tutorWsp = val(getDeep(p, "tutor.whatsapp") ?? rTutor?.whatsapp);
-  const tutorMail = val(getDeep(p, "tutor.email") ?? rTutor?.email);
+  const tutorWsp    = val(getDeep(p, "tutor.whatsapp") ?? rTutor?.whatsapp);
+  const tutorMail   = val(getDeep(p, "tutor.email") ?? rTutor?.email);
 
-  const wspLink = (n) => (n && n !== "sin datos")
-    ? `<a href="https://wa.me/${n}" target="_blank" style="color:#25d366;text-decoration:none;">${n}</a>` : "sin datos";
-  const mailLink = (m) => (m && m !== "sin datos")
-    ? `<a href="mailto:${m}" style="color:#1a73e8;text-decoration:none;">${m}</a>` : "sin datos";
+  const wspLink  = (num)  => (num && num !== "sin datos")
+      ? `<a href="https://wa.me/${num}" target="_blank" style="color:#25d366;text-decoration:none;">${num}</a>` : "sin datos";
+  const mailLink = (mail) => (mail && mail !== "sin datos")
+      ? `<a href="mailto:${mail}" style="color:#1a73e8;text-decoration:none;">${mail}</a>` : "sin datos";
 
   const html = `
   <div style="text-align:left;font-family:'Segoe UI',sans-serif;color:#222;max-width:980px;margin:auto;">
-    <h2 style="margin:0 0 12px 0;">${val(p.nombre)} - DNI ${val(p.dni)}</h2>
+    <h2 style="margin:0 0 12px 0;">${val(p.nombre,"Sin nombre")} - DNI ${val(p.dni,"-")}</h2>
     <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:space-between;">
       <div style="flex:1;min-width:280px;border:1px solid #ccc;border-radius:10px;padding:12px;">
         <p><strong>Abonado:</strong> ${abonado}</p>
@@ -309,6 +314,7 @@ async function mostrarFichaPaciente(p) {
         <p><strong>Colegio:</strong> ${colegio}</p>
         <p><strong>Curso / Nivel:</strong> ${curso}</p>
       </div>
+
       <div style="flex:1;min-width:280px;border:1px solid #ccc;border-radius:10px;padding:12px;">
         <p><strong>Padres / Tutores:</strong></p>
         <p><strong>Madre:</strong> ${madreNombre}</p>
@@ -323,6 +329,7 @@ async function mostrarFichaPaciente(p) {
         <p>Whatsapp: ${wspLink(tutorWsp)}</p>
         <p>Mail: ${mailLink(tutorMail)}</p>
       </div>
+
       <div style="flex:1;min-width:280px;border:1px solid #ccc;border-radius:10px;padding:12px;">
         <p><strong>Obra Social:</strong></p>
         <p><strong>Prestador:</strong> ${prestador}</p>
