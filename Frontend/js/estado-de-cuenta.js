@@ -72,13 +72,10 @@ if (btnLogout) {
 (function injectEDCStyles() {
   if (document.getElementById('edc-inline-styles')) return;
   const css = `
-    /* Wrapper para controlar ancho y apilar buscador + lista */
     #buscadorEDC{max-width:980px;margin:0 auto;display:block}
-    /* Barra de búsqueda grande */
     .search-bar{display:flex;align-items:center;gap:12px}
     .search-bar input#busquedaInputEDC{flex:1;height:46px;padding:10px 14px;font-size:16px;border-radius:10px}
     .search-bar .search-btn#btnBuscarEDC{height:46px;padding:0 18px;font-size:15px;border-radius:10px}
-    /* Lista de sugerencias debajo y ancha */
     #sugerenciasEDC{list-style:none;margin:8px 0 0 0;padding:0;background:#fff;border:1px solid #d0d0d0;border-radius:10px;
       max-height:280px;overflow:auto}
     #sugerenciasEDC li{padding:12px 14px}
@@ -93,8 +90,6 @@ if (btnLogout) {
 // ==============================
 // ESTADO DE CUENTA – LÓGICA
 // ==============================
-
-// Helper autenticado para obtener JSON
 async function apiFetchJson(path, init = {}) {
   const res = await fetchAuth(`/api${path}`, {
     ...init,
@@ -115,7 +110,6 @@ const $btnBuscar = document.getElementById("btnBuscarEDC");
 const $sugerencias = document.getElementById("sugerenciasEDC");
 const $contenedor = document.getElementById("estadoCuentaContainer");
 
-// debounce simple
 function debounce(fn, delay = 300) {
   let timeout;
   return (...args) => {
@@ -124,7 +118,6 @@ function debounce(fn, delay = 300) {
   };
 }
 
-// Buscar pacientes por nombre o DNI
 async function buscarPacientesEDC(termino) {
   const q = (termino || "").trim();
   $sugerencias.innerHTML = "";
@@ -135,12 +128,10 @@ async function buscarPacientesEDC(termino) {
     const esSoloDigitos = /^\d+$/.test(q);
 
     if (esSoloDigitos) {
-      // DNI exacto
       const exacto = await apiFetchJson(`/pacientes/${q}`).catch(() => null);
       if (exacto) {
         pacientes = [exacto];
       } else {
-        // DNI parcial (si tu backend lo soporta)
         try {
           const parciales = await apiFetchJson(`/pacientes?dni=${encodeURIComponent(q)}`);
           if (Array.isArray(parciales)) pacientes = parciales;
@@ -150,7 +141,6 @@ async function buscarPacientesEDC(termino) {
         }
       }
     } else {
-      // Nombre
       pacientes = await apiFetchJson(`/pacientes?nombre=${encodeURIComponent(q)}`).catch(() => []);
     }
 
@@ -161,7 +151,6 @@ async function buscarPacientesEDC(termino) {
   }
 }
 
-// Mostrar sugerencias
 function renderSugerencias(lista = []) {
   $sugerencias.innerHTML = "";
   if (!Array.isArray(lista) || !lista.length) return;
@@ -179,7 +168,6 @@ function renderSugerencias(lista = []) {
   });
 }
 
-// Eventos de búsqueda
 const debouncedInput = debounce(() => buscarPacientesEDC($input.value), 300);
 $input.addEventListener("input", debouncedInput);
 $btnBuscar.addEventListener("click", (e) => {
@@ -193,7 +181,6 @@ $input.addEventListener("keydown", (e) => {
   }
 });
 
-// Cerrar sugerencias al hacer click afuera
 document.addEventListener("click", (e) => {
   const dentro = e.target.closest(".search-bar") || e.target.closest("#sugerenciasEDC");
   if (!dentro) $sugerencias.innerHTML = "";
@@ -206,7 +193,6 @@ async function renderEstadoDeCuenta(paciente) {
   $contenedor.innerHTML = `<p>Cargando estado de cuenta de <strong>${paciente.nombre}</strong>...</p>`;
 
   try {
-    // Ajustá esta ruta si tu backend usa otra
     const estado = await apiFetchJson(`/estado-de-cuenta/${paciente.dni}`);
 
     if (!estado || !Array.isArray(estado.movimientos)) {
@@ -268,55 +254,83 @@ if (btnDescargar) {
   });
 }
 
-// Mostrar ficha del paciente en un modal SweetAlert
-async function mostrarFichaPaciente(p) {
-  const prestador = p.prestador ?? "sin datos";
-  const credencial = p.credencial ?? "sin datos";
-  const tipo = p.tipo ?? "sin datos";
-  const madre = p.madre ?? (p.responsables?.find(r => /madre/i.test(r.relacion || ""))?.nombre ?? "sin datos");
-  const padre = p.padre ?? (p.responsables?.find(r => /padre/i.test(r.relacion || ""))?.nombre ?? "sin datos");
-  const wspMadre = p.whatsappMadre ?? (p.responsables?.find(r => /madre/i.test(r.relacion || ""))?.whatsapp ?? "");
-  const wspPadre = p.whatsappPadre ?? (p.responsables?.find(r => /padre/i.test(r.relacion || ""))?.whatsapp ?? "");
-  const mailMadre = p.emailMadre ?? (p.responsables?.find(r => /madre/i.test(r.relacion || ""))?.email ?? "");
-  const mailPadre = p.emailPadre ?? (p.responsables?.find(r => /padre/i.test(r.relacion || ""))?.email ?? "");
-  const tutor = p.tutor?.nombre ?? "sin datos";
+// ==============================
+// Mostrar ficha del paciente
+// ==============================
+const getDeep = (obj, path) =>
+  path.split('.').reduce((o, k) => (o && o[k] !== undefined ? o[k] : undefined), obj);
+const val = (v, fb = "sin datos") => (v ? v : fb);
+function pickResponsable(p, tipo) {
+  const arr = Array.isArray(p?.responsables) ? p.responsables : [];
+  const rx = new RegExp(tipo, "i");
+  return arr.find(r => rx.test(r.relacion || "")) || null;
+}
 
-  const wspLink = (num) => num ? `<a href="https://wa.me/${num}" target="_blank" style="color:#25d366;text-decoration:none;">${num}</a>` : "sin datos";
-  const mailLink = (mail) => mail ? `<a href="mailto:${mail}" style="color:#1a73e8;text-decoration:none;">${mail}</a>` : "sin datos";
+async function mostrarFichaPaciente(p) {
+  const abonado = val(p.condicionDePago);
+  const estado = val(p.estado);
+  const fechaN = val(p.fechaNacimiento);
+  const colegio = val(p.colegio);
+  const curso = val(p.curso || p.nivel);
+
+  const prestador = val(getDeep(p, "obraSocial.prestador") ?? p.prestador);
+  const credencial = val(getDeep(p, "obraSocial.credencial") ?? p.credencial);
+  const tipoOS = val(getDeep(p, "obraSocial.tipo") ?? p.tipo);
+
+  const rMadre = pickResponsable(p, "madre");
+  const rPadre = pickResponsable(p, "padre");
+  const rTutor = pickResponsable(p, "tutor");
+
+  const madreNombre = val(p.madre ?? rMadre?.nombre);
+  const madreWsp = val(p.whatsappMadre ?? rMadre?.whatsapp);
+  const madreMail = val(p.emailMadre ?? rMadre?.email);
+
+  const padreNombre = val(p.padre ?? rPadre?.nombre);
+  const padreWsp = val(p.whatsappPadre ?? rPadre?.whatsapp);
+  const padreMail = val(p.emailPadre ?? rPadre?.email);
+
+  const tutorNombre = val(getDeep(p, "tutor.nombre") ?? rTutor?.nombre);
+  const tutorWsp = val(getDeep(p, "tutor.whatsapp") ?? rTutor?.whatsapp);
+  const tutorMail = val(getDeep(p, "tutor.email") ?? rTutor?.email);
+
+  const wspLink = (n) => (n && n !== "sin datos")
+    ? `<a href="https://wa.me/${n}" target="_blank" style="color:#25d366;text-decoration:none;">${n}</a>` : "sin datos";
+  const mailLink = (m) => (m && m !== "sin datos")
+    ? `<a href="mailto:${m}" style="color:#1a73e8;text-decoration:none;">${m}</a>` : "sin datos";
 
   const html = `
-  <div style="text-align:left;font-family:'Segoe UI',sans-serif;color:#222;max-width:900px;margin:auto;">
-    <h2 style="margin:0 0 10px 0;">${p.nombre ?? "Sin nombre"} - DNI ${p.dni ?? "-"}</h2>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:space-between;">
-      <div style="flex:1;min-width:260px;border:1px solid #ccc;border-radius:8px;padding:10px;">
-        <p><strong>Abonado:</strong> ${p.condicionDePago ?? "sin datos"}</p>
-        <p><strong>Estado:</strong> ${p.estado ?? "sin datos"}</p>
-        <p><strong>Fecha de nacimiento:</strong> ${p.fechaNacimiento ?? "sin datos"}</p>
-        <p><strong>Colegio:</strong> ${p.colegio ?? "sin datos"}</p>
-        <p><strong>Curso / Nivel:</strong> ${p.curso ?? "sin datos"}</p>
+  <div style="text-align:left;font-family:'Segoe UI',sans-serif;color:#222;max-width:980px;margin:auto;">
+    <h2 style="margin:0 0 12px 0;">${val(p.nombre)} - DNI ${val(p.dni)}</h2>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:space-between;">
+      <div style="flex:1;min-width:280px;border:1px solid #ccc;border-radius:10px;padding:12px;">
+        <p><strong>Abonado:</strong> ${abonado}</p>
+        <p><strong>Estado:</strong> ${estado}</p>
+        <p><strong>Fecha de nacimiento:</strong> ${fechaN}</p>
+        <p><strong>Colegio:</strong> ${colegio}</p>
+        <p><strong>Curso / Nivel:</strong> ${curso}</p>
       </div>
-
-      <div style="flex:1;min-width:260px;border:1px solid #ccc;border-radius:8px;padding:10px;">
+      <div style="flex:1;min-width:280px;border:1px solid #ccc;border-radius:10px;padding:12px;">
         <p><strong>Padres / Tutores:</strong></p>
-        <p><strong>Madre:</strong> ${madre}</p>
-        <p>Whatsapp: ${wspLink(wspMadre)}</p>
-        <p>Mail: ${mailLink(mailMadre)}</p>
+        <p><strong>Madre:</strong> ${madreNombre}</p>
+        <p>Whatsapp: ${wspLink(madreWsp)}</p>
+        <p>Mail: ${mailLink(madreMail)}</p>
         <hr>
-        <p><strong>Padre:</strong> ${padre}</p>
-        <p>Whatsapp: ${wspLink(wspPadre)}</p>
-        <p>Mail: ${mailLink(mailPadre)}</p>
-        ${tutor !== "sin datos" ? `<hr><p><strong>Tutor:</strong> ${tutor}</p>` : ""}
+        <p><strong>Padre:</strong> ${padreNombre}</p>
+        <p>Whatsapp: ${wspLink(padreWsp)}</p>
+        <p>Mail: ${mailLink(padreMail)}</p>
+        <hr>
+        <p><strong>Tutor:</strong> ${tutorNombre}</p>
+        <p>Whatsapp: ${wspLink(tutorWsp)}</p>
+        <p>Mail: ${mailLink(tutorMail)}</p>
       </div>
-
-      <div style="flex:1;min-width:260px;border:1px solid #ccc;border-radius:8px;padding:10px;">
+      <div style="flex:1;min-width:280px;border:1px solid #ccc;border-radius:10px;padding:12px;">
         <p><strong>Obra Social:</strong></p>
         <p><strong>Prestador:</strong> ${prestador}</p>
         <p><strong>Credencial:</strong> ${credencial}</p>
-        <p><strong>Tipo:</strong> ${tipo}</p>
+        <p><strong>Tipo:</strong> ${tipoOS}</p>
       </div>
     </div>
-  </div>
-  `;
+  </div>`;
 
   await Swal.fire({
     title: 'Ficha del Paciente',
@@ -326,9 +340,9 @@ async function mostrarFichaPaciente(p) {
     showCancelButton: true,
     confirmButtonText: 'Ver estado de cuenta',
     cancelButtonText: 'Cerrar',
-    focusConfirm: false,
-    customClass: { popup: 'swal-wide' }
-  }).then((r) => {
+    focusConfirm: false
+  }).then(r => {
     if (r.isConfirmed) renderEstadoDeCuenta(p);
   });
 }
+
