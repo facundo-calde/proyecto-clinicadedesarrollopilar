@@ -7,7 +7,11 @@ const goLogin = () => location.replace(LOGIN);
 
 // Usuario y token
 let usuarioSesion = null;
-try { usuarioSesion = JSON.parse(localStorage.getItem('usuario') || 'null'); } catch { usuarioSesion = null; }
+try {
+  usuarioSesion = JSON.parse(localStorage.getItem('usuario') || 'null');
+} catch {
+  usuarioSesion = null;
+}
 const token = localStorage.getItem('token');
 
 // Guard inmediato
@@ -66,7 +70,7 @@ if (btnLogout) {
 // ESTADO DE CUENTA – LÓGICA
 // ==============================
 
-// --- Helper para obtener JSON autenticado ---
+// Helper autenticado para obtener JSON
 async function apiFetchJson(path, init = {}) {
   const res = await fetchAuth(`/api${path}`, {
     ...init,
@@ -98,21 +102,32 @@ function debounce(fn, delay = 300) {
 
 // Buscar pacientes por nombre o DNI
 async function buscarPacientesEDC(termino) {
-  const q = termino.trim();
+  const q = (termino || "").trim();
   $sugerencias.innerHTML = "";
-
   if (q.length < 2) return;
 
   try {
     let pacientes = [];
-    const esDni = /^\d+$/.test(q);
+    const esSoloDigitos = /^\d+$/.test(q);
 
-    if (esDni) {
-      // Si existe la ruta directa por DNI
-      const paciente = await apiFetchJson(`/pacientes/${q}`).catch(() => null);
-      pacientes = paciente ? [paciente] : [];
+    if (esSoloDigitos) {
+      // 1️⃣ Buscar por DNI exacto
+      const exacto = await apiFetchJson(`/pacientes/${q}`).catch(() => null);
+      if (exacto) {
+        pacientes = [exacto];
+      } else {
+        // 2️⃣ Intentar búsqueda parcial por DNI
+        try {
+          const parciales = await apiFetchJson(`/pacientes?dni=${encodeURIComponent(q)}`);
+          if (Array.isArray(parciales)) pacientes = parciales;
+        } catch {
+          // 3️⃣ Fallback: buscar por nombre con el mismo valor
+          const fallback = await apiFetchJson(`/pacientes?nombre=${encodeURIComponent(q)}`).catch(() => []);
+          if (Array.isArray(fallback)) pacientes = fallback;
+        }
+      }
     } else {
-      // Búsqueda por nombre parcial
+      // Búsqueda por nombre
       pacientes = await apiFetchJson(`/pacientes?nombre=${encodeURIComponent(q)}`).catch(() => []);
     }
 
@@ -131,6 +146,7 @@ function renderSugerencias(lista = []) {
   lista.forEach((p) => {
     const li = document.createElement("li");
     li.textContent = `${p.nombre ?? "Sin nombre"} — DNI ${p.dni ?? "-"}`;
+    li.style.cursor = "pointer";
     li.addEventListener("click", () => {
       $input.value = p.nombre ?? "";
       $sugerencias.innerHTML = "";
@@ -153,6 +169,12 @@ $input.addEventListener("keydown", (e) => {
     e.preventDefault();
     buscarPacientesEDC($input.value);
   }
+});
+
+// Cerrar sugerencias al hacer click afuera
+document.addEventListener("click", (e) => {
+  const dentro = e.target.closest(".search-bar") || e.target.closest("#sugerenciasEDC");
+  if (!dentro) $sugerencias.innerHTML = "";
 });
 
 // ==============================
@@ -205,5 +227,4 @@ async function renderEstadoDeCuenta(paciente) {
     $contenedor.innerHTML = `<p>Error al obtener el estado de cuenta.</p>`;
   }
 }
-
 
