@@ -20,10 +20,14 @@ const MovimientoSchema = new Schema(
 
     // Dimensión contable
     areaId:     { type: Schema.Types.ObjectId, ref: "Area", index: true, required: true },
-    moduloId:   { type: Schema.Types.ObjectId, ref: "Modulo", index: true }, // para CARGO
+    moduloId:   { type: Schema.Types.ObjectId, ref: "Modulo", index: true },
 
-    // Clave de mes (YYYY-MM) para idempotencia
-    period:     { type: String, index: true }, // ej: "2025-11"
+    // ✅ Denormalizados para mostrar en frontend
+    areaNombre:   { type: String },
+    moduloNombre: { type: String },
+
+    // Clave de mes (YYYY-MM)
+    period:     { type: String, index: true },
 
     tipo: {
       type: String,
@@ -33,10 +37,10 @@ const MovimientoSchema = new Schema(
     },
 
     fecha:  { type: Date, default: Date.now },
-    monto:  { type: Number, required: true, default: 0 }, // positivo para cargos/ajustes+, negativo si nota crédito
+    monto:  { type: Number, required: true, default: 0 },
 
-    // Snapshot de asignación (opcionales)
-    cantidad:   { type: Number },   // 0.25, 0.5, 1, 1.5, 2, etc.
+    // Snapshot de asignación
+    cantidad:   { type: Number },
     profesional:{ type: String },
     coordinador:{ type: String },
     pasante:    { type: String },
@@ -56,6 +60,7 @@ const MovimientoSchema = new Schema(
       default: "PENDIENTE",
       index: true
     },
+
     meta: { type: Object },
   },
   { timestamps: true }
@@ -67,7 +72,7 @@ MovimientoSchema.index(
   { unique: true, partialFilterExpression: { tipo: "CARGO" } }
 );
 
-// ✅ Publicación con guardia para evitar OverwriteModelError
+// ✅ Evitar OverwriteModelError
 module.exports =
   mongoose.models.EstadoDeCuentaMovimiento
   || mongoose.model("EstadoDeCuentaMovimiento", MovimientoSchema);

@@ -35,69 +35,31 @@ function parseNumberLike(v) {
 }
 
 /**
- * Obtiene el precio del módulo considerando:
- * - precio/valor/monto/arancel/importe/tarifa
- * - objeto de precios por área (por id o por nombre normalizado)
- * - precio puesto en la asignación (asig.precio/valor)
+ * Precio del módulo = lo que "pagan los padres".
+ * Si en la asignación viene un override (asig.precio/valor/monto/importe/tarifa), tiene prioridad.
  */
-function getPrecioModulo(modulo, { areaId, areaNombre, asig }) {
-  // 1) Si la asignación trae precio explícito, gana
-  const candAsig = [asig?.precio, asig?.valor, asig?.monto, asig?.arancel, asig?.importe, asig?.tarifa];
+function getPrecioModulo(modulo, { asig } = {}) {
+  // 1) Override en la asignación
+  const candAsig = [asig?.precio, asig?.valor, asig?.monto, asig?.importe, asig?.tarifa];
   for (const v of candAsig) {
     const n = parseNumberLike(v);
     if (n) return n;
   }
+  // 2) Base del módulo
+  if (typeof modulo?.valorPadres === "number") return modulo.valorPadres;
 
-  // 2) Campos planos en el módulo
-  const flat = ["precio", "valor", "monto", "arancel", "importe", "tarifa"];
-  for (const k of flat) {
+  // 3) Fallbacks por si hay módulos viejos con otros campos
+  const alt = ["precio", "valor", "monto", "arancel", "importe", "tarifa"];
+  for (const k of alt) {
     const n = parseNumberLike(modulo?.[k]);
     if (n) return n;
   }
-
-  // 3) Por área
-  const norm = (s) => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, "");
-  const aName = norm(areaNombre);
-
-  // objetos habituales: precios, valores, aranceles, tarifas
-  const trees = [modulo?.precios, modulo?.valores, modulo?.aranceles, modulo?.tarifas, modulo?.montos, modulo?.importes];
-  for (const tree of trees) {
-    if (!tree || typeof tree !== "object") continue;
-
-    // por id
-    if (areaId && tree[areaId] != null) {
-      const n = parseNumberLike(tree[areaId]);
-      if (n) return n;
-    }
-    // por nombre (psicopedagogia, fonoaudiologia, etc.)
-    for (const [k, v] of Object.entries(tree)) {
-      if (norm(k) === aName) {
-        const n = parseNumberLike(v);
-        if (n) return n;
-      }
-    }
-  }
-
-  // 4) Alias del tipo precioPsicopedagogia, precio_fonoaudiologia, etc.
-  if (aName) {
-    const candidates = [
-      `precio_${aName}`, `valor_${aName}`, `monto_${aName}`, `arancel_${aName}`,
-      `importe_${aName}`, `tarifa_${aName}`,
-      `precio${aName}`, `valor${aName}`, `monto${aName}`, `arancel${aName}`,
-      `importe${aName}`, `tarifa${aName}`
-    ];
-    for (const k of candidates) {
-      const n = parseNumberLike(modulo?.[k]);
-      if (n) return n;
-    }
-  }
-
-  return 0; // fallback
+  return 0;
 }
 
 function pickProfesionalNombre(asig, cacheUsuarios) {
   const arr = Array.isArray(asig?.profesionales) ? asig.profesionales : [];
-  const id = arr[0]?.profesionalId || arr[0]?._id || arr[0];
+  const id  = arr[0]?.profesionalId || arr[0]?._id || arr[0];
   if (!id) return undefined;
   const u = cacheUsuarios?.get(String(id));
   return u?.nombreApellido || u?.usuario || u?.nombre || undefined;
@@ -107,15 +69,16 @@ function pickProfesionalNombre(asig, cacheUsuarios) {
 /** Upsert del cargo del período. Actualiza si existe y NO está PAGADO. */
 async function upsertCargo({
   dni, pacienteId, areaId, areaNombre,
-  modulo, moduloId, period, cantidad, profesionalNombre
+  modulo, moduloId, period, cantidad, profesionalNombre, asig
 }) {
   // precio
-  const base  = getPrecioModulo(modulo, { areaId, areaNombre, asig: null });
-  const total = +(base * (Number(cantidad ?? 1) || 1)).toFixed(2);
+  const base  = getPrecioModulo(modulo, { asig });
+  const qty   = Number(cantidad ?? 1) || 1;
+  const total = +(base * qty).toFixed(2);
 
-  const moduloNombre  = modulo?.nombre || modulo?.titulo || "";
-  const moduloNumero  = modulo?.numero || "";
-  const descripcion   = `Cargo ${period} — ${moduloNumero ? moduloNumero + ". " : ""}${moduloNombre || "Módulo"}`;
+  const moduloNombre = modulo?.nombre || modulo?.titulo || "";
+  const moduloNumero = modulo?.numero || "";
+  const descripcion  = `Cargo ${period} — ${moduloNumero ? moduloNumero + ". " : ""}${moduloNombre || "Módulo"}`;
 
   // 🚫 No tocar cargos ya pagados
   const filter = { dni, areaId, moduloId, period, tipo: "CARGO", estado: { $ne: "PAGADO" } };
@@ -124,12 +87,11 @@ async function upsertCargo({
     $set: {
       descripcion,
       monto: total,
-      cantidad: Number(cantidad ?? 1) || 1,
+      cantidad: qty,
       profesional: profesionalNombre,
-      // snapshots para el front
-      areaNombre: areaNombre || undefined,
+      // Estos dos ayudan al front, pero tu schema debe permitirlos (o ponelos dentro de meta.*)
       moduloNombre: moduloNombre || undefined,
-      moduloNumero: moduloNumero || undefined,
+      areaNombre:   areaNombre   || undefined,
     },
     $setOnInsert: {
       pacienteId,
@@ -188,18 +150,18 @@ async function generarCargosDelMes(period = yyyymm()) {
 
       const areaId = asig.profesionales?.[0]?.areaId;
       if (!areaId) continue;
-      const area   = areaById.get(String(areaId));
-      const areaNombre = area?.nombre || area?.titulo || "";
+      const area        = areaById.get(String(areaId));
+      const areaNombre  = area?.nombre || area?.titulo || "";
 
       // Vigencia
-      const createdAt = p.createdAt || p.creadoEl || new Date();
+      const createdAt     = p.createdAt || p.creadoEl || new Date();
       const createdPeriod = yyyymm(new Date(createdAt));
-      const desdeMes = asig.desdeMes || createdPeriod;
-      const hastaMes = asig.hastaMes || null;
+      const desdeMes      = asig.desdeMes || createdPeriod;
+      const hastaMes      = asig.hastaMes || null;
       if (!inRange(period, desdeMes, hastaMes)) continue;
 
       const profesionalNombre = pickProfesionalNombre(asig, userById);
-      const cantidad = Number(asig.cantidad ?? 1) || 1;
+      const cantidad          = Number(asig.cantidad ?? 1) || 1;
 
       try {
         await upsertCargo({
@@ -212,6 +174,7 @@ async function generarCargosDelMes(period = yyyymm()) {
           period,
           cantidad,
           profesionalNombre,
+          asig,
         });
         procesados++;
       } catch (e) {
@@ -230,14 +193,14 @@ async function generarCargosParaPaciente(dni, period = yyyymm()) {
   if (!p) return { ok: true, created: 0 };
 
   // Precarga
-  const modIds = new Set();
+  const modIds  = new Set();
   const userIds = new Set();
   const areaIds = new Set();
   for (const a of (p.modulosAsignados || [])) {
     if (a.moduloId) modIds.add(String(a.moduloId));
     for (const pr of (a.profesionales || [])) {
       if (pr.profesionalId) userIds.add(String(pr.profesionalId));
-      if (pr.areaId) areaIds.add(String(pr.areaId));
+      if (pr.areaId)        areaIds.add(String(pr.areaId));
     }
   }
 
@@ -260,17 +223,17 @@ async function generarCargosParaPaciente(dni, period = yyyymm()) {
 
     const areaId = asig.profesionales?.[0]?.areaId;
     if (!areaId) continue;
-    const area   = areaById.get(String(areaId));
-    const areaNombre = area?.nombre || area?.titulo || "";
+    const area        = areaById.get(String(areaId));
+    const areaNombre  = area?.nombre || area?.titulo || "";
 
-    const createdAt = p.createdAt || p.creadoEl || new Date();
+    const createdAt     = p.createdAt || p.creadoEl || new Date();
     const createdPeriod = yyyymm(new Date(createdAt));
-    const desdeMes = asig.desdeMes || createdPeriod;
-    const hastaMes = asig.hastaMes || null;
+    const desdeMes      = asig.desdeMes || createdPeriod;
+    const hastaMes      = asig.hastaMes || null;
     if (!inRange(period, desdeMes, hastaMes)) continue;
 
     const profesionalNombre = pickProfesionalNombre(asig, userById);
-    const cantidad = Number(asig.cantidad ?? 1) || 1;
+    const cantidad          = Number(asig.cantidad ?? 1) || 1;
 
     try {
       await upsertCargo({
@@ -283,6 +246,7 @@ async function generarCargosParaPaciente(dni, period = yyyymm()) {
         period,
         cantidad,
         profesionalNombre,
+        asig,
       });
       creados++;
     } catch (e) {
@@ -316,6 +280,7 @@ module.exports = {
   generarCargosParaPaciente,
   yyyymm,
 };
+
 
 
 
