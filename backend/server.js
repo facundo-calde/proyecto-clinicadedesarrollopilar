@@ -72,18 +72,18 @@ const HOST = '0.0.0.0';
     await mongoose.connect(RAW_MONGO_URI, { serverSelectionTimeoutMS: 8000 });
     console.log('✅ Conectado a MongoDB');
 
-    /** ✅ MOVEMOS EL CRON ACÁ — LUEGO de conectar MongoDB */
-    try {
-      const { schedule } = require("./jobs/generarCargos");
-      if (process.env.ENABLE_CRON !== "false") {
-        schedule();
-        console.log("⏰ Cron de cargos habilitado");
-      } else {
-        console.log("⏸️ Cron deshabilitado por config");
-      }
-    } catch (err) {
-      console.warn("⚠️ Error cargando cron:", err.message);
-    }
+  try {
+  const cargos = require("./jobs/generarCargos");
+  if (cargos && typeof cargos.schedule === "function" && process.env.ENABLE_CRON !== "false") {
+    cargos.schedule();
+    console.log("⏰ Cron de cargos habilitado");
+  } else {
+    console.log("⏸️ Cron deshabilitado por config o sin schedule()");
+  }
+} catch (err) {
+  console.warn("⚠️ Error cargando cron:", err.message);
+}
+
 
     app.listen(PORT, HOST, () => {
       console.log(`✅ Server escuchando en http://${HOST}:${PORT}`);

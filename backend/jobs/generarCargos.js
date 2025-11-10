@@ -51,6 +51,12 @@ MovimientoSchema.index(
 MovimientoSchema.index({ dni: 1, period: 1 });
 MovimientoSchema.index({ pacienteId: 1, period: 1 });
 
-module.exports = mongoose.model("EstadoDeCuentaMovimiento", MovimientoSchema);
+module.exports = {
+  schedule,
+  generarCargosDelMes,
+  generarCargosParaPaciente,
+  yyyymm,
+};
+
 
 

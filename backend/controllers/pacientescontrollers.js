@@ -1,8 +1,8 @@
 // controllers/pacientescontrollers.js
 const mongoose = require("mongoose");
 const Paciente = require("../models/pacientes");
-// 🔔 Integración: generador de cargos
 const { generarCargosParaPaciente } = require("../jobs/generarCargos");
+
 
 // --- Validaciones básicas ---
 const WSP_RE  = /^\d{10,15}$/;                // solo dígitos, 10–15

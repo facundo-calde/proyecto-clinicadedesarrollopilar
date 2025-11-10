@@ -1,3 +1,4 @@
+// backend/models/estadoDeCuentaMovimiento.js
 const mongoose = require("mongoose");
 const { Schema } = mongoose;
 
@@ -34,14 +35,14 @@ const MovimientoSchema = new Schema(
     fecha:  { type: Date, default: Date.now },
     monto:  { type: Number, required: true, default: 0 }, // positivo para cargos/ajustes+, negativo si nota crédito
 
-    // Snapshot de asignación al momento del cargo (opcionales)
+    // Snapshot de asignación (opcionales)
     cantidad:   { type: Number },   // 0.25, 0.5, 1, 1.5, 2, etc.
     profesional:{ type: String },
     coordinador:{ type: String },
     pasante:    { type: String },
     directoras: [{ type: String }],
 
-    // Datos complementarios (recibo, factura, urls, etc.)
+    // Datos complementarios
     nroRecibo:    { type: String },
     tipoFactura:  { type: String },
     formato:      { type: String },
@@ -66,7 +67,7 @@ MovimientoSchema.index(
   { unique: true, partialFilterExpression: { tipo: "CARGO" } }
 );
 
-// ✅ FIX: evita OverwriteModelError si el modelo ya existe
+// ✅ Publicación con guardia para evitar OverwriteModelError
 module.exports =
-  mongoose.models.EstadoDeCuentaMovimiento ||
-  mongoose.model("EstadoDeCuentaMovimiento", MovimientoSchema);
+  mongoose.models.EstadoDeCuentaMovimiento
+  || mongoose.model("EstadoDeCuentaMovimiento", MovimientoSchema);
