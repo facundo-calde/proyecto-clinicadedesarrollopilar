@@ -29,7 +29,7 @@
   // Anti-BFCache
   window.addEventListener('pageshow', (e) => {
     const nav = performance.getEntriesByType('navigation')[0];
-    const fromBF = e.persisted || nav?.type === 'back_forward';
+    const fromBF = e.persisted || (nav && nav.type === 'back_forward');
     if (fromBF && !localStorage.getItem('token')) edcGoLogin();
   });
 
@@ -43,7 +43,7 @@
   // Pintar nombre en top bar
   (() => {
     const userNameEl = document.getElementById('userName');
-    if (userNameEl && edcUsuarioSesion?.nombreApellido) {
+    if (userNameEl && edcUsuarioSesion && edcUsuarioSesion.nombreApellido) {
       userNameEl.textContent = edcUsuarioSesion.nombreApellido;
     }
   })();
@@ -106,10 +106,10 @@
   // ==============================
   // BUSCADOR DE PACIENTES
   // ==============================
-  const $input = document.getElementById("busquedaInputEDC");
-  const $btnBuscar = document.getElementById("btnBuscarEDC");
-  const $sugerencias = document.getElementById("sugerenciasEDC");
-  const $contenedor = document.getElementById("estadoCuentaContainer");
+  const $input        = document.getElementById("busquedaInputEDC");
+  const $btnBuscar    = document.getElementById("btnBuscarEDC");
+  const $sugerencias  = document.getElementById("sugerenciasEDC");
+  const $contenedor   = document.getElementById("estadoCuentaContainer");
   const $btnDescargar = document.getElementById("btnDescargarEDC");
 
   if (!$input || !$btnBuscar || !$sugerencias || !$contenedor) {
@@ -181,7 +181,7 @@
   if ($btnBuscar) {
     $btnBuscar.addEventListener("click", (e) => {
       e.preventDefault();
-      edcBuscarPacientes($input?.value || "");
+      edcBuscarPacientes($input ? $input.value : "");
     });
   }
 
@@ -195,12 +195,20 @@
   // ==============================
   const getDeep = (obj, path) =>
     path.split('.').reduce((o, k) => (o && o[k] !== undefined ? o[k] : undefined), obj);
+
   const val = (v, fb = "sin datos") => (v === undefined || v === null || v === "" ? fb : v);
+
+  const fmtARS = (n) => {
+    const num = Number(n || 0);
+    return `$ ${num.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
   function pickResponsable(p, tipo) {
-    const arr = Array.isArray(p?.responsables) ? p.responsables : [];
+    const arr = Array.isArray(p && p.responsables) ? p.responsables : [];
     const rx = new RegExp(tipo, "i");
     return arr.find(r => rx.test(r.relacion || "")) || null;
   }
+
   async function edcFetchAreas() {
     try {
       const data = await edcApiJson('/areas');
@@ -209,13 +217,13 @@
   }
 
   // ==============================
-  // RENDER DEL ESTADO DE CUENTA
+  // RENDER DEL ESTADO DE CUENTA (en página)
   // ==============================
   async function edcRenderEstadoDeCuenta(paciente, areaSel = null) {
     if ($contenedor) {
-      const etiquetaArea = areaSel?.nombre || (areaSel?.id ? `(Área seleccionada)` : 'Todas las áreas');
+      const etiquetaArea = (areaSel && areaSel.nombre) || (areaSel && areaSel.id ? '(Área seleccionada)' : 'Todas las áreas');
       $contenedor.innerHTML = `
-        <p>Cargando estado de cuenta de <strong>${paciente?.nombre || "-"}</strong>
+        <p>Cargando estado de cuenta de <strong>${(paciente && paciente.nombre) || "-"}</strong>
         ${areaSel ? ` — <em>${etiquetaArea}</em>` : ''}...</p>
       `;
     }
@@ -223,8 +231,8 @@
     try {
       let path = `/estado-de-cuenta/${paciente.dni}`;
       const qs = [];
-      if (areaSel?.id) qs.push(`areaId=${encodeURIComponent(areaSel.id)}`);
-      if (areaSel?.nombre) qs.push(`areaNombre=${encodeURIComponent(areaSel.nombre)}`);
+      if (areaSel && areaSel.id) qs.push(`areaId=${encodeURIComponent(areaSel.id)}`);
+      if (areaSel && areaSel.nombre) qs.push(`areaNombre=${encodeURIComponent(areaSel.nombre)}`);
       if (qs.length) path += `?${qs.join('&')}`;
 
       const estado = await edcApiJson(path);
@@ -239,8 +247,8 @@
 
       let html = `
         <h3>Estado de cuenta de ${paciente.nombre} (DNI ${paciente.dni})${areaSel ? ` — <small>${areaSel.nombre || ''}</small>` : ''}</h3>
-        <p><strong>Total actual:</strong> $ ${total.toLocaleString("es-AR")}</p>
-        <table border="1" cellpadding="6" cellspacing="0">
+        <p><strong>Total actual:</strong> ${fmtARS(total)}</p>
+        <table border="1" cellpadding="6" cellspacing="0" style="width:100%;border-collapse:collapse">
           <thead>
             <tr>
               <th>Fecha</th>
@@ -259,7 +267,7 @@
             <td>${m.fecha ?? "-"}</td>
             <td>${m.areaNombre ?? m.area ?? "-"}</td>
             <td>${m.descripcion ?? "-"}</td>
-            <td>$ ${(m.monto ?? 0).toLocaleString("es-AR")}</td>
+            <td>${fmtARS(m.monto)}</td>
             <td>${m.tipo ?? "-"}</td>
           </tr>
         `;
@@ -279,8 +287,8 @@
   if ($btnDescargar) {
     $btnDescargar.addEventListener("click", async () => {
       try {
-        const paciente = ($input?.value || '').trim();
-        if (!paciente) return alert("Primero buscá un paciente.");
+        const paciente = ($input && $input.value ? $input.value : '').trim();
+        if (!paciente) { alert("Primero buscá un paciente."); return; }
         const url = `/api/estado-de-cuenta/descargar?nombre=${encodeURIComponent(paciente)}`;
         window.open(url, "_blank");
       } catch (err) {
@@ -291,38 +299,133 @@
   }
 
   // ==============================
-  // Modal con selector de área
+  // Modal con selector de área + Modal de detalle por área
   // ==============================
+  async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
+    try {
+      let path = `/estado-de-cuenta/${paciente.dni}`;
+      const qs = [];
+      if (areaSel && areaSel.id) qs.push(`areaId=${encodeURIComponent(areaSel.id)}`);
+      if (areaSel && areaSel.nombre) qs.push(`areaNombre=${encodeURIComponent(areaSel.nombre)}`);
+      if (qs.length) path += `?${qs.join('&')}`;
+
+      const data = await edcApiJson(path);
+
+      const filas = Array.isArray(data && data.movimientos) ? data.movimientos : [];
+
+      // Armamos tabla detallada al estilo de tu maqueta
+      const rowsHtml = filas.map((m) => {
+        const mes          = m.mes ?? m.periodo ?? '-';
+        const modulo       = (m.moduloNombre || m.modulo || m.moduloNumero || '-');
+        const cantidad     = (m.cantidad != null ? m.cantidad : (m.cant != null ? m.cant : 1));
+        const profesional  = m.profesional || m.profesionalNombre || '-';
+        const pagado       = m.pagado != null ? m.pagado : (m.pago || 0);
+        const aPagar       = m.aPagar != null ? m.aPagar : (m.monto || 0);
+        const saldo        = (m.saldo != null ? m.saldo : (Number(aPagar) - Number(pagado))) || 0;
+        const estado       = m.estado || (saldo <= 0 ? 'PAGADO' : 'PENDIENTE');
+        const observacion  = m.observaciones || m.observacion || '';
+
+        return `
+          <tr>
+            <td>${mes}</td>
+            <td>${modulo}</td>
+            <td style="text-align:right;">${cantidad}</td>
+            <td>${profesional}</td>
+            <td style="text-align:right;">${fmtARS(pagado)}</td>
+            <td style="text-align:right;">${fmtARS(aPagar)}</td>
+            <td style="text-align:right;">${fmtARS(saldo)}</td>
+            <td>${estado}</td>
+            <td>${observacion || '<em>Sin observaciones</em>'}</td>
+          </tr>
+        `;
+      }).join("");
+
+      const totalAPagar = filas.reduce((s, m) => s + Number(m.aPagar != null ? m.aPagar : (m.monto || 0)), 0);
+      const totalPagado = filas.reduce((s, m) => s + Number(m.pagado != null ? m.pagado : (m.pago || 0)), 0);
+      const totalSaldo  = totalAPagar - totalPagado;
+
+      const html = `
+        <div style="text-align:left;font-family:'Segoe UI',sans-serif;">
+          <h3 style="margin:0 0 8px 0;">${paciente.nombre} — ${areaSel && areaSel.nombre ? areaSel.nombre : 'Estado de cuenta'}</h3>
+          <div style="overflow:auto; max-height:60vh; border:1px solid #d0d0d0; border-radius:8px;">
+            <table style="width:100%; border-collapse:collapse; font-size:14px;">
+              <thead style="background:#f2f4ff;">
+                <tr>
+                  <th style="padding:8px; border-bottom:1px solid #ddd;">MES</th>
+                  <th style="padding:8px; border-bottom:1px solid #ddd;">MÓDULO</th>
+                  <th style="padding:8px; border-bottom:1px solid #ddd;">CANT.</th>
+                  <th style="padding:8px; border-bottom:1px solid #ddd;">PROFESIONAL</th>
+                  <th style="padding:8px; border-bottom:1px solid #ddd; text-align:right;">PAGADO</th>
+                  <th style="padding:8px; border-bottom:1px solid #ddd; text-align:right;">A PAGAR</th>
+                  <th style="padding:8px; border-bottom:1px solid #ddd; text-align:right;">SALDO</th>
+                  <th style="padding:8px; border-bottom:1px solid #ddd;">ESTADO</th>
+                  <th style="padding:8px; border-bottom:1px solid #ddd;">OBSERVACIONES</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rowsHtml || `<tr><td colspan="9" style="padding:10px;"><em>Sin movimientos para esta área.</em></td></tr>`}
+              </tbody>
+              <tfoot>
+                <tr style="background:#fafafa; font-weight:600;">
+                  <td colspan="4" style="padding:8px;">TOTAL</td>
+                  <td style="padding:8px; text-align:right;">${fmtARS(totalPagado)}</td>
+                  <td style="padding:8px; text-align:right;">${fmtARS(totalAPagar)}</td>
+                  <td style="padding:8px; text-align:right;">${fmtARS(totalSaldo)}</td>
+                  <td colspan="2"></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      `;
+
+      await Swal.fire({
+        title: 'Estado de cuenta',
+        html,
+        width: 1100,
+        showCloseButton: true,
+        confirmButtonText: 'Cerrar',
+      });
+    } catch (e) {
+      console.error('Error al abrir modal de estado de cuenta:', e);
+      await Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: 'No se pudo cargar el estado de cuenta del área seleccionada.',
+      });
+    }
+  }
+
   async function edcMostrarFichaPaciente(p = {}) {
     const AREAS = await edcFetchAreas();
 
     const abonado = val(p.condicionDePago);
-    const estado = val(p.estado);
-    const fechaN = val(p.fechaNacimiento);
+    const estado  = val(p.estado);
+    const fechaN  = val(p.fechaNacimiento);
     const colegio = val(p.colegio);
-    const curso = val(p.curso);
+    const curso   = val(p.curso);
 
-    const prestador = val(p.prestador ?? getDeep(p, "obraSocial.prestador"));
-    const credencial = val(p.credencial ?? getDeep(p, "obraSocial.credencial"));
-    const tipoOS = val(p.tipo ?? getDeep(p, "obraSocial.tipo"));
+    const prestador  = val((p.prestador != null ? p.prestador : getDeep(p, "obraSocial.prestador")));
+    const credencial = val((p.credencial != null ? p.credencial : getDeep(p, "obraSocial.credencial")));
+    const tipoOS     = val((p.tipo != null ? p.tipo : getDeep(p, "obraSocial.tipo")));
 
     const rMadre = pickResponsable(p, "madre");
     const rPadre = pickResponsable(p, "padre");
     const rTutor = pickResponsable(p, "tutor");
 
-    const madreNombre = val(rMadre?.nombre);
-    const madreWsp = rMadre?.whatsapp || "";
-    const madreMail = rMadre?.email || "";
+    const madreNombre = val(rMadre && rMadre.nombre);
+    const madreWsp    = (rMadre && rMadre.whatsapp) || "";
+    const madreMail   = (rMadre && rMadre.email) || "";
 
-    const padreNombre = val(rPadre?.nombre);
-    const padreWsp = rPadre?.whatsapp || "";
-    const padreMail = rPadre?.email || "";
+    const padreNombre = val(rPadre && rPadre.nombre);
+    const padreWsp    = (rPadre && rPadre.whatsapp) || "";
+    const padreMail   = (rPadre && rPadre.email) || "";
 
-    const tutorNombre = val(getDeep(p, "tutor.nombre") ?? rTutor?.nombre);
-    const tutorWsp = (getDeep(p, "tutor.whatsapp") ?? rTutor?.whatsapp) || "";
-    const tutorMail = (getDeep(p, "tutor.email") ?? rTutor?.email) || "";
+    const tutorNombre = val((getDeep(p, "tutor.nombre") != null ? getDeep(p, "tutor.nombre") : (rTutor && rTutor.nombre)));
+    const tutorWsp    = (getDeep(p, "tutor.whatsapp") != null ? getDeep(p, "tutor.whatsapp") : (rTutor && rTutor.whatsapp)) || "";
+    const tutorMail   = (getDeep(p, "tutor.email") != null ? getDeep(p, "tutor.email") : (rTutor && rTutor.email)) || "";
 
-    const wspLink = (num) => (num ? `<a href="https://wa.me/${num}" target="_blank" style="color:#25d366;text-decoration:none;">${num}</a>` : "sin datos");
+    const wspLink  = (num)  => (num ? `<a href="https://wa.me/${num}" target="_blank" style="color:#25d366;text-decoration:none;">${num}</a>` : "sin datos");
     const mailLink = (mail) => (mail ? `<a href="mailto:${mail}" style="color:#1a73e8;text-decoration:none;">${mail}</a>` : "sin datos");
 
     const areaOptions = AREAS.map(a => `<option value="${a._id}">${a.nombre}</option>`).join("");
@@ -363,17 +466,18 @@
         </div>
       </div>
 
-  <div style="margin-top:14px;border:1px solid #ccc;border-radius:10px;padding:12px;">
-  <label for="edcSelArea" style="display:block;margin-bottom:6px;"><strong>Área para ver el estado de cuenta</strong></label>
-  <div style="display:flex;justify-content:center;">
-    <select id="edcSelArea" class="swal2-select"
-      style="width:95%;max-width:420px;padding:6px 8px;border-radius:8px;border:1px solid #bbb;">
-      <option value="">(Todas las áreas)</option>
-      ${areaOptions}
-    </select>
-  </div>
-</div>
-`;
+      <div style="margin-top:14px;border:1px solid #ccc;border-radius:10px;padding:12px;">
+        <label for="edcSelArea" style="display:block;margin-bottom:6px;"><strong>Área para ver el estado de cuenta</strong></label>
+        <div style="display:flex;justify-content:center;">
+          <select id="edcSelArea" class="swal2-select"
+            style="width:95%;max-width:420px;padding:6px 8px;border-radius:8px;border:1px solid #bbb;">
+            <option value="">(Todas las áreas)</option>
+            ${areaOptions}
+          </select>
+        </div>
+      </div>
+    </div>
+    `;
 
     const dlg = await Swal.fire({
       title: 'Ficha del Paciente',
@@ -388,15 +492,14 @@
 
     if (dlg.isConfirmed) {
       const selEl = document.getElementById('edcSelArea');
-      const selId = selEl?.value || "";
+      const selId = selEl ? selEl.value : "";
       const found = AREAS.find(a => String(a._id) === String(selId));
-      const areaSel = selId ? { id: selId, nombre: found?.nombre || null } : null;
-      await edcMostrarEstadoCuentaAreaModal(p, areaSel); // ⬅ nuevo modal por área
+      const areaSel = selId ? { id: selId, nombre: (found && found.nombre) || null } : null;
+      await edcMostrarEstadoCuentaAreaModal(p, areaSel);
     }
   }
 
-  // Exponer solo si realmente lo necesitás fuera
+  // Exponer si querés usarlo externamente (opcional):
   // window.edcMostrarFichaPaciente = edcMostrarFichaPaciente;
 
 })();
-
