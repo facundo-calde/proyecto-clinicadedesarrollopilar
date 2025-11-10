@@ -1,4 +1,3 @@
-// models/estadoDeCuentaMovimiento.js
 const mongoose = require("mongoose");
 const { Schema } = mongoose;
 
@@ -67,4 +66,7 @@ MovimientoSchema.index(
   { unique: true, partialFilterExpression: { tipo: "CARGO" } }
 );
 
-module.exports = mongoose.model("EstadoDeCuentaMovimiento", MovimientoSchema);
+// ✅ FIX: evita OverwriteModelError si el modelo ya existe
+module.exports =
+  mongoose.models.EstadoDeCuentaMovimiento ||
+  mongoose.model("EstadoDeCuentaMovimiento", MovimientoSchema);
