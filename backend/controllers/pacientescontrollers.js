@@ -1,7 +1,7 @@
 // controllers/pacientescontrollers.js
 const mongoose = require("mongoose");
 const Paciente = require("../models/pacientes");
-// ⬇️ NUEVO: generador instantáneo de cargos
+// 🔔 Integración: generador de cargos
 const { generarCargosParaPaciente } = require("../jobs/generarCargos");
 
 // --- Validaciones básicas ---
@@ -55,7 +55,6 @@ function sanitizeResponsables(responsables) {
 
 // --- Normalizador de módulos especiales (acepta variantes de nombres)
 function pickModulosEspeciales(body) {
-  // nombres posibles que podrían venir desde el front/legacy
   const candidates = [
     "modulosEspecialesAsignados",
     "modulosEspeciales",
@@ -114,10 +113,9 @@ function buildPacienteData(body, existing = null) {
     data.modulosAsignados = body.modulosAsignados;
   }
 
-  // ✅ Módulos ESPECIALES (NUEVO): acepta varios nombres y lo mapea a modulosEspecialesAsignados
+  // ✅ Módulos ESPECIALES: acepta varios nombres y mapea a modulosEspecialesAsignados
   const especiales = pickModulosEspeciales(body);
   if (Array.isArray(especiales)) {
-    // opcional: asegurar forma { moduloId, cantidad, profesionales[] }
     data.modulosEspecialesAsignados = especiales.map(e => {
       const moduloId = e?.moduloId || e?.modulo || e?.id || e?._id;
       const cantidad = (e?.cantidad == null ? 1 : Number(e.cantidad));
@@ -191,7 +189,7 @@ const crearPaciente = async (req, res) => {
     const actor = getActor(req);
     const observacion = toStr(req.body.observacionCreacion || req.body.descripcionEstado).trim();
 
-    // Por diseño actual, el alta inicial se normaliza a "En espera"
+    // (igual que antes) estado inicial "En espera"
     data.estado = "En espera";
     data.estadoHistorial = [{
       estadoAnterior: undefined,
@@ -209,11 +207,9 @@ const crearPaciente = async (req, res) => {
     const nuevo = new Paciente(data);
     await nuevo.save();
 
-    // 🔔 Integración pedida:
-    // Si por alguna razón el paciente quedó en "Alta" al crear (cambio de regla futura),
-    // dispara generación de cargos del mes actual (no bloquea la request).
+    // 🔔 Integración: si por algún motivo el create llega ya en "Alta", generamos cargos
     if (nuevo.estado === "Alta") {
-      generarCargosParaPaciente(nuevo.dni).catch(console.error);
+      generarCargosParaPaciente(nuevo.dni).catch(console.error); // no bloquear respuesta
     }
 
     res.status(201).json(nuevo);
@@ -241,7 +237,7 @@ const actualizarPaciente = async (req, res) => {
     const paciente = await Paciente.findOne({ dni });
     if (!paciente) return res.status(404).json({ error: "No encontrado" });
 
-    // Tomamos snapshot "antes" para evaluar cambios
+    // Snapshot "antes" (para disparar cargos solo si corresponde)
     const antesEstado = paciente.estado || null;
     const antesMods   = JSON.stringify(paciente.modulosAsignados || []);
 
@@ -286,14 +282,11 @@ const actualizarPaciente = async (req, res) => {
 
     await paciente.save();
 
-    // 🔔 Integración pedida:
-    // Disparar generación de cargos si:
-    // 1) pasó a Alta, o
-    // 2) cambian los módulos asignados (comparación simple por JSON).
+    // 🔔 Integración: dispara cargos si pasó a Alta o cambiaron módulos
     const pasoAAlta     = (antesEstado !== "Alta") && (paciente.estado === "Alta");
     const cambioModulos = (antesMods !== JSON.stringify(paciente.modulosAsignados || []));
     if (pasoAAlta || cambioModulos) {
-      generarCargosParaPaciente(paciente.dni).catch(console.error); // no bloquear la request
+      generarCargosParaPaciente(paciente.dni).catch(console.error);
     }
 
     res.json(paciente);
