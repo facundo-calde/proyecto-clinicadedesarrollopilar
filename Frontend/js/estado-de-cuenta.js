@@ -238,13 +238,79 @@
       const estado = await edcApiJson(path);
       if (!$contenedor) return;
 
-      if (!estado || !Array.isArray(estado.movimientos)) {
+      // Preferimos filas + totales. Si no vienen, caemos a movimientos.
+      const filas = Array.isArray(estado.filas) ? estado.filas : [];
+      const movs  = Array.isArray(estado.movimientos) ? estado.movimientos : [];
+
+      if (!filas.length && !movs.length) {
         $contenedor.innerHTML = `<p>No se encontraron datos de estado de cuenta para ${paciente.nombre}${areaSel ? ` en <strong>${areaSel.nombre || ''}</strong>` : ''}.</p>`;
         return;
       }
 
-      const total = estado.movimientos.reduce((sum, m) => sum + (m.monto || 0), 0);
+      if (filas.length) {
+        const tot = estado.totales || {};
+        const totalAPagar = Number(tot.aPagar || 0);
+        const totalPagado = Number((tot.pagadoOS || 0) + (tot.pagadoPART || 0) + (tot.ajustesMas || 0) - (tot.ajustesMenos || 0));
+        const saldo       = Number(tot.saldo || (totalAPagar - totalPagado));
 
+        let html = `
+          <h3>Estado de cuenta de ${paciente.nombre} (DNI ${paciente.dni})${areaSel ? ` — <small>${areaSel.nombre || ''}</small>` : ''}</h3>
+          <p><strong>Total actual:</strong> ${fmtARS(saldo)}</p>
+          <table border="1" cellpadding="6" cellspacing="0" style="width:100%;border-collapse:collapse">
+            <thead>
+              <tr>
+                <th>Mes</th>
+                <th>Módulo</th>
+                <th>Cant.</th>
+                <th>Profesional</th>
+                <th>A pagar</th>
+              </tr>
+            </thead>
+            <tbody>
+        `;
+        filas.forEach(f => {
+          const profesional =
+            f.profesional ||
+            (f.profesionales && (f.profesionales.profesional?.[0] || f.profesionales.coordinador?.[0] || f.profesionales.pasante?.[0] || f.profesionales.directora?.[0])) ||
+            "-";
+          const modulo = f.modulo || f.moduloNumero || "-";
+          const cant   = f.cantidad != null ? f.cantidad : (f.cant != null ? f.cant : 1);
+          const aPagar = Number(f.aPagar || 0);
+
+          html += `
+            <tr>
+              <td>${f.mes || "-"}</td>
+              <td>${modulo}</td>
+              <td style="text-align:right;">${cant}</td>
+              <td>${profesional}</td>
+              <td style="text-align:right;">${fmtARS(aPagar)}</td>
+            </tr>
+          `;
+        });
+        html += `
+            </tbody>
+            <tfoot>
+              <tr style="background:#fafafa;font-weight:600;">
+                <td colspan="4" style="text-align:right;">TOTAL A PAGAR</td>
+                <td style="text-align:right;">${fmtARS(totalAPagar)}</td>
+              </tr>
+              <tr>
+                <td colspan="4" style="text-align:right;">TOTAL PAGADO (OS+PART+AJUSTES)</td>
+                <td style="text-align:right;">${fmtARS(totalPagado)}</td>
+              </tr>
+              <tr>
+                <td colspan="4" style="text-align:right;">SALDO</td>
+                <td style="text-align:right;">${fmtARS(saldo)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        `;
+        $contenedor.innerHTML = html;
+        return;
+      }
+
+      // Fallback a movimientos crudos
+      const total = movs.reduce((sum, m) => sum + (m.monto || 0), 0);
       let html = `
         <h3>Estado de cuenta de ${paciente.nombre} (DNI ${paciente.dni})${areaSel ? ` — <small>${areaSel.nombre || ''}</small>` : ''}</h3>
         <p><strong>Total actual:</strong> ${fmtARS(total)}</p>
@@ -260,21 +326,20 @@
           </thead>
           <tbody>
       `;
-
-      estado.movimientos.forEach((m) => {
+      movs.forEach((m) => {
         html += `
           <tr>
-            <td>${m.fecha ?? "-"}</td>
+            <td>${m.fecha ? new Date(m.fecha).toLocaleDateString('es-AR') : "-"}</td>
             <td>${m.areaNombre ?? m.area ?? "-"}</td>
             <td>${m.descripcion ?? "-"}</td>
-            <td>${fmtARS(m.monto)}</td>
+            <td style="text-align:right;">${fmtARS(m.monto)}</td>
             <td>${m.tipo ?? "-"}</td>
           </tr>
         `;
       });
-
       html += `</tbody></table>`;
       $contenedor.innerHTML = html;
+
     } catch (err) {
       console.error("Error al cargar estado de cuenta:", err);
       if ($contenedor) $contenedor.innerHTML = `<p>Error al obtener el estado de cuenta.</p>`;
@@ -282,15 +347,18 @@
   }
 
   // ==============================
-  // Descargar estado de cuenta
+  // Descargar estado de cuenta (PDF)
   // ==============================
+  // NOTA: este botón solo abrirá el PDF del último paciente buscado y área elegida en el modal.
+  // Si necesitás elegir área acá también, tendríamos que guardar en una variable global la última selección.
   if ($btnDescargar) {
     $btnDescargar.addEventListener("click", async () => {
       try {
-        const paciente = ($input && $input.value ? $input.value : '').trim();
-        if (!paciente) { alert("Primero buscá un paciente."); return; }
-        const url = `/api/estado-de-cuenta/descargar?nombre=${encodeURIComponent(paciente)}`;
-        window.open(url, "_blank");
+        // Intento: si hay texto en el input, busco el paciente por DNI exacto (si es numérico) o muestro aviso
+        const term = ($input && $input.value ? $input.value : '').trim();
+        if (!term) { alert("Primero buscá y abrí la ficha del paciente para elegir el área."); return; }
+        // Este botón queda como auxiliar. El flujo recomendado es usar el botón del modal (ver abajo).
+        alert("Para descargar el PDF usá el botón 'Descargar PDF' dentro del modal de Estado de cuenta (ahí elige el área).");
       } catch (err) {
         console.error(err);
         alert("No se pudo descargar el estado de cuenta.");
@@ -311,38 +379,59 @@
 
       const data = await edcApiJson(path);
 
-      const filas = Array.isArray(data && data.movimientos) ? data.movimientos : [];
+      // Preferimos filas con totales
+      const filas = Array.isArray(data.filas) ? data.filas : [];
+      const movimientos = Array.isArray(data.movimientos) ? data.movimientos : [];
+      const tot = data.totales || {};
+      const totalAPagar = Number(tot.aPagar || 0);
+      const totalPagado = Number((tot.pagadoOS || 0) + (tot.pagadoPART || 0) + (tot.ajustesMas || 0) - (tot.ajustesMenos || 0));
+      const totalSaldo  = Number(tot.saldo || (totalAPagar - totalPagado));
 
-      // Armamos tabla detallada al estilo de tu maqueta
-      const rowsHtml = filas.map((m) => {
-        const mes          = m.mes ?? m.periodo ?? '-';
-        const modulo       = (m.moduloNombre || m.modulo || m.moduloNumero || '-');
-        const cantidad     = (m.cantidad != null ? m.cantidad : (m.cant != null ? m.cant : 1));
-        const profesional  = m.profesional || m.profesionalNombre || '-';
-        const pagado       = m.pagado != null ? m.pagado : (m.pago || 0);
-        const aPagar       = m.aPagar != null ? m.aPagar : (m.monto || 0);
-        const saldo        = (m.saldo != null ? m.saldo : (Number(aPagar) - Number(pagado))) || 0;
-        const estado       = m.estado || (saldo <= 0 ? 'PAGADO' : 'PENDIENTE');
-        const observacion  = m.observaciones || m.observacion || '';
+      // Construcción de filas visuales compatibles
+      const filasParaMostrar = filas.length
+        ? filas.map(f => {
+            const mes = f.mes || "-";
+            const modulo = f.modulo || f.moduloNumero || "-";
+            const cantidad = f.cantidad != null ? f.cantidad : (f.cant != null ? f.cant : 1);
+            const profesional =
+              f.profesional ||
+              (f.profesionales && (f.profesionales.profesional?.[0] || f.profesionales.coordinador?.[0] || f.profesionales.pasante?.[0] || f.profesionales.directora?.[0])) ||
+              "-";
+            const pagado = Number(f.pagado || 0); // si no traemos por fila, queda 0
+            const aPagar = Number(f.aPagar || 0);
+            const saldo  = Number(f.saldo != null ? f.saldo : (aPagar - pagado));
+            const estado = f.estado || (saldo <= 0 ? "PAGADO" : "PENDIENTE");
+            const observacion = f.obs || f.observaciones || "";
 
-        return `
-          <tr>
-            <td>${mes}</td>
-            <td>${modulo}</td>
-            <td style="text-align:right;">${cantidad}</td>
-            <td>${profesional}</td>
-            <td style="text-align:right;">${fmtARS(pagado)}</td>
-            <td style="text-align:right;">${fmtARS(aPagar)}</td>
-            <td style="text-align:right;">${fmtARS(saldo)}</td>
-            <td>${estado}</td>
-            <td>${observacion || '<em>Sin observaciones</em>'}</td>
-          </tr>
-        `;
-      }).join("");
+            return { mes, modulo, cantidad, profesional, pagado, aPagar, saldo, estado, observacion };
+          })
+        : movimientos.map(m => {
+            const mes = m.mes || m.period || m.periodo || "-";
+            const modulo = m.moduloNombre || m.modulo || m.moduloNumero || "-";
+            const cantidad = m.cantidad != null ? m.cantidad : (m.cant != null ? m.cant : 1);
+            const profesional = m.profesional || m.profesionalNombre || "-";
+            const pagado = Number(m.pagado != null ? m.pagado : (m.pago || 0));
+            const aPagar = Number(m.aPagar != null ? m.aPagar : (m.monto || 0));
+            const saldo  = Number(m.saldo != null ? m.saldo : (aPagar - pagado));
+            const estado = m.estado || (saldo <= 0 ? "PAGADO" : "PENDIENTE");
+            const observacion = m.observaciones || m.observacion || "";
 
-      const totalAPagar = filas.reduce((s, m) => s + Number(m.aPagar != null ? m.aPagar : (m.monto || 0)), 0);
-      const totalPagado = filas.reduce((s, m) => s + Number(m.pagado != null ? m.pagado : (m.pago || 0)), 0);
-      const totalSaldo  = totalAPagar - totalPagado;
+            return { mes, modulo, cantidad, profesional, pagado, aPagar, saldo, estado, observacion };
+          });
+
+      const rowsHtml = filasParaMostrar.map((r) => `
+        <tr>
+          <td>${r.mes}</td>
+          <td>${r.modulo}</td>
+          <td style="text-align:right;">${r.cantidad}</td>
+          <td>${r.profesional}</td>
+          <td style="text-align:right;">${fmtARS(r.pagado)}</td>
+          <td style="text-align:right;">${fmtARS(r.aPagar)}</td>
+          <td style="text-align:right;">${fmtARS(r.saldo)}</td>
+          <td>${r.estado}</td>
+          <td>${r.observacion || '<em>Sin observaciones</em>'}</td>
+        </tr>
+      `).join("");
 
       const html = `
         <div style="text-align:left;font-family:'Segoe UI',sans-serif;">
@@ -376,6 +465,9 @@
               </tfoot>
             </table>
           </div>
+          <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:10px;">
+            <button id="edcBtnDescargarPDF" class="swal2-confirm swal2-styled" style="background:#6c5ce7;">Descargar PDF</button>
+          </div>
         </div>
       `;
 
@@ -386,6 +478,20 @@
         showCloseButton: true,
         confirmButtonText: 'Cerrar',
       });
+
+      // Acción de descarga del PDF (usa tu endpoint /api/estado-de-cuenta/:dni/extracto)
+      const $pdfBtn = document.getElementById('edcBtnDescargarPDF');
+      if ($pdfBtn) {
+        $pdfBtn.addEventListener('click', () => {
+          let url = `/api/estado-de-cuenta/${encodeURIComponent(paciente.dni)}/extracto`;
+          const qs = [];
+          if (areaSel && areaSel.id) qs.push(`areaId=${encodeURIComponent(areaSel.id)}`);
+          // si usás period, agregalo acá, ej: qs.push(`period=${encodeURIComponent(period)}`)
+          if (qs.length) url += `?${qs.join('&')}`;
+          window.open(url, '_blank');
+        });
+      }
+
     } catch (e) {
       console.error('Error al abrir modal de estado de cuenta:', e);
       await Swal.fire({
