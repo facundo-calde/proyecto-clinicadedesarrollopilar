@@ -17,6 +17,8 @@ if (!RAW_MONGO_URI) {
   console.error('❌ Falta MONGODB_URI en .env (o MONGODB como fallback)');
   process.exit(1);
 }
+const { schedule } = require("./jobs/generarCargos");
+schedule();
 
 const app = express();
 
@@ -37,12 +39,16 @@ const modulosRoutes    = require('./routes/modulosroutes');
 const areasRoutes      = require('./routes/areasroutes');
 const usuariosRoutes   = require('./routes/usuariosRoutes');
 const documentosRoutes = require('./routes/documentosroutes');
+const estadoCuentaRoutes = require("./routes/estadocuentaroutes");
+
 
 app.use('/api/pacientes',  pacientesRoutes);
 app.use('/api/documentos', documentosRoutes);
 app.use('/api/modulos',    modulosRoutes);
 app.use('/api/areas',      areasRoutes);
 app.use('/api',            usuariosRoutes);
+app.use("/api/estado-de-cuenta", estadoCuentaRoutes);
+
 
 /* ====== STATIC ====== */
 const FRONT_DIR_CANDIDATES = [

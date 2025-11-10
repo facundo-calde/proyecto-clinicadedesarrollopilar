@@ -391,7 +391,7 @@
       const selId = selEl?.value || "";
       const found = AREAS.find(a => String(a._id) === String(selId));
       const areaSel = selId ? { id: selId, nombre: found?.nombre || null } : null;
-      await edcRenderEstadoDeCuenta(p, areaSel);
+      await edcMostrarEstadoCuentaAreaModal(p, areaSel); // ⬅ nuevo modal por área
     }
   }
 
