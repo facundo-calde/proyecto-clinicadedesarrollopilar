@@ -4,7 +4,7 @@ const PDFDocument = require("pdfkit");
 const Paciente = require("../models/pacientes");
 const Usuario  = require("../models/usuarios");
 const Modulo   = require("../models/modulos");
-const Area     = require("../models/areas");
+const Area     = require("../models/area");
 const Movimiento = require("../models/estadoDeCuentaMovimiento");
 
 const toStr = (v) => (v ?? "").toString();
