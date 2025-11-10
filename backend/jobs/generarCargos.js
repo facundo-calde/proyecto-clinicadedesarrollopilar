@@ -1,9 +1,15 @@
 // jobs/generarCargos.js
-const cron = require("node-cron");
+let cron = null;
+try {
+  cron = require("node-cron");
+} catch (e) {
+  console.warn("⚠️ node-cron no instalado. El job de cargos no se programará automáticamente.");
+}
+
 const Paciente = require("../models/pacientes");
 const Usuario  = require("../models/usuarios");
 const Modulo   = require("../models/modulos");
-const Area     = require("../models/areas");
+const Area     = require("../models/area");
 const Mov      = require("../models/estadoDeCuentaMovimiento");
 
 function yyyymm(date = new Date()) {
@@ -119,16 +125,15 @@ async function generarCargosDelMes(period = yyyymm()) {
 }
 
 function schedule() {
-  // Todos los días 02:15 AM
+  if (!cron) return; // sin cron, no programes
+  // tu programación actual:
   cron.schedule("15 2 * * *", async () => {
     try {
-      const period = yyyymm();
-      const r = await generarCargosDelMes(period);
-      console.log(`✅ Cargos ${period} generados:`, r);
+      await generarCargosDelMes(); // sin period => usa mes actual
     } catch (e) {
-      console.error("❌ Job generarCargos", e);
+      console.error("❌ Error en generarCargosDelMes:", e);
     }
-  });
+  }, { timezone: "America/Argentina/Buenos_Aires" });
 }
-
 module.exports = { schedule, generarCargosDelMes, yyyymm };
+
