@@ -1,15 +1,15 @@
-// jobs/generarCargos.js
+// backend/jobs/generarCargos.js
 let cron = null;
 try {
   cron = require("node-cron");
 } catch (e) {
-  console.warn("⚠️ node-cron no instalado. El job de cargos no se programará automáticamente.");
+    console.warn("⚠️ node-cron no instalado. El job de cargos no se programará automáticamente.");
 }
 
 const Paciente = require("../models/pacientes");
 const Usuario  = require("../models/usuarios");
 const Modulo   = require("../models/modulos");
-const Area     = require("../models/area"); // puede que no se use directamente, lo dejamos por compatibilidad
+const Area     = require("../models/area"); // compat
 const Mov      = require("../models/estadoDeCuentaMovimiento");
 
 /* =============== Helpers =============== */
@@ -25,15 +25,20 @@ function inRange(period, desdeMes, hastaMes) {
   return (period >= d) && (period <= h);
 }
 
+function parseNumberLike(v) {
+  if (typeof v === "number") return v;
+  if (typeof v === "string" && v.trim()) {
+    const n = Number(v.replace(/\./g, "").replace(",", "."));
+    if (!isNaN(n)) return n;
+  }
+  return 0;
+}
+
 function getPrecioModulo(modulo) {
   const cands = ["precio", "valor", "monto", "arancel", "importe", "tarifa"];
   for (const k of cands) {
-    const v = modulo?.[k];
-    if (typeof v === "number") return v;
-    if (typeof v === "string" && v.trim()) {
-      const n = Number(v.replace(/\./g, "").replace(",", "."));
-      if (!isNaN(n)) return n;
-    }
+    const n = parseNumberLike(modulo?.[k]);
+    if (n) return n;
   }
   return 0;
 }
@@ -46,12 +51,40 @@ function pickProfesionalNombre(asig, cacheUsuarios) {
   return u?.nombreApellido || u?.usuario || u?.nombre || undefined;
 }
 
+/* =============== Core Upsert (reutilizable) =============== */
+/** Upsert del cargo del período. Actualiza si existe y NO está PAGADO. */
+async function upsertCargo({ dni, pacienteId, areaId, modulo, moduloId, period, cantidad, profesionalNombre }) {
+  const base  = getPrecioModulo(modulo);
+  const total = +(base * (Number(cantidad ?? 1) || 1)).toFixed(2);
+
+  // 🚫 No tocar cargos ya pagados:
+  const filter = { dni, areaId, moduloId, period, tipo: "CARGO", estado: { $ne: "PAGADO" } };
+
+  // Refleja siempre estado actual (si existe y no está pagado → $set actualiza)
+  const update = {
+    $set: {
+      descripcion: `Cargo ${period} - ${modulo.nombre || modulo.numero || "Módulo"}`,
+      monto: total,
+      cantidad: Number(cantidad ?? 1) || 1,
+      profesional: profesionalNombre,
+    },
+    $setOnInsert: {
+      pacienteId,
+      fecha: new Date(),
+      estado: "PENDIENTE",
+    },
+  };
+
+  await Mov.updateOne(filter, update, { upsert: true });
+}
+
 /* =============== Cargos para TODO el mes (cron/masivo) =============== */
 async function generarCargosDelMes(period = yyyymm()) {
   const pacientes = await Paciente.find({ estado: "Alta" }).lean();
   if (!pacientes.length) return { pacientes: 0, cargos: 0 };
 
-  const modIds = new Set();
+  // Precarga de catálogos para minimizar queries
+  const modIds  = new Set();
   const areaIds = new Set();
   const userIds = new Set();
 
@@ -59,7 +92,7 @@ async function generarCargosDelMes(period = yyyymm()) {
     for (const a of (p.modulosAsignados || [])) {
       if (a.moduloId) modIds.add(String(a.moduloId));
       for (const pr of (a.profesionales || [])) {
-        if (pr.areaId) areaIds.add(String(pr.areaId));
+        if (pr.areaId)        areaIds.add(String(pr.areaId));
         if (pr.profesionalId) userIds.add(String(pr.profesionalId));
       }
     }
@@ -73,7 +106,7 @@ async function generarCargosDelMes(period = yyyymm()) {
   const modById  = new Map(modulos.map(m => [String(m._id), m]));
   const userById = new Map(usuarios.map(u => [String(u._id), u]));
 
-  let creados = 0;
+  let procesados = 0;
 
   for (const p of pacientes) {
     const dni = p.dni;
@@ -94,35 +127,28 @@ async function generarCargosDelMes(period = yyyymm()) {
       const hastaMes = asig.hastaMes || null;
       if (!inRange(period, desdeMes, hastaMes)) continue;
 
-      const cantidad = Number(asig.cantidad ?? 1) || 1;
-      const base     = getPrecioModulo(modulo);
-      const total    = +(base * cantidad).toFixed(2);
       const profesionalNombre = pickProfesionalNombre(asig, userById);
+      const cantidad = Number(asig.cantidad ?? 1) || 1;
 
-      // Upsert idempotente del CARGO
       try {
-        await Mov.updateOne(
-          { dni, areaId, moduloId, period, tipo: "CARGO" },
-          {
-            $setOnInsert: {
-              pacienteId: pid,
-              descripcion: `Cargo ${period} - ${modulo.nombre || modulo.numero || "Módulo"}`,
-              monto: total,
-              cantidad,
-              profesional: profesionalNombre,
-              fecha: new Date(),
-              estado: "PENDIENTE"
-            }
-          },
-          { upsert: true }
-        );
-        creados++;
+        await upsertCargo({
+          dni,
+          pacienteId: pid,
+          areaId,
+          modulo,
+          moduloId,
+          period,
+          cantidad,
+          profesionalNombre,
+        });
+        procesados++;
       } catch (e) {
-        if (e.code !== 11000) console.error("cargo upsert", e);
+        // Si hay conflicto de índice, no spamear
+        if (e?.code !== 11000) console.error("cargo upsert (masivo)", e);
       }
     }
   }
-  return { pacientes: pacientes.length, cargos: creados };
+  return { pacientes: pacientes.length, cargos: procesados };
 }
 
 /* =============== Cargos instantáneos para UN paciente (alta/asignación) =============== */
@@ -166,30 +192,23 @@ async function generarCargosParaPaciente(dni, period = yyyymm()) {
     const hastaMes = asig.hastaMes || null;
     if (!inRange(period, desdeMes, hastaMes)) continue;
 
-    const cantidad = Number(asig.cantidad ?? 1) || 1;
-    const base     = getPrecioModulo(modulo);
-    const total    = +(base * cantidad).toFixed(2);
     const profesionalNombre = pickProfesionalNombre(asig, userById);
+    const cantidad = Number(asig.cantidad ?? 1) || 1;
 
     try {
-      await Mov.updateOne(
-        { dni, areaId, moduloId, period, tipo: "CARGO" },
-        {
-          $setOnInsert: {
-            pacienteId: p._id,
-            descripcion: `Cargo ${period} - ${modulo.nombre || modulo.numero || "Módulo"}`,
-            monto: total,
-            cantidad,
-            profesional: profesionalNombre,
-            fecha: new Date(),
-            estado: "PENDIENTE"
-          }
-        },
-        { upsert: true }
-      );
+      await upsertCargo({
+        dni,
+        pacienteId: p._id,
+        areaId,
+        modulo,
+        moduloId,
+        period,
+        cantidad,
+        profesionalNombre,
+      });
       creados++;
     } catch (e) {
-      if (e.code !== 11000) console.error("cargo upsert paciente", e);
+      if (e?.code !== 11000) console.error("cargo upsert (paciente)", e);
     }
   }
 
@@ -199,21 +218,26 @@ async function generarCargosParaPaciente(dni, period = yyyymm()) {
 /* =============== Programación (cron) =============== */
 function schedule() {
   if (!cron) return; // sin cron, no programes
-  cron.schedule("15 2 * * *", async () => {
-    try {
-      await generarCargosDelMes(); // mes actual
-    } catch (e) {
-      console.error("❌ Error en generarCargosDelMes:", e);
-    }
-  }, { timezone: "America/Argentina/Buenos_Aires" });
+  // 02:15 AM todos los días
+  cron.schedule(
+    "15 2 * * *",
+    async () => {
+      try {
+        await generarCargosDelMes(); // mes actual
+      } catch (e) {
+        console.error("❌ Error en generarCargosDelMes:", e);
+      }
+    },
+    { timezone: "America/Argentina/Buenos_Aires" }
+  );
 }
 
 /* =============== Exports =============== */
 module.exports = {
   schedule,
   generarCargosDelMes,
-  generarCargosParaPaciente, // <-- nuevo
-  yyyymm
+  generarCargosParaPaciente, // para disparar al alta/asignación
+  yyyymm,
 };
 
 
