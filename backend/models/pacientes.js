@@ -13,7 +13,7 @@ const responsableSchema = new mongoose.Schema({
     required: true,
     match: [/^\d{10,15}$/, 'El WhatsApp debe tener entre 10 y 15 dígitos'],
   },
-  email: { type: String, trim: true, lowercase: true, match: emailRule },
+  email:     { type: String, trim: true, lowercase: true, match: emailRule },
   documento: { type: String, trim: true } // opcional (DNI/CUIT)
 }, { _id: false });
 
@@ -39,7 +39,7 @@ const documentoPersonalSchema = new mongoose.Schema({
   archivoURL:     { type: String, required: true, trim: true },
   creadoEn:       { type: Date, default: Date.now },
   actualizadoEn:  { type: Date }
-}, { _id: true }); // dejamos _id para poder editar/borrar por id
+}, { _id: true });
 
 /* --- Diagnósticos / Informes (metadata R2) --- */
 const diagnosticoSchema = new mongoose.Schema({
@@ -69,6 +69,7 @@ const pacienteSchema = new mongoose.Schema({
 
   responsables: {
     type: [responsableSchema],
+    default: [],
     validate: [{
       validator: function (arr) {
         return Array.isArray(arr) && arr.length >= 1 && arr.length <= 3;
@@ -96,47 +97,65 @@ const pacienteSchema = new mongoose.Schema({
   tipo: String,
 
   // Otros
-  areas: [String],
+  areas: { type: [String], default: [] },
   planPaciente: String,
   fechaBaja: String,
   motivoBaja: String,
 
-  // 👇 CORREGIDO: metadata de documentos y diagnósticos con archivoKey/archivoURL
+  // Metadata de documentos y diagnósticos con archivoKey/archivoURL
   documentosPersonales: { type: [documentoPersonalSchema], default: [] },
   diagnosticos:         { type: [diagnosticoSchema],       default: [] },
 
   // Módulos asignados (normales)
-  modulosAsignados: [{
-    moduloId: { type: mongoose.Schema.Types.ObjectId, ref: 'Modulo' },
-    nombre: String, // por compatibilidad
-    cantidad: { type: Number, min: 0.25, max: 2 },
-    profesionales: [{
-      profesionalId: { type: mongoose.Schema.Types.ObjectId, ref: 'Usuario', required: true },
-      areaId:        { type: mongoose.Schema.Types.ObjectId, ref: 'Area' },
-      area:          String,
-      nombre:        String
-    }]
-  }],
+  modulosAsignados: {
+    type: [{
+      moduloId: { type: mongoose.Schema.Types.ObjectId, ref: 'Modulo' },
+      nombre:   { type: String }, // por compatibilidad con datos viejos
 
-  // 🔸 Módulos de EVENTO ESPECIAL asignados
-  //    - Misma estructura por compatibilidad.
-  //    - cantidad: opcional, default 1 (si tu UI no la pide).
-  modulosEspecialesAsignados: [{
-    moduloId: { type: mongoose.Schema.Types.ObjectId, ref: 'Modulo' }, // o 'ModuloEspecial' si usás colección separada
-    nombre:   { type: String },                                         // fallback si no hay ref
-    cantidad: { type: Number, default: 1, min: 1, max: 1 },             // en EE suele ser 1
-    profesionales: [{
-      profesionalId: { type: mongoose.Schema.Types.ObjectId, ref: 'Usuario', required: true },
-      areaId:        { type: mongoose.Schema.Types.ObjectId, ref: 'Area' },
-      area:          { type: String },
-      nombre:        { type: String }
-    }]
-  }],
+      // 👉 opcionales para facilitar filtros/reportes (el job sigue usando profesionales[0].areaId)
+      areaId:   { type: mongoose.Schema.Types.ObjectId, ref: 'Area' },
+      area:     { type: String },
+
+      cantidad: { type: Number, min: 0.25, max: 2, default: 1 },
+      profesionales: [{
+        profesionalId: { type: mongoose.Schema.Types.ObjectId, ref: 'Usuario', required: true },
+        areaId:        { type: mongoose.Schema.Types.ObjectId, ref: 'Area' },
+        area:          { type: String },
+        nombre:        { type: String }
+      }],
+
+      // vigencia opcional (usado por tu job)
+      desdeMes: { type: String }, // "YYYY-MM"
+      hastaMes: { type: String }  // "YYYY-MM" o null
+    }],
+    default: []
+  },
+
+  // Módulos de EVENTO ESPECIAL asignados (compatibles con tu front)
+  modulosEspecialesAsignados: {
+    type: [{
+      moduloId: { type: mongoose.Schema.Types.ObjectId, ref: 'Modulo' }, // o colección separada si la tuvieras
+      nombre:   { type: String },   // fallback si no hay ref
+      cantidad: { type: Number, default: 1, min: 1, max: 1 }, // en EE suele ser 1
+      profesionales: [{
+        profesionalId: { type: mongoose.Schema.Types.ObjectId, ref: 'Usuario', required: true },
+        areaId:        { type: mongoose.Schema.Types.ObjectId, ref: 'Area' },
+        area:          { type: String },
+        nombre:        { type: String }
+      }]
+    }],
+    default: []
+  },
 
   // quién lo creó
   creadoPor: { type: mongoose.Schema.Types.ObjectId, ref: 'Usuario' }
 
 }, { timestamps: true });
+
+/* =========================
+ * Índices
+ * ========================= */
+pacienteSchema.index({ dni: 1 }, { unique: true });
 
 /* =========================
  * Hooks

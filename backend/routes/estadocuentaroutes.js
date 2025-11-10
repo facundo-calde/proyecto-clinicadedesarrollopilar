@@ -7,22 +7,12 @@ const {
   crearMovimiento,
   eliminarMovimiento,
   generarExtractoPDF,
+  getPorDni, // si no lo usás, eliminá esta línea y la ruta GET /:dni/movimientos
 } = require("../controllers/estadocuentacontrollers");
 
-// Job manual para cargos mensuales
 const { generarCargosDelMes } = require("../jobs/generarCargos");
 
-// Estado general por paciente/área (opcional ?areaId=...&period=YYYY-MM)
-router.get("/:dni", obtenerEstadoDeCuenta);
-
-// Registrar nuevo movimiento (pago, ajuste, factura, etc.)
-router.post("/:dni/movimientos", crearMovimiento);
-
-// Eliminar movimiento por ID
-router.delete("/movimientos/:movId", eliminarMovimiento);
-
-// Generar PDF de extracto por área (opcional ?period=YYYY-MM)
-router.get("/:dni/extracto", generarExtractoPDF);
+// Rutas específicas ANTES de "/:dni"
 
 // Forzar generación de cargos del mes (opcional body { period: "YYYY-MM" })
 router.post("/generar-cargos", async (req, res) => {
@@ -35,5 +25,20 @@ router.post("/generar-cargos", async (req, res) => {
     res.status(500).json({ error: "No se pudieron generar cargos" });
   }
 });
+
+// PDF por área (opcional ?period=YYYY-MM)
+router.get("/:dni/extracto", generarExtractoPDF);
+
+// (Opcional) Listar movimientos por DNI (?areaId=...)
+router.get("/:dni/movimientos", getPorDni);
+
+// Registrar nuevo movimiento (pago, ajuste, etc.)
+router.post("/:dni/movimientos", crearMovimiento);
+
+// Eliminar movimiento por ID
+router.delete("/movimientos/:movId", eliminarMovimiento);
+
+// Estado general por paciente/área (?areaId=...&period=YYYY-MM)
+router.get("/:dni", obtenerEstadoDeCuenta);
 
 module.exports = router;

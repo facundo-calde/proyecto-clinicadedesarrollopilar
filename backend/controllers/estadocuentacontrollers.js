@@ -211,6 +211,22 @@ const eliminarMovimiento = async (req, res) => {
   }
 };
 
+// ----------------- ✅ NUEVO: GET /api/estado-de-cuenta/movimientos/:dni -----------------
+const getPorDni = async (req, res) => {
+  try {
+    const { dni } = req.params;
+    const { areaId } = req.query;
+
+    const q = { dni };
+    if (areaId) q.areaId = new mongoose.Types.ObjectId(areaId);
+
+    const movimientos = await Movimiento.find(q).sort({ fecha: 1 }).lean();
+    res.json({ dni, movimientos });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+};
+
 // ----------------- GET /api/estado-de-cuenta/:dni/extracto?areaId=... -----------------
 async function generarExtractoPDF(req, res) {
   try {
@@ -245,8 +261,10 @@ async function generarExtractoPDF(req, res) {
     const tieneOS = /obra social/i.test(paciente.condicionDePago || "");
 
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition",
-      `inline; filename="Extracto_${dni}_${(area.nombre || "area").replace(/\s+/g,"_")}${period ? "_" + period : ""}.pdf"`);
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename="Extracto_${dni}_${(area.nombre || "area").replace(/\s+/g,"_")}${period ? "_" + period : ""}.pdf"`
+    );
 
     const doc = new PDFDocument({ margin: 40 });
     doc.pipe(res);
@@ -334,6 +352,7 @@ module.exports = {
   crearMovimiento,
   eliminarMovimiento,
   generarExtractoPDF,
+  getPorDni,
   // exporto helpers si los necesitás en tests:
   __test__: { buildFilasArea, parseCantidad, getPrecioModulo }
 };

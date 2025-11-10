@@ -1,6 +1,8 @@
 // controllers/pacientescontrollers.js
 const mongoose = require("mongoose");
 const Paciente = require("../models/pacientes");
+// ⬇️ NUEVO: generador instantáneo de cargos
+const { generarCargosParaPaciente } = require("../jobs/generarCargos");
 
 // --- Validaciones básicas ---
 const WSP_RE  = /^\d{10,15}$/;                // solo dígitos, 10–15
@@ -189,6 +191,7 @@ const crearPaciente = async (req, res) => {
     const actor = getActor(req);
     const observacion = toStr(req.body.observacionCreacion || req.body.descripcionEstado).trim();
 
+    // Por diseño actual, el alta inicial se normaliza a "En espera"
     data.estado = "En espera";
     data.estadoHistorial = [{
       estadoAnterior: undefined,
@@ -205,6 +208,13 @@ const crearPaciente = async (req, res) => {
 
     const nuevo = new Paciente(data);
     await nuevo.save();
+
+    // 🔔 Integración pedida:
+    // Si por alguna razón el paciente quedó en "Alta" al crear (cambio de regla futura),
+    // dispara generación de cargos del mes actual (no bloquea la request).
+    if (nuevo.estado === "Alta") {
+      generarCargosParaPaciente(nuevo.dni).catch(console.error);
+    }
 
     res.status(201).json(nuevo);
   } catch (err) {
@@ -230,6 +240,10 @@ const actualizarPaciente = async (req, res) => {
     const dni = toStr(req.params.dni).trim();
     const paciente = await Paciente.findOne({ dni });
     if (!paciente) return res.status(404).json({ error: "No encontrado" });
+
+    // Tomamos snapshot "antes" para evaluar cambios
+    const antesEstado = paciente.estado || null;
+    const antesMods   = JSON.stringify(paciente.modulosAsignados || []);
 
     const data = buildPacienteData(req.body, paciente);
     const actor = getActor(req);
@@ -271,6 +285,17 @@ const actualizarPaciente = async (req, res) => {
     }
 
     await paciente.save();
+
+    // 🔔 Integración pedida:
+    // Disparar generación de cargos si:
+    // 1) pasó a Alta, o
+    // 2) cambian los módulos asignados (comparación simple por JSON).
+    const pasoAAlta     = (antesEstado !== "Alta") && (paciente.estado === "Alta");
+    const cambioModulos = (antesMods !== JSON.stringify(paciente.modulosAsignados || []));
+    if (pasoAAlta || cambioModulos) {
+      generarCargosParaPaciente(paciente.dni).catch(console.error); // no bloquear la request
+    }
+
     res.json(paciente);
   } catch (err) {
     console.error("❌ Error al actualizar:", err);
