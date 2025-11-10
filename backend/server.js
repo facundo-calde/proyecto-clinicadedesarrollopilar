@@ -17,8 +17,25 @@ if (!RAW_MONGO_URI) {
   console.error('❌ Falta MONGODB_URI en .env (o MONGODB como fallback)');
   process.exit(1);
 }
-const { schedule } = require("./jobs/generarCargos");
-schedule();
+
+// =========================
+// ⏰ JOBS (CARGOS AUTOMÁTICOS)
+// =========================
+try {
+  const { schedule } = require("./jobs/generarCargos");
+
+  // Si NO querés cron → poner ENABLE_CRON=false en tu .env
+  if (process.env.ENABLE_CRON !== "false") {
+    schedule();
+    console.log("⏰ Cron de cargos habilitado");
+  } else {
+    console.log("⏸️ Cron de cargos deshabilitado por ENABLE_CRON=false");
+  }
+
+} catch (e) {
+  console.warn("⚠️ No se pudo cargar jobs/generarCargos:", e.message);
+}
+
 
 const app = express();
 
