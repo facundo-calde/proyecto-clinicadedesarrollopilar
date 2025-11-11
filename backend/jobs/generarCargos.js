@@ -55,12 +55,20 @@ function pickProfesionalNombre(asig, cacheUsuarios) {
   return u?.nombreApellido || u?.usuario || u?.nombre || undefined;
 }
 
+// genera una clave estable por asignación
+function computeAsigKey(asig, idxFallback) {
+  // Preferimos el _id del subdocumento si existe (Mongo lo crea por defecto)
+  if (asig && asig._id) return String(asig._id);
+  if (asig && asig.asigKey) return String(asig.asigKey);
+  // Fallback predecible si no hay _id (no ideal, pero estable mientras no se reordene el array)
+  return `idx:${idxFallback}`;
+}
+
 /* =============== Core Upsert (reutilizable) =============== */
 /** Upsert del cargo del período. Actualiza si existe y NO está PAGADO. */
 async function upsertCargo({
   dni, pacienteId, areaId, areaNombre,
-  modulo, moduloId, period, cantidad, profesionalNombre, asignacion,
-  asigKey // ← clave única por asignación
+  modulo, moduloId, period, cantidad, profesionalNombre, asignacion, asigKey
 }) {
   const base  = getPrecioDesdeValorPadres(modulo, { asig: asignacion });
   const total = +(base * (Number(cantidad ?? 1) || 1)).toFixed(2);
@@ -70,7 +78,7 @@ async function upsertCargo({
   const descripcion   = `Cargo ${period} — ${moduloNumero ? moduloNumero + ". " : ""}${moduloNombre || "Módulo"}`;
 
   // 🚫 No tocar cargos ya pagados
-  const filter = { dni, areaId, moduloId, period, tipo: "CARGO", asigKey, estado: { $ne: "PAGADO" } };
+  const filter = { dni, areaId, moduloId, period, asigKey, tipo: "CARGO", estado: { $ne: "PAGADO" } };
 
   const update = {
     $set: {
@@ -91,7 +99,7 @@ async function upsertCargo({
       dni,
       areaId,
       moduloId,
-      asigKey // ← guardamos la clave
+      asigKey
     },
   };
 
@@ -133,7 +141,7 @@ async function generarCargosDelMes(period = yyyymm()) {
     const dni = p.dni;
     const pid = p._id;
 
-    for (const asig of (p.modulosAsignados || [])) {
+    for (const [idx, asig] of (p.modulosAsignados || []).entries()) {
       const moduloId = asig.moduloId;
       const modulo   = modById.get(String(moduloId));
       if (!modulo) continue;
@@ -152,11 +160,7 @@ async function generarCargosDelMes(period = yyyymm()) {
 
       const profesionalNombre = pickProfesionalNombre(asig, userById);
       const cantidad = Number(asig.cantidad ?? 1) || 1;
-
-      // Clave estable por asignación (idealmente el _id del sub-doc)
-      const asigKey =
-        (asig && asig._id) ? String(asig._id)
-        : `${String(moduloId)}|${String(areaId)}|${String(desdeMes || "")}|${String(hastaMes || "")}`;
+      const asigKey  = computeAsigKey(asig, idx);
 
       try {
         await upsertCargo({
@@ -212,7 +216,7 @@ async function generarCargosParaPaciente(dni, period = yyyymm()) {
 
   let creados = 0;
 
-  for (const asig of (p.modulosAsignados || [])) {
+  for (const [idx, asig] of (p.modulosAsignados || []).entries()) {
     const moduloId = asig.moduloId;
     const modulo   = modById.get(String(moduloId));
     if (!modulo) continue;
@@ -230,10 +234,7 @@ async function generarCargosParaPaciente(dni, period = yyyymm()) {
 
     const profesionalNombre = pickProfesionalNombre(asig, userById);
     const cantidad = Number(asig.cantidad ?? 1) || 1;
-
-    const asigKey =
-      (asig && asig._id) ? String(asig._id)
-      : `${String(moduloId)}|${String(areaId)}|${String(desdeMes || "")}|${String(hastaMes || "")}`;
+    const asigKey  = computeAsigKey(asig, idx);
 
     try {
       await upsertCargo({
@@ -281,6 +282,7 @@ module.exports = {
   generarCargosParaPaciente,
   yyyymm,
 };
+
 
 
 

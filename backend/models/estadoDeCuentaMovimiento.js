@@ -28,16 +28,15 @@ const MovimientoSchema = new Schema(
     // Clave de mes (YYYY-MM)
     period:     { type: String, index: true },
 
+    // Clave de asignación (distingue movimientos del mismo módulo en el mismo mes)
+    asigKey:    { type: String, index: true }, // ej: subdoc _id de modulosAsignados
+
     tipo: {
       type: String,
       enum: ["CARGO", "OS", "PART", "FACT", "AJUSTE+", "AJUSTE-"],
       required: true,
       index: true
     },
-
-    // Identificador estable de la asignación que originó el cargo
-    // Ideal: usar String(asignacion._id) de la sub-doc en modulosAsignados
-    asigKey: { type: String, index: true },
 
     fecha:  { type: Date, default: Date.now },
     monto:  { type: Number, required: true, default: 0 },
@@ -70,7 +69,6 @@ const MovimientoSchema = new Schema(
 );
 
 // 🔒 Un CARGO por (dni, areaId, moduloId, period, asigKey)
-// Permite múltiples cargos del mismo módulo en el mismo mes SI provienen de asignaciones distintas.
 MovimientoSchema.index(
   { dni: 1, areaId: 1, moduloId: 1, period: 1, tipo: 1, asigKey: 1 },
   { unique: true, partialFilterExpression: { tipo: "CARGO" } }
@@ -80,3 +78,4 @@ MovimientoSchema.index(
 module.exports =
   mongoose.models.EstadoDeCuentaMovimiento
   || mongoose.model("EstadoDeCuentaMovimiento", MovimientoSchema);
+
