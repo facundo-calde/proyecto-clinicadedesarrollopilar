@@ -1,4 +1,3 @@
-// backend/jobs/generarCargos.js
 let cron = null;
 try {
   cron = require("node-cron");
@@ -56,11 +55,27 @@ function pickProfesionalNombre(asig, cacheUsuarios) {
   return u?.nombreApellido || u?.usuario || u?.nombre || undefined;
 }
 
+// Construye un id estable para distinguir asignaciones (si no tienen _id propio)
+function buildAsignacionId(asig, areaId) {
+  // Si tu objeto de asignación ya tiene _id, usalo
+  const raw = asig?._id || asig?.id || asig?.asignacionId;
+  if (raw) return String(raw);
+
+  // Fallback determinístico: moduloId + areaId + vigencia
+  const parts = [
+    asig?.moduloId || "",
+    areaId || "",
+    asig?.desdeMes || "",
+    asig?.hastaMes || ""
+  ];
+  return parts.map(p => String(p)).join("|");
+}
+
 /* =============== Core Upsert (reutilizable) =============== */
 /** Upsert del cargo del período. Actualiza si existe y NO está PAGADO. */
 async function upsertCargo({
   dni, pacienteId, areaId, areaNombre,
-  modulo, moduloId, period, cantidad, profesionalNombre, asignacion // <- pasamos la asig para override
+  modulo, moduloId, period, cantidad, profesionalNombre, asignacion // ← pasamos la asig para override y asignacionId
 }) {
   const base  = getPrecioDesdeValorPadres(modulo, { asig: asignacion });
   const total = +(base * (Number(cantidad ?? 1) || 1)).toFixed(2);
@@ -69,8 +84,11 @@ async function upsertCargo({
   const moduloNumero  = modulo?.numero || "";
   const descripcion   = `Cargo ${period} — ${moduloNumero ? moduloNumero + ". " : ""}${moduloNombre || "Módulo"}`;
 
+  // Identificador de la asignación (clave para separar filas)
+  const asignacionId = buildAsignacionId(asignacion, areaId);
+
   // 🚫 No tocar cargos ya pagados
-  const filter = { dni, areaId, moduloId, period, tipo: "CARGO", estado: { $ne: "PAGADO" } };
+  const filter = { dni, areaId, moduloId, period, tipo: "CARGO", asignacionId, estado: { $ne: "PAGADO" } };
 
   const update = {
     $set: {
@@ -81,6 +99,7 @@ async function upsertCargo({
       // denormalizados para mostrar en front
       moduloNombre: moduloNombre || undefined,
       areaNombre: areaNombre || undefined,
+      asignacionId, // mantenerlo en $set por si cambia el fallback de clave
     },
     $setOnInsert: {
       pacienteId,
@@ -269,6 +288,7 @@ module.exports = {
   generarCargosParaPaciente,
   yyyymm,
 };
+
 
 
 
