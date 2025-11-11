@@ -310,7 +310,7 @@
       }
 
       // Fallback a movimientos crudos
-      const total = movs.reduce((sum, m) => sum + (m.monto || 0), 0);
+      const total = movs.reduce((sum, m) => sum + Number(m.monto || 0), 0);
       let html = `
         <h3>Estado de cuenta de ${paciente.nombre} (DNI ${paciente.dni})${areaSel ? ` — <small>${areaSel.nombre || ''}</small>` : ''}</h3>
         <p><strong>Total actual:</strong> ${fmtARS(total)}</p>
@@ -327,12 +327,15 @@
           <tbody>
       `;
       movs.forEach((m) => {
+        const concepto =
+          (m.moduloNombre ? `${m.moduloNombre}${m.cantidad ? ` × ${m.cantidad}` : ''}` : null) ||
+          m.descripcion || "-";
         html += `
           <tr>
             <td>${m.fecha ? new Date(m.fecha).toLocaleDateString('es-AR') : "-"}</td>
             <td>${m.areaNombre ?? m.area ?? "-"}</td>
-            <td>${m.descripcion ?? "-"}</td>
-            <td style="text-align:right;">${fmtARS(m.monto)}</td>
+            <td>${concepto}</td>
+            <td style="text-align:right;">${fmtARS(Number(m.monto || 0))}</td>
             <td>${m.tipo ?? "-"}</td>
           </tr>
         `;
@@ -349,15 +352,11 @@
   // ==============================
   // Descargar estado de cuenta (PDF)
   // ==============================
-  // NOTA: este botón solo abrirá el PDF del último paciente buscado y área elegida en el modal.
-  // Si necesitás elegir área acá también, tendríamos que guardar en una variable global la última selección.
   if ($btnDescargar) {
     $btnDescargar.addEventListener("click", async () => {
       try {
-        // Intento: si hay texto en el input, busco el paciente por DNI exacto (si es numérico) o muestro aviso
         const term = ($input && $input.value ? $input.value : '').trim();
         if (!term) { alert("Primero buscá y abrí la ficha del paciente para elegir el área."); return; }
-        // Este botón queda como auxiliar. El flujo recomendado es usar el botón del modal (ver abajo).
         alert("Para descargar el PDF usá el botón 'Descargar PDF' dentro del modal de Estado de cuenta (ahí elige el área).");
       } catch (err) {
         console.error(err);
@@ -397,7 +396,7 @@
               f.profesional ||
               (f.profesionales && (f.profesionales.profesional?.[0] || f.profesionales.coordinador?.[0] || f.profesionales.pasante?.[0] || f.profesionales.directora?.[0])) ||
               "-";
-            const pagado = Number(f.pagado || 0); // si no traemos por fila, queda 0
+            const pagado = Number(f.pagado || 0);
             const aPagar = Number(f.aPagar || 0);
             const saldo  = Number(f.saldo != null ? f.saldo : (aPagar - pagado));
             const estado = f.estado || (saldo <= 0 ? "PAGADO" : "PENDIENTE");
@@ -479,14 +478,13 @@
         confirmButtonText: 'Cerrar',
       });
 
-      // Acción de descarga del PDF (usa tu endpoint /api/estado-de-cuenta/:dni/extracto)
+      // Acción de descarga del PDF
       const $pdfBtn = document.getElementById('edcBtnDescargarPDF');
       if ($pdfBtn) {
         $pdfBtn.addEventListener('click', () => {
           let url = `/api/estado-de-cuenta/${encodeURIComponent(paciente.dni)}/extracto`;
           const qs = [];
           if (areaSel && areaSel.id) qs.push(`areaId=${encodeURIComponent(areaSel.id)}`);
-          // si usás period, agregalo acá, ej: qs.push(`period=${encodeURIComponent(period)}`)
           if (qs.length) url += `?${qs.join('&')}`;
           window.open(url, '_blank');
         });
