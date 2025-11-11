@@ -928,7 +928,7 @@ async function crearModuloEventoEspecial() {
   };
 
   const { value: formValues } = await Swal.fire({
-    title: 'Cargar módulo de EVENTO ESPECIAL',
+    title: 'Cargar EVENTO ESPECIAL',
     width: '700px',
     html: `
       <style>
