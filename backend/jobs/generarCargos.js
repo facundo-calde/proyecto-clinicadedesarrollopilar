@@ -35,31 +35,22 @@ function parseNumberLike(v) {
 }
 
 /**
- * Precio del módulo = lo que "pagan los padres".
- * Si en la asignación viene un override (asig.precio/valor/monto/importe/tarifa), tiene prioridad.
+ * Precio del cargo:
+ * 1) Si la asignación trae override (precio/valor/monto/arancel/importe/tarifa), usarlo.
+ * 2) Si no, usar modulo.valorPadres.
  */
-function getPrecioModulo(modulo, { asig } = {}) {
-  // 1) Override en la asignación
-  const candAsig = [asig?.precio, asig?.valor, asig?.monto, asig?.importe, asig?.tarifa];
-  for (const v of candAsig) {
-    const n = parseNumberLike(v);
-    if (n) return n;
-  }
-  // 2) Base del módulo
-  if (typeof modulo?.valorPadres === "number") return modulo.valorPadres;
+function getPrecioDesdeValorPadres(modulo, { asig }) {
+  const override = [asig?.precio, asig?.valor, asig?.monto, asig?.arancel, asig?.importe, asig?.tarifa]
+    .map(parseNumberLike)
+    .find(n => n > 0);
+  if (override) return override;
 
-  // 3) Fallbacks por si hay módulos viejos con otros campos
-  const alt = ["precio", "valor", "monto", "arancel", "importe", "tarifa"];
-  for (const k of alt) {
-    const n = parseNumberLike(modulo?.[k]);
-    if (n) return n;
-  }
-  return 0;
+  return parseNumberLike(modulo?.valorPadres) || 0;
 }
 
 function pickProfesionalNombre(asig, cacheUsuarios) {
   const arr = Array.isArray(asig?.profesionales) ? asig.profesionales : [];
-  const id  = arr[0]?.profesionalId || arr[0]?._id || arr[0];
+  const id = arr[0]?.profesionalId || arr[0]?._id || arr[0];
   if (!id) return undefined;
   const u = cacheUsuarios?.get(String(id));
   return u?.nombreApellido || u?.usuario || u?.nombre || undefined;
@@ -68,17 +59,15 @@ function pickProfesionalNombre(asig, cacheUsuarios) {
 /* =============== Core Upsert (reutilizable) =============== */
 /** Upsert del cargo del período. Actualiza si existe y NO está PAGADO. */
 async function upsertCargo({
-  dni, pacienteId, areaId, areaNombre,
-  modulo, moduloId, period, cantidad, profesionalNombre, asig
+  dni, pacienteId, areaId,
+  modulo, moduloId, period, cantidad, profesionalNombre, asignacion // <- pasamos la asig para ver override
 }) {
-  // precio
-  const base  = getPrecioModulo(modulo, { asig });
-  const qty   = Number(cantidad ?? 1) || 1;
-  const total = +(base * qty).toFixed(2);
+  const base  = getPrecioDesdeValorPadres(modulo, { asig: asignacion });
+  const total = +(base * (Number(cantidad ?? 1) || 1)).toFixed(2);
 
-  const moduloNombre = modulo?.nombre || modulo?.titulo || "";
-  const moduloNumero = modulo?.numero || "";
-  const descripcion  = `Cargo ${period} — ${moduloNumero ? moduloNumero + ". " : ""}${moduloNombre || "Módulo"}`;
+  const moduloNombre  = modulo?.nombre || modulo?.titulo || "";
+  const moduloNumero  = modulo?.numero || "";
+  const descripcion   = `Cargo ${period} — ${moduloNumero ? moduloNumero + ". " : ""}${moduloNombre || "Módulo"}`;
 
   // 🚫 No tocar cargos ya pagados
   const filter = { dni, areaId, moduloId, period, tipo: "CARGO", estado: { $ne: "PAGADO" } };
@@ -87,11 +76,8 @@ async function upsertCargo({
     $set: {
       descripcion,
       monto: total,
-      cantidad: qty,
+      cantidad: Number(cantidad ?? 1) || 1,
       profesional: profesionalNombre,
-      // Estos dos ayudan al front, pero tu schema debe permitirlos (o ponelos dentro de meta.*)
-      moduloNombre: moduloNombre || undefined,
-      areaNombre:   areaNombre   || undefined,
     },
     $setOnInsert: {
       pacienteId,
@@ -150,31 +136,29 @@ async function generarCargosDelMes(period = yyyymm()) {
 
       const areaId = asig.profesionales?.[0]?.areaId;
       if (!areaId) continue;
-      const area        = areaById.get(String(areaId));
-      const areaNombre  = area?.nombre || area?.titulo || "";
+      const area   = areaById.get(String(areaId));
 
       // Vigencia
-      const createdAt     = p.createdAt || p.creadoEl || new Date();
+      const createdAt = p.createdAt || p.creadoEl || new Date();
       const createdPeriod = yyyymm(new Date(createdAt));
-      const desdeMes      = asig.desdeMes || createdPeriod;
-      const hastaMes      = asig.hastaMes || null;
+      const desdeMes = asig.desdeMes || createdPeriod;
+      const hastaMes = asig.hastaMes || null;
       if (!inRange(period, desdeMes, hastaMes)) continue;
 
       const profesionalNombre = pickProfesionalNombre(asig, userById);
-      const cantidad          = Number(asig.cantidad ?? 1) || 1;
+      const cantidad = Number(asig.cantidad ?? 1) || 1;
 
       try {
         await upsertCargo({
           dni,
           pacienteId: pid,
           areaId,
-          areaNombre,
           modulo,
           moduloId,
           period,
           cantidad,
           profesionalNombre,
-          asig,
+          asignacion: asig,
         });
         procesados++;
       } catch (e) {
@@ -193,14 +177,14 @@ async function generarCargosParaPaciente(dni, period = yyyymm()) {
   if (!p) return { ok: true, created: 0 };
 
   // Precarga
-  const modIds  = new Set();
+  const modIds = new Set();
   const userIds = new Set();
   const areaIds = new Set();
   for (const a of (p.modulosAsignados || [])) {
     if (a.moduloId) modIds.add(String(a.moduloId));
     for (const pr of (a.profesionales || [])) {
       if (pr.profesionalId) userIds.add(String(pr.profesionalId));
-      if (pr.areaId)        areaIds.add(String(pr.areaId));
+      if (pr.areaId) areaIds.add(String(pr.areaId));
     }
   }
 
@@ -223,30 +207,27 @@ async function generarCargosParaPaciente(dni, period = yyyymm()) {
 
     const areaId = asig.profesionales?.[0]?.areaId;
     if (!areaId) continue;
-    const area        = areaById.get(String(areaId));
-    const areaNombre  = area?.nombre || area?.titulo || "";
 
-    const createdAt     = p.createdAt || p.creadoEl || new Date();
+    const createdAt = p.createdAt || p.creadoEl || new Date();
     const createdPeriod = yyyymm(new Date(createdAt));
-    const desdeMes      = asig.desdeMes || createdPeriod;
-    const hastaMes      = asig.hastaMes || null;
+    const desdeMes = asig.desdeMes || createdPeriod;
+    const hastaMes = asig.hastaMes || null;
     if (!inRange(period, desdeMes, hastaMes)) continue;
 
     const profesionalNombre = pickProfesionalNombre(asig, userById);
-    const cantidad          = Number(asig.cantidad ?? 1) || 1;
+    const cantidad = Number(asig.cantidad ?? 1) || 1;
 
     try {
       await upsertCargo({
         dni,
         pacienteId: p._id,
         areaId,
-        areaNombre,
         modulo,
         moduloId,
         period,
         cantidad,
         profesionalNombre,
-        asig,
+        asignacion: asig,
       });
       creados++;
     } catch (e) {
