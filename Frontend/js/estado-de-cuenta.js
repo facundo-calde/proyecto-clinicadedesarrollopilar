@@ -2,8 +2,6 @@
 (() => {
   'use strict';
 
-  // Si NO cargaste SweetAlert2 en el HTML, agregalo:
-  // <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   if (typeof window.Swal === 'undefined') {
     console.warn('SweetAlert2 no está cargado. Agregá el <script> del CDN antes de este archivo.');
   }
@@ -14,33 +12,25 @@
   const EDC_LOGIN = 'index.html';
   const edcGoLogin = () => location.replace(EDC_LOGIN);
 
-  // Usuario y token
   let edcUsuarioSesion = null;
   try {
     edcUsuarioSesion = JSON.parse(localStorage.getItem('usuario') || 'null');
-  } catch {
-    edcUsuarioSesion = null;
-  }
+  } catch { edcUsuarioSesion = null; }
   const edcToken = localStorage.getItem('token');
-
-  // Guard inmediato
   if (!edcToken) edcGoLogin();
 
-  // Anti-BFCache
   window.addEventListener('pageshow', (e) => {
     const nav = performance.getEntriesByType('navigation')[0];
     const fromBF = e.persisted || (nav && nav.type === 'back_forward');
     if (fromBF && !localStorage.getItem('token')) edcGoLogin();
   });
 
-  // Anti-atrás
   history.pushState(null, '', location.href);
   window.addEventListener('popstate', () => {
     if (!localStorage.getItem('token')) edcGoLogin();
     else history.pushState(null, '', location.href);
   });
 
-  // Pintar nombre en top bar
   (() => {
     const userNameEl = document.getElementById('userName');
     if (userNameEl && edcUsuarioSesion && edcUsuarioSesion.nombreApellido) {
@@ -48,7 +38,6 @@
     }
   })();
 
-  // Helper fetch con Authorization y manejo de 401
   async function edcFetchAuth(url, options = {}) {
     const opts = {
       ...options,
@@ -82,23 +71,24 @@
       #sugerenciasEDC li{padding:12px 14px;cursor:pointer}
       #sugerenciasEDC li:hover{background:#f5f7f8}
 
-      /* Tablas de Estado de Cuenta */
-      .edc-table { width:100%; border-collapse:collapse; table-layout:fixed; }
-      .edc-table th, .edc-table td { padding:10px; border-bottom:1px solid #ddd; font-size:14px; }
-      .edc-table th { background:#f2f4ff; }
+      /* Tabla más flexible */
+      .edc-table { width:100%; border-collapse:collapse; table-layout:auto; }
+      .edc-table th, .edc-table td { padding:10px; border-bottom:1px solid #ddd; font-size:14px; vertical-align:middle; }
 
-      /* Anchos sugeridos por columna */
-      .edc-col-mes   { width: 90px;  }
-      .edc-col-mod   { width: 260px; }
-      .edc-col-cant  { width: 70px;  text-align:right; }
-      .edc-col-prof  { width: 220px; }
-      .edc-col-pag   { width: 120px; text-align:right; }
-      .edc-col-apag  { width: 120px; text-align:right; }
-      .edc-col-saldo { width: 120px; text-align:right; }
-      .edc-col-est   { width: 110px; white-space:nowrap; }
-      .edc-col-obs   { width: auto; }
+      .edc-th { background:#f2f4ff; font-weight:600; }
 
-      .edc-num { text-align:right; }
+      /* Min-widths (no fijos) y comportamiento de texto */
+      .edc-col-mes   { min-width: 90px;  white-space:nowrap; }
+      .edc-col-mod   { min-width: 220px; white-space:normal; word-break:break-word; }
+      .edc-col-cant  { min-width: 70px;  text-align:right; white-space:nowrap; }
+      .edc-col-prof  { min-width: 220px; white-space:normal; word-break:break-word; }
+      .edc-col-pag   { min-width: 120px; text-align:right; white-space:nowrap; }
+      .edc-col-apag  { min-width: 120px; text-align:right; white-space:nowrap; }
+      .edc-col-saldo { min-width: 120px; text-align:right; white-space:nowrap; }
+      .edc-col-est   { min-width: 110px; text-align:left;  white-space:nowrap; }
+      .edc-col-obs   { min-width: 240px; white-space:normal; word-break:break-word; }
+
+      .edc-total-row { background:#fafafa; font-weight:600; }
     `;
     const style = document.createElement('style');
     style.id = 'edc-inline-styles';
@@ -256,7 +246,6 @@
       const estado = await edcApiJson(path);
       if (!$contenedor) return;
 
-      // Preferimos filas + totales. Si no vienen, caemos a movimientos.
       const filas = Array.isArray(estado.filas) ? estado.filas : [];
       const movs  = Array.isArray(estado.movimientos) ? estado.movimientos : [];
 
@@ -276,7 +265,7 @@
           <p><strong>Total actual:</strong> ${fmtARS(saldo)}</p>
           <table class="edc-table">
             <thead>
-              <tr>
+              <tr class="edc-th">
                 <th class="edc-col-mes">Mes</th>
                 <th class="edc-col-mod">Módulo</th>
                 <th class="edc-col-cant">Cant.</th>
@@ -308,7 +297,7 @@
         html += `
             </tbody>
             <tfoot>
-              <tr style="background:#fafafa;font-weight:600;">
+              <tr class="edc-total-row">
                 <td colspan="4" style="text-align:right;">TOTAL A PAGAR</td>
                 <td class="edc-col-apag">${fmtARS(totalAPagar)}</td>
               </tr>
@@ -334,7 +323,7 @@
         <p><strong>Total actual:</strong> ${fmtARS(total)}</p>
         <table class="edc-table">
           <thead>
-            <tr>
+            <tr class="edc-th">
               <th class="edc-col-mes">Fecha</th>
               <th class="edc-col-mod">Área</th>
               <th class="edc-col-prof">Concepto</th>
@@ -396,7 +385,6 @@
 
       const data = await edcApiJson(path);
 
-      // Preferimos filas con totales
       const filas = Array.isArray(data.filas) ? data.filas : [];
       const movimientos = Array.isArray(data.movimientos) ? data.movimientos : [];
       const tot = data.totales || {};
@@ -404,7 +392,6 @@
       const totalPagado = Number((tot.pagadoOS || 0) + (tot.pagadoPART || 0) + (tot.ajustesMas || 0) - (tot.ajustesMenos || 0));
       const totalSaldo  = Number(tot.saldo || (totalAPagar - totalPagado));
 
-      // Construcción de filas visuales compatibles
       const filasParaMostrar = filas.length
         ? filas.map(f => {
             const mes = f.mes || "-";
@@ -419,7 +406,6 @@
             const saldo  = Number(f.saldo != null ? f.saldo : (aPagar - pagado));
             const estado = f.estado || (saldo <= 0 ? "PAGADO" : "PENDIENTE");
             const observacion = f.obs || f.observaciones || "";
-
             return { mes, modulo, cantidad, profesional, pagado, aPagar, saldo, estado, observacion };
           })
         : movimientos.map(m => {
@@ -432,7 +418,6 @@
             const saldo  = Number(m.saldo != null ? m.saldo : (aPagar - pagado));
             const estado = m.estado || (saldo <= 0 ? "PAGADO" : "PENDIENTE");
             const observacion = m.observaciones || m.observacion || "";
-
             return { mes, modulo, cantidad, profesional, pagado, aPagar, saldo, estado, observacion };
           });
 
@@ -456,7 +441,7 @@
           <div style="overflow:auto; max-height:60vh; border:1px solid #d0d0d0; border-radius:8px;">
             <table class="edc-table">
               <thead>
-                <tr>
+                <tr class="edc-th">
                   <th class="edc-col-mes">MES</th>
                   <th class="edc-col-mod">MÓDULO</th>
                   <th class="edc-col-cant">CANT.</th>
@@ -472,7 +457,7 @@
                 ${rowsHtml || `<tr><td colspan="9" style="padding:10px;"><em>Sin movimientos para esta área.</em></td></tr>`}
               </tbody>
               <tfoot>
-                <tr style="background:#fafafa; font-weight:600;">
+                <tr class="edc-total-row">
                   <td colspan="4" style="padding:8px;">TOTAL</td>
                   <td class="edc-col-pag">${fmtARS(totalPagado)}</td>
                   <td class="edc-col-apag">${fmtARS(totalAPagar)}</td>
@@ -496,7 +481,6 @@
         confirmButtonText: 'Cerrar',
       });
 
-      // Acción de descarga del PDF
       const $pdfBtn = document.getElementById('edcBtnDescargarPDF');
       if ($pdfBtn) {
         $pdfBtn.addEventListener('click', () => {
@@ -510,11 +494,7 @@
 
     } catch (e) {
       console.error('Error al abrir modal de estado de cuenta:', e);
-      await Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: 'No se pudo cargar el estado de cuenta del área seleccionada.',
-      });
+      await Swal.fire({ icon: 'error', title: 'Error', text: 'No se pudo cargar el estado de cuenta del área seleccionada.' });
     }
   }
 
@@ -621,9 +601,7 @@
     }
   }
 
-  // Exponer si querés usarlo externamente (opcional):
   // window.edcMostrarFichaPaciente = edcMostrarFichaPaciente;
-
 })();
 
 
