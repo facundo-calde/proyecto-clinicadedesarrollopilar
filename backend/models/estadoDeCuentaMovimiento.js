@@ -1,3 +1,4 @@
+// backend/models/estadoDeCuentaMovimiento.js
 const mongoose = require("mongoose");
 const { Schema } = mongoose;
 
@@ -21,15 +22,12 @@ const MovimientoSchema = new Schema(
     areaId:     { type: Schema.Types.ObjectId, ref: "Area", index: true, required: true },
     moduloId:   { type: Schema.Types.ObjectId, ref: "Modulo", index: true },
 
-    // Denormalizados para mostrar en frontend (opcionales)
+    // Denormalizados para mostrar en frontend (evitan joins)
     areaNombre:   { type: String },
     moduloNombre: { type: String },
 
     // Clave de mes (YYYY-MM)
     period:     { type: String, index: true },
-
-    // Identificador estable de la asignación para permitir múltiples cargos del mismo módulo/área en el mismo mes
-    asignacionId: { type: String, index: true }, // ← NUEVO
 
     tipo: {
       type: String,
@@ -42,19 +40,19 @@ const MovimientoSchema = new Schema(
     monto:  { type: Number, required: true, default: 0 },
 
     // Snapshot de asignación
-    cantidad:   { type: Number },
-    profesional:{ type: String },
-    coordinador:{ type: String },
-    pasante:    { type: String },
-    directoras: [{ type: String }],
+    cantidad:    { type: Number },
+    profesional: { type: String },
+    coordinador: { type: String },
+    pasante:     { type: String },
+    directoras:  [{ type: String }],
 
     // Datos complementarios
-    nroRecibo:    { type: String },
-    tipoFactura:  { type: String },
-    formato:      { type: String },
-    archivoURL:   { type: String },
-    descripcion:  { type: String },
-    observaciones:{ type: String },
+    nroRecibo:     { type: String },
+    tipoFactura:   { type: String },
+    formato:       { type: String },
+    archivoURL:    { type: String },
+    descripcion:   { type: String },
+    observaciones: { type: String },
 
     estado: {
       type: String,
@@ -68,14 +66,11 @@ const MovimientoSchema = new Schema(
   { timestamps: true }
 );
 
-// ❌ Antes: único por (dni, areaId, moduloId, period, tipo) => impedía filas independientes
-// ✅ Ahora: también incluye asignacionId (cuando tipo = "CARGO")
-MovimientoSchema.index(
-  { dni: 1, areaId: 1, moduloId: 1, period: 1, tipo: 1, asignacionId: 1 },
-  { unique: true, partialFilterExpression: { tipo: "CARGO" } }
-);
+// ⛔️ IMPORTANTE:
+// Quitamos el índice único para permitir múltiples CARGOS por (dni, areaId, moduloId, period).
+// Si querés performance, mantenemos índices no únicos en los campos ya marcados con { index: true }.
 
-// Evitar OverwriteModelError en hot-reload
+// ✅ Publicación con guardia para evitar OverwriteModelError
 module.exports =
   mongoose.models.EstadoDeCuentaMovimiento
   || mongoose.model("EstadoDeCuentaMovimiento", MovimientoSchema);
