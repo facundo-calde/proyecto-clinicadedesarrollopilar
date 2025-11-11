@@ -1,8 +1,8 @@
 // controllers/pacientescontrollers.js
 const mongoose = require("mongoose");
 const Paciente = require("../models/pacientes");
+// ⬅️ NUEVO: import directo del job para disparar cargos cuando corresponde
 const { generarCargosParaPaciente } = require("../jobs/generarCargos");
-
 
 // --- Validaciones básicas ---
 const WSP_RE  = /^\d{10,15}$/;                // solo dígitos, 10–15
@@ -200,16 +200,16 @@ const crearPaciente = async (req, res) => {
       cambiadoPor: actor
     }];
 
-    if ('creadoPor' in Paciente.schema.paths) {
+    if ("creadoPor" in Paciente.schema.paths) {
       data.creadoPor = actor.usuarioId;
     }
 
     const nuevo = new Paciente(data);
     await nuevo.save();
 
-    // 🔔 Integración: si por algún motivo el create llega ya en "Alta", generamos cargos
+    // ⬅️ NUEVO: si entró ya en Alta por algún flujo, disparamos cargos
     if (nuevo.estado === "Alta") {
-      generarCargosParaPaciente(nuevo.dni).catch(console.error); // no bloquear respuesta
+      generarCargosParaPaciente(nuevo.dni).catch(console.error); // no bloquea
     }
 
     res.status(201).json(nuevo);
@@ -237,7 +237,7 @@ const actualizarPaciente = async (req, res) => {
     const paciente = await Paciente.findOne({ dni });
     if (!paciente) return res.status(404).json({ error: "No encontrado" });
 
-    // Snapshot "antes" (para disparar cargos solo si corresponde)
+    // ⬅️ NUEVO: snapshots antes de tocar nada (para decidir si disparamos cargos)
     const antesEstado = paciente.estado || null;
     const antesMods   = JSON.stringify(paciente.modulosAsignados || []);
 
@@ -282,11 +282,11 @@ const actualizarPaciente = async (req, res) => {
 
     await paciente.save();
 
-    // 🔔 Integración: dispara cargos si pasó a Alta o cambiaron módulos
+    // ⬅️ NUEVO: dispara cargos si pasó a Alta o cambiaron módulos (comparando snapshots)
     const pasoAAlta     = (antesEstado !== "Alta") && (paciente.estado === "Alta");
     const cambioModulos = (antesMods !== JSON.stringify(paciente.modulosAsignados || []));
     if (pasoAAlta || cambioModulos) {
-      generarCargosParaPaciente(paciente.dni).catch(console.error);
+      generarCargosParaPaciente(paciente.dni).catch(console.error); // fire-and-forget
     }
 
     res.json(paciente);
