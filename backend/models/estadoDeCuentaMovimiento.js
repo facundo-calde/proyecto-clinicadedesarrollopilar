@@ -1,4 +1,3 @@
-// backend/models/estadoDeCuentaMovimiento.js
 const mongoose = require("mongoose");
 const { Schema } = mongoose;
 
@@ -22,7 +21,7 @@ const MovimientoSchema = new Schema(
     areaId:     { type: Schema.Types.ObjectId, ref: "Area", index: true, required: true },
     moduloId:   { type: Schema.Types.ObjectId, ref: "Modulo", index: true },
 
-    // ✅ Denormalizados para mostrar en frontend
+    // ✅ Denormalizados para mostrar en frontend (evitan populate)
     areaNombre:   { type: String },
     moduloNombre: { type: String },
 

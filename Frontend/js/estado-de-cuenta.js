@@ -81,6 +81,24 @@
       #sugerenciasEDC{list-style:none;margin:8px 0 0 0;padding:0;background:#fff;border:1px solid #d0d0d0;border-radius:10px;max-height:280px;overflow:auto}
       #sugerenciasEDC li{padding:12px 14px;cursor:pointer}
       #sugerenciasEDC li:hover{background:#f5f7f8}
+
+      /* Tablas de Estado de Cuenta */
+      .edc-table { width:100%; border-collapse:collapse; table-layout:fixed; }
+      .edc-table th, .edc-table td { padding:10px; border-bottom:1px solid #ddd; font-size:14px; }
+      .edc-table th { background:#f2f4ff; }
+
+      /* Anchos sugeridos por columna */
+      .edc-col-mes   { width: 90px;  }
+      .edc-col-mod   { width: 260px; }
+      .edc-col-cant  { width: 70px;  text-align:right; }
+      .edc-col-prof  { width: 220px; }
+      .edc-col-pag   { width: 120px; text-align:right; }
+      .edc-col-apag  { width: 120px; text-align:right; }
+      .edc-col-saldo { width: 120px; text-align:right; }
+      .edc-col-est   { width: 110px; white-space:nowrap; }
+      .edc-col-obs   { width: auto; }
+
+      .edc-num { text-align:right; }
     `;
     const style = document.createElement('style');
     style.id = 'edc-inline-styles';
@@ -256,14 +274,14 @@
         let html = `
           <h3>Estado de cuenta de ${paciente.nombre} (DNI ${paciente.dni})${areaSel ? ` — <small>${areaSel.nombre || ''}</small>` : ''}</h3>
           <p><strong>Total actual:</strong> ${fmtARS(saldo)}</p>
-          <table border="1" cellpadding="6" cellspacing="0" style="width:100%;border-collapse:collapse">
+          <table class="edc-table">
             <thead>
               <tr>
-                <th>Mes</th>
-                <th>Módulo</th>
-                <th>Cant.</th>
-                <th>Profesional</th>
-                <th>A pagar</th>
+                <th class="edc-col-mes">Mes</th>
+                <th class="edc-col-mod">Módulo</th>
+                <th class="edc-col-cant">Cant.</th>
+                <th class="edc-col-prof">Profesional</th>
+                <th class="edc-col-apag">A pagar</th>
               </tr>
             </thead>
             <tbody>
@@ -273,17 +291,17 @@
             f.profesional ||
             (f.profesionales && (f.profesionales.profesional?.[0] || f.profesionales.coordinador?.[0] || f.profesionales.pasante?.[0] || f.profesionales.directora?.[0])) ||
             "-";
-          const modulo = f.modulo || f.moduloNumero || "-";
+          const modulo = f.moduloNombre || f.modulo || f.moduloNumero || "-";
           const cant   = f.cantidad != null ? f.cantidad : (f.cant != null ? f.cant : 1);
           const aPagar = Number(f.aPagar || 0);
 
           html += `
             <tr>
-              <td>${f.mes || "-"}</td>
-              <td>${modulo}</td>
-              <td style="text-align:right;">${cant}</td>
-              <td>${profesional}</td>
-              <td style="text-align:right;">${fmtARS(aPagar)}</td>
+              <td class="edc-col-mes">${f.mes || "-"}</td>
+              <td class="edc-col-mod">${modulo}</td>
+              <td class="edc-col-cant">${cant}</td>
+              <td class="edc-col-prof">${profesional}</td>
+              <td class="edc-col-apag">${fmtARS(aPagar)}</td>
             </tr>
           `;
         });
@@ -292,15 +310,15 @@
             <tfoot>
               <tr style="background:#fafafa;font-weight:600;">
                 <td colspan="4" style="text-align:right;">TOTAL A PAGAR</td>
-                <td style="text-align:right;">${fmtARS(totalAPagar)}</td>
+                <td class="edc-col-apag">${fmtARS(totalAPagar)}</td>
               </tr>
               <tr>
                 <td colspan="4" style="text-align:right;">TOTAL PAGADO (OS+PART+AJUSTES)</td>
-                <td style="text-align:right;">${fmtARS(totalPagado)}</td>
+                <td class="edc-col-apag">${fmtARS(totalPagado)}</td>
               </tr>
               <tr>
                 <td colspan="4" style="text-align:right;">SALDO</td>
-                <td style="text-align:right;">${fmtARS(saldo)}</td>
+                <td class="edc-col-apag">${fmtARS(saldo)}</td>
               </tr>
             </tfoot>
           </table>
@@ -314,14 +332,14 @@
       let html = `
         <h3>Estado de cuenta de ${paciente.nombre} (DNI ${paciente.dni})${areaSel ? ` — <small>${areaSel.nombre || ''}</small>` : ''}</h3>
         <p><strong>Total actual:</strong> ${fmtARS(total)}</p>
-        <table border="1" cellpadding="6" cellspacing="0" style="width:100%;border-collapse:collapse">
+        <table class="edc-table">
           <thead>
             <tr>
-              <th>Fecha</th>
-              <th>Área</th>
-              <th>Concepto</th>
-              <th>Monto</th>
-              <th>Tipo</th>
+              <th class="edc-col-mes">Fecha</th>
+              <th class="edc-col-mod">Área</th>
+              <th class="edc-col-prof">Concepto</th>
+              <th class="edc-col-apag">Monto</th>
+              <th class="edc-col-est">Tipo</th>
             </tr>
           </thead>
           <tbody>
@@ -332,11 +350,11 @@
           m.descripcion || "-";
         html += `
           <tr>
-            <td>${m.fecha ? new Date(m.fecha).toLocaleDateString('es-AR') : "-"}</td>
-            <td>${m.areaNombre ?? m.area ?? "-"}</td>
-            <td>${concepto}</td>
-            <td style="text-align:right;">${fmtARS(Number(m.monto || 0))}</td>
-            <td>${m.tipo ?? "-"}</td>
+            <td class="edc-col-mes">${m.fecha ? new Date(m.fecha).toLocaleDateString('es-AR') : "-"}</td>
+            <td class="edc-col-mod">${m.areaNombre ?? m.area ?? "-"}</td>
+            <td class="edc-col-prof">${concepto}</td>
+            <td class="edc-col-apag">${fmtARS(Number(m.monto || 0))}</td>
+            <td class="edc-col-est">${m.tipo ?? "-"}</td>
           </tr>
         `;
       });
@@ -390,7 +408,7 @@
       const filasParaMostrar = filas.length
         ? filas.map(f => {
             const mes = f.mes || "-";
-            const modulo = f.modulo || f.moduloNumero || "-";
+            const modulo = f.moduloNombre || f.modulo || f.moduloNumero || "-";
             const cantidad = f.cantidad != null ? f.cantidad : (f.cant != null ? f.cant : 1);
             const profesional =
               f.profesional ||
@@ -420,15 +438,15 @@
 
       const rowsHtml = filasParaMostrar.map((r) => `
         <tr>
-          <td>${r.mes}</td>
-          <td>${r.modulo}</td>
-          <td style="text-align:right;">${r.cantidad}</td>
-          <td>${r.profesional}</td>
-          <td style="text-align:right;">${fmtARS(r.pagado)}</td>
-          <td style="text-align:right;">${fmtARS(r.aPagar)}</td>
-          <td style="text-align:right;">${fmtARS(r.saldo)}</td>
-          <td>${r.estado}</td>
-          <td>${r.observacion || '<em>Sin observaciones</em>'}</td>
+          <td class="edc-col-mes">${r.mes}</td>
+          <td class="edc-col-mod">${r.modulo}</td>
+          <td class="edc-col-cant">${r.cantidad}</td>
+          <td class="edc-col-prof">${r.profesional}</td>
+          <td class="edc-col-pag">${fmtARS(r.pagado)}</td>
+          <td class="edc-col-apag">${fmtARS(r.aPagar)}</td>
+          <td class="edc-col-saldo">${fmtARS(r.saldo)}</td>
+          <td class="edc-col-est">${r.estado}</td>
+          <td class="edc-col-obs">${r.observacion || '<em>Sin observaciones</em>'}</td>
         </tr>
       `).join("");
 
@@ -436,18 +454,18 @@
         <div style="text-align:left;font-family:'Segoe UI',sans-serif;">
           <h3 style="margin:0 0 8px 0;">${paciente.nombre} — ${areaSel && areaSel.nombre ? areaSel.nombre : 'Estado de cuenta'}</h3>
           <div style="overflow:auto; max-height:60vh; border:1px solid #d0d0d0; border-radius:8px;">
-            <table style="width:100%; border-collapse:collapse; font-size:14px;">
-              <thead style="background:#f2f4ff;">
+            <table class="edc-table">
+              <thead>
                 <tr>
-                  <th style="padding:8px; border-bottom:1px solid #ddd;">MES</th>
-                  <th style="padding:8px; border-bottom:1px solid #ddd;">MÓDULO</th>
-                  <th style="padding:8px; border-bottom:1px solid #ddd;">CANT.</th>
-                  <th style="padding:8px; border-bottom:1px solid #ddd;">PROFESIONAL</th>
-                  <th style="padding:8px; border-bottom:1px solid #ddd; text-align:right;">PAGADO</th>
-                  <th style="padding:8px; border-bottom:1px solid #ddd; text-align:right;">A PAGAR</th>
-                  <th style="padding:8px; border-bottom:1px solid #ddd; text-align:right;">SALDO</th>
-                  <th style="padding:8px; border-bottom:1px solid #ddd;">ESTADO</th>
-                  <th style="padding:8px; border-bottom:1px solid #ddd;">OBSERVACIONES</th>
+                  <th class="edc-col-mes">MES</th>
+                  <th class="edc-col-mod">MÓDULO</th>
+                  <th class="edc-col-cant">CANT.</th>
+                  <th class="edc-col-prof">PROFESIONAL</th>
+                  <th class="edc-col-pag">PAGADO</th>
+                  <th class="edc-col-apag">A PAGAR</th>
+                  <th class="edc-col-saldo">SALDO</th>
+                  <th class="edc-col-est">ESTADO</th>
+                  <th class="edc-col-obs">OBSERVACIONES</th>
                 </tr>
               </thead>
               <tbody>
@@ -456,9 +474,9 @@
               <tfoot>
                 <tr style="background:#fafafa; font-weight:600;">
                   <td colspan="4" style="padding:8px;">TOTAL</td>
-                  <td style="padding:8px; text-align:right;">${fmtARS(totalPagado)}</td>
-                  <td style="padding:8px; text-align:right;">${fmtARS(totalAPagar)}</td>
-                  <td style="padding:8px; text-align:right;">${fmtARS(totalSaldo)}</td>
+                  <td class="edc-col-pag">${fmtARS(totalPagado)}</td>
+                  <td class="edc-col-apag">${fmtARS(totalAPagar)}</td>
+                  <td class="edc-col-saldo">${fmtARS(totalSaldo)}</td>
                   <td colspan="2"></td>
                 </tr>
               </tfoot>
@@ -607,4 +625,5 @@
   // window.edcMostrarFichaPaciente = edcMostrarFichaPaciente;
 
 })();
+
 

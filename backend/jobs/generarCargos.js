@@ -59,8 +59,8 @@ function pickProfesionalNombre(asig, cacheUsuarios) {
 /* =============== Core Upsert (reutilizable) =============== */
 /** Upsert del cargo del período. Actualiza si existe y NO está PAGADO. */
 async function upsertCargo({
-  dni, pacienteId, areaId,
-  modulo, moduloId, period, cantidad, profesionalNombre, asignacion // <- pasamos la asig para ver override
+  dni, pacienteId, areaId, areaNombre,
+  modulo, moduloId, period, cantidad, profesionalNombre, asignacion // <- pasamos la asig para override
 }) {
   const base  = getPrecioDesdeValorPadres(modulo, { asig: asignacion });
   const total = +(base * (Number(cantidad ?? 1) || 1)).toFixed(2);
@@ -77,7 +77,10 @@ async function upsertCargo({
       descripcion,
       monto: total,
       cantidad: Number(cantidad ?? 1) || 1,
-      profesional: profesionalNombre,
+      profesional: profesionalNombre || undefined,
+      // denormalizados para mostrar en front
+      moduloNombre: moduloNombre || undefined,
+      areaNombre: areaNombre || undefined,
     },
     $setOnInsert: {
       pacienteId,
@@ -137,6 +140,7 @@ async function generarCargosDelMes(period = yyyymm()) {
       const areaId = asig.profesionales?.[0]?.areaId;
       if (!areaId) continue;
       const area   = areaById.get(String(areaId));
+      const areaNombre = area?.nombre || area?.titulo || "";
 
       // Vigencia
       const createdAt = p.createdAt || p.creadoEl || new Date();
@@ -153,6 +157,7 @@ async function generarCargosDelMes(period = yyyymm()) {
           dni,
           pacienteId: pid,
           areaId,
+          areaNombre,
           modulo,
           moduloId,
           period,
@@ -207,6 +212,8 @@ async function generarCargosParaPaciente(dni, period = yyyymm()) {
 
     const areaId = asig.profesionales?.[0]?.areaId;
     if (!areaId) continue;
+    const area   = areaById.get(String(areaId));
+    const areaNombre = area?.nombre || area?.titulo || "";
 
     const createdAt = p.createdAt || p.creadoEl || new Date();
     const createdPeriod = yyyymm(new Date(createdAt));
@@ -222,6 +229,7 @@ async function generarCargosParaPaciente(dni, period = yyyymm()) {
         dni,
         pacienteId: p._id,
         areaId,
+        areaNombre,
         modulo,
         moduloId,
         period,
