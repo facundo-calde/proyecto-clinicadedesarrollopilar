@@ -1,4 +1,3 @@
-// backend/jobs/generarCargos.js
 let cron = null;
 try {
   cron = require("node-cron");
@@ -56,11 +55,12 @@ function pickProfesionalNombre(asig, cacheUsuarios) {
   return u?.nombreApellido || u?.usuario || u?.nombre || undefined;
 }
 
-/* =============== Core Insert (siempre nuevo) =============== */
-/** Crea SIEMPRE un movimiento de cargo independiente. */
-async function createCargo({
+/* =============== Core Upsert (reutilizable) =============== */
+/** Upsert del cargo del período. Actualiza si existe y NO está PAGADO. */
+async function upsertCargo({
   dni, pacienteId, areaId, areaNombre,
-  modulo, moduloId, period, cantidad, profesionalNombre, asignacion
+  modulo, moduloId, period, cantidad, profesionalNombre, asignacion,
+  asigKey // ← clave única por asignación
 }) {
   const base  = getPrecioDesdeValorPadres(modulo, { asig: asignacion });
   const total = +(base * (Number(cantidad ?? 1) || 1)).toFixed(2);
@@ -69,22 +69,33 @@ async function createCargo({
   const moduloNumero  = modulo?.numero || "";
   const descripcion   = `Cargo ${period} — ${moduloNumero ? moduloNumero + ". " : ""}${moduloNombre || "Módulo"}`;
 
-  await Mov.create({
-    pacienteId,
-    dni,
-    areaId,
-    areaNombre:   areaNombre || undefined,
-    moduloId,
-    moduloNombre: moduloNombre || undefined,
-    period,
-    tipo: "CARGO",
-    fecha: new Date(),
-    cantidad: Number(cantidad ?? 1) || 1,
-    profesional: profesionalNombre || undefined,
-    monto: total,
-    descripcion,
-    estado: "PENDIENTE",
-  });
+  // 🚫 No tocar cargos ya pagados
+  const filter = { dni, areaId, moduloId, period, tipo: "CARGO", asigKey, estado: { $ne: "PAGADO" } };
+
+  const update = {
+    $set: {
+      descripcion,
+      monto: total,
+      cantidad: Number(cantidad ?? 1) || 1,
+      profesional: profesionalNombre || undefined,
+      // denormalizados para mostrar en front
+      moduloNombre: moduloNombre || undefined,
+      areaNombre: areaNombre || undefined,
+    },
+    $setOnInsert: {
+      pacienteId,
+      fecha: new Date(),
+      estado: "PENDIENTE",
+      tipo: "CARGO",
+      period,
+      dni,
+      areaId,
+      moduloId,
+      asigKey // ← guardamos la clave
+    },
+  };
+
+  await Mov.updateOne(filter, update, { upsert: true });
 }
 
 /* =============== Cargos para TODO el mes (cron/masivo) =============== */
@@ -142,8 +153,13 @@ async function generarCargosDelMes(period = yyyymm()) {
       const profesionalNombre = pickProfesionalNombre(asig, userById);
       const cantidad = Number(asig.cantidad ?? 1) || 1;
 
+      // Clave estable por asignación (idealmente el _id del sub-doc)
+      const asigKey =
+        (asig && asig._id) ? String(asig._id)
+        : `${String(moduloId)}|${String(areaId)}|${String(desdeMes || "")}|${String(hastaMes || "")}`;
+
       try {
-        await createCargo({
+        await upsertCargo({
           dni,
           pacienteId: pid,
           areaId,
@@ -154,10 +170,11 @@ async function generarCargosDelMes(period = yyyymm()) {
           cantidad,
           profesionalNombre,
           asignacion: asig,
+          asigKey,
         });
         procesados++;
       } catch (e) {
-        console.error("cargo create (masivo)", e);
+        if (e?.code !== 11000) console.error("cargo upsert (masivo)", e);
       }
     }
   }
@@ -214,8 +231,12 @@ async function generarCargosParaPaciente(dni, period = yyyymm()) {
     const profesionalNombre = pickProfesionalNombre(asig, userById);
     const cantidad = Number(asig.cantidad ?? 1) || 1;
 
+    const asigKey =
+      (asig && asig._id) ? String(asig._id)
+      : `${String(moduloId)}|${String(areaId)}|${String(desdeMes || "")}|${String(hastaMes || "")}`;
+
     try {
-      await createCargo({
+      await upsertCargo({
         dni,
         pacienteId: p._id,
         areaId,
@@ -226,10 +247,11 @@ async function generarCargosParaPaciente(dni, period = yyyymm()) {
         cantidad,
         profesionalNombre,
         asignacion: asig,
+        asigKey,
       });
       creados++;
     } catch (e) {
-      console.error("cargo create (paciente)", e);
+      if (e?.code !== 11000) console.error("cargo upsert (paciente)", e);
     }
   }
 
@@ -239,9 +261,8 @@ async function generarCargosParaPaciente(dni, period = yyyymm()) {
 /* =============== Programación (cron) =============== */
 function schedule() {
   if (!cron) return; // sin cron, no programes
-  // 📅 Corre el día 1 de cada mes a las 02:15 AM (evita duplicados diarios)
   cron.schedule(
-    "15 2 1 * *",
+    "15 2 * * *",
     async () => {
       try {
         await generarCargosDelMes(); // mes actual
@@ -260,6 +281,7 @@ module.exports = {
   generarCargosParaPaciente,
   yyyymm,
 };
+
 
 
 

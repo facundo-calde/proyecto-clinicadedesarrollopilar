@@ -1,4 +1,3 @@
-// backend/models/estadoDeCuentaMovimiento.js
 const mongoose = require("mongoose");
 const { Schema } = mongoose;
 
@@ -22,7 +21,7 @@ const MovimientoSchema = new Schema(
     areaId:     { type: Schema.Types.ObjectId, ref: "Area", index: true, required: true },
     moduloId:   { type: Schema.Types.ObjectId, ref: "Modulo", index: true },
 
-    // Denormalizados para mostrar en frontend (evitan joins)
+    // ✅ Denormalizados para mostrar en frontend
     areaNombre:   { type: String },
     moduloNombre: { type: String },
 
@@ -36,23 +35,27 @@ const MovimientoSchema = new Schema(
       index: true
     },
 
+    // Identificador estable de la asignación que originó el cargo
+    // Ideal: usar String(asignacion._id) de la sub-doc en modulosAsignados
+    asigKey: { type: String, index: true },
+
     fecha:  { type: Date, default: Date.now },
     monto:  { type: Number, required: true, default: 0 },
 
     // Snapshot de asignación
-    cantidad:    { type: Number },
-    profesional: { type: String },
-    coordinador: { type: String },
-    pasante:     { type: String },
-    directoras:  [{ type: String }],
+    cantidad:   { type: Number },
+    profesional:{ type: String },
+    coordinador:{ type: String },
+    pasante:    { type: String },
+    directoras: [{ type: String }],
 
     // Datos complementarios
-    nroRecibo:     { type: String },
-    tipoFactura:   { type: String },
-    formato:       { type: String },
-    archivoURL:    { type: String },
-    descripcion:   { type: String },
-    observaciones: { type: String },
+    nroRecibo:    { type: String },
+    tipoFactura:  { type: String },
+    formato:      { type: String },
+    archivoURL:   { type: String },
+    descripcion:  { type: String },
+    observaciones:{ type: String },
 
     estado: {
       type: String,
@@ -66,11 +69,14 @@ const MovimientoSchema = new Schema(
   { timestamps: true }
 );
 
-// ⛔️ IMPORTANTE:
-// Quitamos el índice único para permitir múltiples CARGOS por (dni, areaId, moduloId, period).
-// Si querés performance, mantenemos índices no únicos en los campos ya marcados con { index: true }.
+// 🔒 Un CARGO por (dni, areaId, moduloId, period, asigKey)
+// Permite múltiples cargos del mismo módulo en el mismo mes SI provienen de asignaciones distintas.
+MovimientoSchema.index(
+  { dni: 1, areaId: 1, moduloId: 1, period: 1, tipo: 1, asigKey: 1 },
+  { unique: true, partialFilterExpression: { tipo: "CARGO" } }
+);
 
-// ✅ Publicación con guardia para evitar OverwriteModelError
+// ✅ Evitar OverwriteModelError
 module.exports =
   mongoose.models.EstadoDeCuentaMovimiento
   || mongoose.model("EstadoDeCuentaMovimiento", MovimientoSchema);
