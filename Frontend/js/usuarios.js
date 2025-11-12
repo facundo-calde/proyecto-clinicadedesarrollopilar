@@ -533,16 +533,20 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         set("whatsapp", u.whatsapp);
         set("mail", u.mail);
 
-        const salEl = document.getElementById("salarioAcuerdo");
+        // --- Precarga de montos + obs (orden correcto) ---
+        const salEl  = document.getElementById("salarioAcuerdo");
         const fijoEl = document.getElementById("fijoAcuerdo");
-
         const toMoney = v => (v ?? "") === "" ? "" : nfARS.format(Number(cleanNumber(String(v))));
 
-        if (salEl) salEl.value = toMoney(u.salarioAcuerdo);
+        if (salEl)  salEl.value  = toMoney(u.salarioAcuerdo);
         if (fijoEl) fijoEl.value = toMoney(u.fijoAcuerdo);
 
         set("salarioAcuerdoObs", u.salarioAcuerdoObs ?? "");
-        set("fijoAcuerdoObs", u.fijoAcuerdoObs ?? "");
+        set("fijoAcuerdoObs",    u.fijoAcuerdoObs ?? "");
+
+        // --- recién ahora engancho la máscara ---
+        formatInputARS(salEl);
+        formatInputARS(fijoEl);
 
         set("banco", u.banco);
         set("cbu", u.cbu);
@@ -569,9 +573,6 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
           if (passEl) passEl.value = "";
         }, 0);
       }
-
-      formatInputARS(document.getElementById("salarioAcuerdo"));
-      formatInputARS(document.getElementById("fijoAcuerdo"));
 
       const rolSelect = document.getElementById("rol");
       const proSection = document.getElementById("proSection");
@@ -886,16 +887,6 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
 
 
 
-
-
-
-
-
-
-
-
-
-
 // ==========================
 // ✏️ Editar / 🗑️ Borrar
 // ==========================
@@ -908,7 +899,6 @@ async function editarUsuario(id) {
     Swal.fire('Error', err.message || 'No se pudo cargar el usuario', 'error');
   }
 }
-
 
 function borrarUsuario(id) {
   Swal.fire({
