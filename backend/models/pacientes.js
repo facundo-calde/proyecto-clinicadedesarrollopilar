@@ -80,13 +80,25 @@ const pacienteSchema = new mongoose.Schema({
 
   colegio: String,
   colegioMail: { type: String, trim: true, lowercase: true, match: emailRule },
+
+  // >>> NUEVOS CAMPOS
+  colegioSecundarioMail: { type: String, trim: true, lowercase: true, match: emailRule },
+  colegioTelefono: { type: String, trim: true, match: [/^\d{6,15}$/, 'El teléfono del colegio debe tener entre 6 y 15 dígitos'] },
+  // <<<
+
   curso: String,
 
   condicionDePago: {
-    type: String,
-    enum: ['Obra Social', 'Particular', 'Obra Social + Particular'],
-    default: 'Particular'
-  },
+  type: String,
+  enum: [
+    'Obra Social',
+    'Particular',
+    'Obra Social + Particular',
+    'Obra Social + Particular (les pagan a ellos)' // ← nuevo
+  ],
+  default: 'Particular'
+},
+
   estado: { type: String, enum: ['Alta', 'Baja', 'En espera'], default: 'En espera' },
 
   estadoHistorial: { type: [estadoHistorialSchema], default: [] },

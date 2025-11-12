@@ -9,7 +9,15 @@ const WSP_RE  = /^\d{10,15}$/;                // solo dígitos, 10–15
 const DNI_RE  = /^\d{7,8}$/;                  // 7–8 dígitos
 const DOC_RE  = /^\d{7,13}$/;                 // DNI (7-8) o CUIT (11). Permitimos 7–13 para flexibilidad
 const MAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/; // formato simple
-const CP_OK   = new Set(["Obra Social", "Particular", "Obra Social + Particular"]);
+
+// ⬅️ ACTUALIZADO: agregamos la nueva variante de condición de pago
+const CP_OK = new Set([
+  "Obra Social",
+  "Particular",
+  "Obra Social + Particular",
+  "Obra Social + Particular (les pagan a ellos)",
+]);
+
 const ESTADOS = new Set(["Alta", "Baja", "En espera"]);
 
 // --- Helpers ---
@@ -23,7 +31,7 @@ function getActor(req) {
 }
 
 /* =========================
-   🔸 NUEVO: normalizar cantidad y asigKey
+   🔸 Normalizar cantidad y asigKey
    ========================= */
 function normalizeCantidad(v) {
   if (v == null) return 1;
@@ -73,7 +81,7 @@ function mapAsignacionesConClave(list = []) {
   });
 }
 
-// Permite repetidos y limita a 3. E-mail opcional y validado. NUEVO: documento opcional (DNI/CUIT)
+// Permite repetidos y limita a 3. E-mail opcional y validado. Documento opcional (DNI/CUIT)
 function sanitizeResponsables(responsables) {
   if (!Array.isArray(responsables)) return [];
   const out = [];
@@ -83,7 +91,7 @@ function sanitizeResponsables(responsables) {
     const nombre    = toStr(r0.nombre).trim();
     const whatsapp  = onlyDigits(r0.whatsapp);
     const emailRaw  = toStr(r0.email).trim().toLowerCase();
-    const documento = onlyDigits(r0.documento); // ← NUEVO
+    const documento = onlyDigits(r0.documento); // opcional
 
     if (!["padre", "madre", "tutor"].includes(relacion)) continue;
     if (!nombre) continue;
@@ -124,12 +132,24 @@ function buildPacienteData(body, existing = null) {
   const data = {};
 
   // Campos simples (se asignan tal cual si vienen definidos)
+  // ⬅️ ACTUALIZADO: agregamos colegioSecundarioMail y colegioTelefono
   const simples = [
-    "nombre", "fechaNacimiento", "colegio", "curso",
+    "nombre",
+    "fechaNacimiento",
+    "colegio",
+    "curso",
     "colegioMail",
-    "condicionDePago", "estado",
-    "areas", "planPaciente", "fechaBaja", "motivoBaja",
-    "prestador", "credencial", "tipo"
+    "colegioSecundarioMail",   // nuevo
+    "colegioTelefono",         // nuevo
+    "condicionDePago",
+    "estado",
+    "areas",
+    "planPaciente",
+    "fechaBaja",
+    "motivoBaja",
+    "prestador",
+    "credencial",
+    "tipo"
   ];
   for (const k of simples) {
     if (body[k] !== undefined && body[k] !== null) data[k] = body[k];
@@ -141,16 +161,31 @@ function buildPacienteData(body, existing = null) {
     if (DNI_RE.test(dni)) data.dni = dni;
   }
 
-  // Condición de pago válida
+  // Condición de pago válida (incluye "les pagan a ellos")
   if (data.condicionDePago && !CP_OK.has(data.condicionDePago)) {
     delete data.condicionDePago;
   }
 
-  // Normalizar mail de colegio (opcional)
+  // Normalizar mails de colegio (opcionales)
   if (data.colegioMail !== undefined) {
     const m = toStr(data.colegioMail).trim().toLowerCase();
     data.colegioMail = m && MAIL_RE.test(m) ? m : undefined;
     if (data.colegioMail === undefined) delete data.colegioMail;
+  }
+  if (data.colegioSecundarioMail !== undefined) {
+    const m2 = toStr(data.colegioSecundarioMail).trim().toLowerCase();
+    data.colegioSecundarioMail = m2 && MAIL_RE.test(m2) ? m2 : undefined;
+    if (data.colegioSecundarioMail === undefined) delete data.colegioSecundarioMail;
+  }
+
+  // Normalizar teléfono de colegio (opcional) — solo dígitos, largo razonable (7..15)
+  if (data.colegioTelefono !== undefined) {
+    const tel = onlyDigits(data.colegioTelefono);
+    if (tel && tel.length >= 7 && tel.length <= 15) {
+      data.colegioTelefono = tel;
+    } else {
+      delete data.colegioTelefono;
+    }
   }
 
   // Responsables (1..3, con validaciones) — incluye documento opcional
@@ -159,7 +194,7 @@ function buildPacienteData(body, existing = null) {
     if (resp.length) data.responsables = resp;
   }
 
-  // Módulos comunes (el schema valida) + 🔸 NUEVO: normalizo cantidad y agrego asigKey
+  // Módulos comunes (el schema valida) + 🔸 normalizo cantidad y agrego asigKey
   if (Array.isArray(body.modulosAsignados)) {
     data.modulosAsignados = mapAsignacionesConClave(body.modulosAsignados);
   }
@@ -239,7 +274,7 @@ const crearPaciente = async (req, res) => {
     const actor = getActor(req);
     const observacion = toStr(req.body.observacionCreacion || req.body.descripcionEstado).trim();
 
-    // (igual que antes) estado inicial "En espera"
+    // estado inicial "En espera"
     data.estado = "En espera";
     data.estadoHistorial = [{
       estadoAnterior: undefined,
@@ -257,7 +292,7 @@ const crearPaciente = async (req, res) => {
     const nuevo = new Paciente(data);
     await nuevo.save();
 
-    // ⬅️ NUEVO: si entró ya en Alta por algún flujo, disparamos cargos
+    // si entró en Alta por algún flujo, disparamos cargos (defensivo)
     if (nuevo.estado === "Alta") {
       generarCargosParaPaciente(nuevo.dni).catch(console.error); // no bloquea
     }
@@ -287,7 +322,7 @@ const actualizarPaciente = async (req, res) => {
     const paciente = await Paciente.findOne({ dni });
     if (!paciente) return res.status(404).json({ error: "No encontrado" });
 
-    // ⬅️ NUEVO: snapshots antes de tocar nada (para decidir si disparamos cargos)
+    // snapshots antes de tocar nada (para decidir si disparamos cargos)
     const antesEstado = paciente.estado || null;
     const antesMods   = JSON.stringify(paciente.modulosAsignados || []);
 
@@ -332,7 +367,7 @@ const actualizarPaciente = async (req, res) => {
 
     await paciente.save();
 
-    // ⬅️ NUEVO: dispara cargos si pasó a Alta o cambiaron módulos (comparando snapshots)
+    // dispara cargos si pasó a Alta o cambiaron módulos (comparando snapshots)
     const pasoAAlta     = (antesEstado !== "Alta") && (paciente.estado === "Alta");
     const cambioModulos = (antesMods !== JSON.stringify(paciente.modulosAsignados || []));
     if (pasoAAlta || cambioModulos) {
@@ -624,3 +659,4 @@ module.exports = {
   actualizarDiagnostico,
   eliminarDiagnostico
 };
+

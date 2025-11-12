@@ -31,7 +31,7 @@ document.getElementById("busquedaInput").addEventListener("input", async () => {
 
 
 // ─────────────────────────────────────────────────────────────────────────────
-// RENDER FICHA (SIN “Módulos especiales asignados”)
+// RENDER FICHA (SIN “Módulos especiales asignados”) – versión completa
 // ─────────────────────────────────────────────────────────────────────────────
 async function renderFichaPaciente(p) {
 
@@ -324,6 +324,8 @@ async function renderFichaPaciente(p) {
           <p><strong>Fecha de nacimiento:</strong> ${p.fechaNacimiento ?? "sin datos"}</p>
           <p><strong>Colegio:</strong> ${p.colegio ?? "sin datos"}</p>
           <p><strong>Mail del colegio:</strong> ${clickableMail(p.colegioMail)}</p>
+          <p><strong>Mail del colegio secundario:</strong> ${clickableMail(p.colegioSecundarioMail)}</p>
+          <p><strong>Teléfono del colegio:</strong> ${p.colegioTelefono ?? "sin datos"}</p>
           <p><strong>Curso / Nivel:</strong> ${p.curso ?? "sin datos"}</p>
         </div>
       </div>
@@ -355,6 +357,7 @@ async function renderFichaPaciente(p) {
     </div>
   `;
 }
+
 
 
 async function modificarPaciente(dni) {
@@ -481,7 +484,7 @@ async function modificarPaciente(dni) {
     };
 
     // template módulo (una sola fila de profesional, sin "Agregar otro")
-    // >>> Cambio: 1 queda seleccionado por default
+    // cantidad por defecto en 1
     const renderModuloSelect = (index, optsHtml) => `
       <div class="modulo-row" data-index="${index}"
            style="margin-bottom:15px; padding:10px; border:1px solid #ddd; border-radius:6px;">
@@ -557,6 +560,10 @@ async function modificarPaciente(dni) {
               <input id="colegio" class="swal2-input" value="${p.colegio ?? ""}">
               <label>Mail del colegio:</label>
               <input id="colegioMail" class="swal2-input" type="email" value="${p.colegioMail ?? ""}">
+              <label>Mail del colegio secundario:</label>
+              <input id="colegioSecundarioMail" class="swal2-input" type="email" value="${p.colegioSecundarioMail ?? ""}">
+              <label>Teléfono del colegio:</label>
+              <input id="colegioTelefono" class="swal2-input" placeholder="Solo dígitos" value="${p.colegioTelefono ?? ""}">
               <label>Curso / Nivel:</label>
               <input id="curso" class="swal2-input" value="${p.curso ?? ""}">
 
@@ -573,6 +580,7 @@ async function modificarPaciente(dni) {
                 <option value="Obra Social" ${p.condicionDePago === "Obra Social" ? "selected" : ""}>Obra Social</option>
                 <option value="Particular" ${p.condicionDePago === "Particular" || !p.condicionDePago ? "selected" : ""}>Particular</option>
                 <option value="Obra Social + Particular" ${p.condicionDePago === "Obra Social + Particular" ? "selected" : ""}>Obra Social + Particular</option>
+                <option value="Obra Social + Particular (les pagan a ellos)" ${p.condicionDePago === "Obra Social + Particular (les pagan a ellos)" ? "selected" : ""}>Obra Social + Particular (les pagan a ellos)</option>
               </select>
 
               <div id="obraSocialExtra" style="display:none; margin-top:10px;">
@@ -620,7 +628,11 @@ async function modificarPaciente(dni) {
         const obraSocialExtra = document.getElementById("obraSocialExtra");
         const toggleObraSocial = () => {
           const v = condicionDePagoSelect.value;
-          obraSocialExtra.style.display = (v === "Obra Social" || v === "Obra Social + Particular") ? "block" : "none";
+          obraSocialExtra.style.display =
+            (v === "Obra Social" ||
+             v === "Obra Social + Particular" ||
+             v === "Obra Social + Particular (les pagan a ellos)")
+              ? "block" : "none";
         };
         condicionDePagoSelect.addEventListener("change", toggleObraSocial);
         toggleObraSocial();
@@ -690,7 +702,7 @@ async function modificarPaciente(dni) {
           modCont.insertAdjacentHTML("beforeend", renderModuloSelect(index, MOD_OPTS));
           const modRowEl = modCont.lastElementChild;
 
-          // >>> Cambio adicional: asegurar por código que la cantidad arranque en 1
+          // asegurar por código que la cantidad arranque en 1
           const selCant = modRowEl.querySelector(".cantidad-select");
           if (selCant) selCant.value = "1";
 
@@ -741,6 +753,8 @@ async function modificarPaciente(dni) {
         const fechaNacimiento = gv("fecha");
         const colegio = gv("colegio");
         const colegioMail = gv("colegioMail");
+        const colegioSecundarioMail = gv("colegioSecundarioMail");
+        const colegioTelefono = gv("colegioTelefono");
         const curso = gv("curso");
 
         const condicionDePagoVal = gv("condicionDePago");
@@ -750,6 +764,7 @@ async function modificarPaciente(dni) {
           : "";
 
         const mailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        const telRegex  = /^\d{7,15}$/;
         const wspRegex = /^\d{10,15}$/;
 
         if (!nombre || !fechaNacimiento) {
@@ -758,6 +773,14 @@ async function modificarPaciente(dni) {
         }
         if (colegioMail && !mailRegex.test(colegioMail)) {
           Swal.showValidationMessage("⚠️ Mail del colegio inválido.");
+          return false;
+        }
+        if (colegioSecundarioMail && !mailRegex.test(colegioSecundarioMail)) {
+          Swal.showValidationMessage("⚠️ Mail del colegio secundario inválido.");
+          return false;
+        }
+        if (colegioTelefono && !telRegex.test(colegioTelefono)) {
+          Swal.showValidationMessage("⚠️ El teléfono del colegio debe tener entre 7 y 15 dígitos (solo números).");
           return false;
         }
 
@@ -810,7 +833,11 @@ async function modificarPaciente(dni) {
         const planTexto = gv("planPaciente");
 
         let prestador = "", credencial = "", tipo = "";
-        if (condicionDePagoVal === "Obra Social" || condicionDePagoVal === "Obra Social + Particular") {
+        if (
+          condicionDePagoVal === "Obra Social" ||
+          condicionDePagoVal === "Obra Social + Particular" ||
+          condicionDePagoVal === "Obra Social + Particular (les pagan a ellos)"
+        ) {
           prestador = gv("prestador");
           credencial = gv("credencial");
           tipo = gv("tipo");
@@ -821,6 +848,8 @@ async function modificarPaciente(dni) {
           fechaNacimiento,
           colegio,
           colegioMail,
+          colegioSecundarioMail,
+          colegioTelefono,
           curso,
           responsables,
           condicionDePago: condicionDePagoVal,
@@ -905,6 +934,10 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
             <input id="colegio" class="swal2-input">
             <label>Mail del colegio:</label>
             <input id="colegioMail" class="swal2-input" type="email">
+            <label>Mail del colegio secundario:</label>
+            <input id="colegioSecundarioMail" class="swal2-input" type="email">
+            <label>Teléfono del colegio:</label>
+            <input id="colegioTelefono" class="swal2-input" placeholder="Solo dígitos">
             <label>Curso / Nivel:</label>
             <input id="curso" class="swal2-input">
 
@@ -920,6 +953,7 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
               <option value="Obra Social">Obra Social</option>
               <option value="Particular" selected>Particular</option>
               <option value="Obra Social + Particular">Obra Social + Particular</option>
+              <option value="Obra Social + Particular (les pagan a ellos)">Obra Social + Particular (les pagan a ellos)</option>
             </select>
 
             <div id="obraSocialExtra" style="display:none; margin-top:10px;">
@@ -966,7 +1000,10 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
       const toggleObraSocial = () => {
         const v = condicionDePagoSelect.value;
         obraSocialExtra.style.display =
-          v === "Obra Social" || v === "Obra Social + Particular" ? "block" : "none";
+          v === "Obra Social" ||
+          v === "Obra Social + Particular" ||
+          v === "Obra Social + Particular (les pagan a ellos)"
+            ? "block" : "none";
       };
       condicionDePagoSelect.addEventListener("change", toggleObraSocial);
       toggleObraSocial();
@@ -1003,16 +1040,14 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
           "No disponible"
         );
 
-        // ====== Helpers robustos (idénticos a los de modificarPaciente, pero ampliados) ======
+        // ====== Helpers de filtrado (mismos que usás en editar) ======
         const norm = (s) =>
           (s ?? "").toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
         const HEX24 = /^[a-f0-9]{24}$/i;
 
-        // id -> nombre normalizado
         const ID2NAME_NORM = new Map();
         AREAS.forEach(a => ID2NAME_NORM.set(String(a._id), norm(a.nombre)));
 
-        // Normalización de roles (acepta variaciones y plurales)
         function normalizeRole(r) {
           const x = norm(r);
           if (!x) return "";
@@ -1021,7 +1056,7 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
           if (x.includes("coordinador") && (x.includes("area") || x.includes("área"))) return "coordinador de área";
           if (x.startsWith("pasant")) return "pasante";
           if (x.startsWith("profes")) return "profesional";
-          return x; // fallback
+          return x;
         }
 
         const ROLES_OK = new Set([
@@ -1032,15 +1067,11 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
           "pasante"
         ]);
 
-        // Extrae TODOS los roles posibles de un usuario (rol, rolAsignado, roles[])
         function userRoles(u) {
           const out = new Set();
           if (u.rol) out.add(normalizeRole(u.rol));
           if (u.rolAsignado) out.add(normalizeRole(u.rolAsignado));
-          if (Array.isArray(u.roles)) {
-            for (const rr of u.roles) out.add(normalizeRole(rr));
-          }
-          // Limpieza: sacamos vacíos
+          if (Array.isArray(u.roles)) for (const rr of u.roles) out.add(normalizeRole(rr));
           return new Set([...out].filter(Boolean));
         }
 
@@ -1054,14 +1085,12 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
             return norm(s) === targetNameNorm;
           }
 
-          // ids potenciales
           const idCandidates = [
             entry._id, entry.id, entry.areaId,
             entry.area?._id, entry.area?.id
           ].filter(Boolean).map(String);
           if (idCandidates.some(x => x === targetId)) return true;
 
-          // nombres potenciales
           const nameCandidates = [
             entry.areaNombre, entry.nombre, entry.name, entry.area,
             entry.area?.nombre, entry.area?.name
@@ -1070,24 +1099,19 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
           return nameCandidates.some(n => n === targetNameNorm);
         }
 
-        // ¿El usuario pertenece al área?
         function userBelongsToArea(u, targetId) {
           const targetNameNorm = ID2NAME_NORM.get(targetId) || "";
 
-          // 1) Arrays de detalle
           if (Array.isArray(u.areasProfesional) && u.areasProfesional.some(e => matchAreaEntry(e, targetId, targetNameNorm))) return true;
           if (Array.isArray(u.areasCoordinadas) && u.areasCoordinadas.some(e => matchAreaEntry(e, targetId, targetNameNorm))) return true;
           if (Array.isArray(u.areasProfesionalDetalladas) && u.areasProfesionalDetalladas.some(e => matchAreaEntry(e, targetId, targetNameNorm))) return true;
           if (Array.isArray(u.areasCoordinadasDetalladas) && u.areasCoordinadasDetalladas.some(e => matchAreaEntry(e, targetId, targetNameNorm))) return true;
 
-          // 2) Campo general "areas" (mixto)
           if (Array.isArray(u.areas) && u.areas.some(e => matchAreaEntry(e, targetId, targetNameNorm))) return true;
 
-          // 3) Campos sueltos "area"/"areaNombre"
           if (u.area && matchAreaEntry(u.area, targetId, targetNameNorm)) return true;
           if (u.areaNombre && matchAreaEntry(u.areaNombre, targetId, targetNameNorm)) return true;
 
-          // 4) Pasantes
           if ([...userRoles(u)].includes("pasante") && u.pasanteArea && matchAreaEntry(u.pasanteArea, targetId, targetNameNorm)) return true;
 
           return false;
@@ -1103,11 +1127,8 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
           const lista = (USUARIOS || [])
             .filter(u => {
               const roles = userRoles(u);
-              // debe tener algún rol válido
               if (![...roles].some(r => ROLES_OK.has(r))) return false;
-              // directoras: siempre visibles
               if (roles.has("directoras")) return true;
-              // resto: deben matchear el área
               return userBelongsToArea(u, selId);
             })
             .sort((a, b) => (a.nombreApellido || "").localeCompare(b.nombreApellido || "", "es"));
@@ -1115,15 +1136,11 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
           profSel.innerHTML = lista.length === 0
             ? `<option value="">Sin usuarios para el área</option>`
             : `<option value="">-- Seleccionar --</option>` +
-            lista.map(u => {
-              const roles = [...userRoles(u)].filter(r => ROLES_OK.has(r));
-              const rolMostrar = roles.includes("directoras")
-                ? "Directora"
-                : (roles[0] || (u.rol || ""));
-              return `<option value="${u._id}">
-                          ${u.nombreApellido || u.nombre || u.usuario} — ${rolMostrar}
-                        </option>`;
-            }).join("");
+              lista.map(u => {
+                const roles = [...userRoles(u)].filter(r => ROLES_OK.has(r));
+                const rolMostrar = roles.includes("directoras") ? "Directora" : (roles[0] || (u.rol || ""));
+                return `<option value="${u._id}">${u.nombreApellido || u.nombre || u.usuario} — ${rolMostrar}</option>`;
+              }).join("");
         }
 
         renderProfesionales();
@@ -1134,7 +1151,7 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
         profSel.innerHTML = `<option value="">No disponible</option>`;
       }
 
-      // RESPONSABLES (WhatsApp + Documento + Email)
+      // RESPONSABLES
       const cont = document.getElementById("responsablesContainer");
       const btnAdd = document.getElementById("btnAgregarResponsable");
 
@@ -1184,6 +1201,8 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
 
       const colegio = gv("colegio");
       const colegioMail = gv("colegioMail");
+      const colegioSecundarioMail = gv("colegioSecundarioMail");
+      const colegioTelefono = gv("colegioTelefono");
       const curso = gv("curso");
 
       const condicionDePagoVal = gv("condicionDePago");
@@ -1191,6 +1210,7 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
 
       const dniRegex = /^\d{7,8}$/;
       const mailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const telRegex  = /^\d{7,15}$/; // teléfono colegio (solo dígitos)
 
       if (!nombre || !dni || !fechaNacimiento) {
         Swal.showValidationMessage("⚠️ Completá los campos obligatorios (Nombre, DNI, Fecha).");
@@ -1202,6 +1222,14 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
       }
       if (colegioMail && !mailRegex.test(colegioMail)) {
         Swal.showValidationMessage("⚠️ El mail del colegio no es válido.");
+        return false;
+      }
+      if (colegioSecundarioMail && !mailRegex.test(colegioSecundarioMail)) {
+        Swal.showValidationMessage("⚠️ El mail del colegio secundario no es válido.");
+        return false;
+      }
+      if (colegioTelefono && !telRegex.test(colegioTelefono)) {
+        Swal.showValidationMessage("⚠️ El teléfono del colegio debe tener entre 7 y 15 dígitos (solo números).");
         return false;
       }
 
@@ -1238,7 +1266,11 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
       }
 
       let prestador = "", credencial = "", tipo = "";
-      if (condicionDePagoVal === "Obra Social" || condicionDePagoVal === "Obra Social + Particular") {
+      if (
+        condicionDePagoVal === "Obra Social" ||
+        condicionDePagoVal === "Obra Social + Particular" ||
+        condicionDePagoVal === "Obra Social + Particular (les pagan a ellos)"
+      ) {
         prestador = gv("prestador");
         credencial = gv("credencial");
         tipo = gv("tipo");
@@ -1254,6 +1286,8 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
         fechaNacimiento,
         colegio,
         colegioMail,
+        colegioSecundarioMail,
+        colegioTelefono,
         curso,
         responsables,
         condicionDePago: condicionDePagoVal,
@@ -1289,6 +1323,7 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
     }
   });
 });
+
 
 
 
