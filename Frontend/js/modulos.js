@@ -809,7 +809,7 @@ if (btnLogout) {
 
 /* ===========================================================
    FUNCIÓN: crearModuloEventoEspecial
-   - Solo ÁREAS EXTERNAS
+   - Todas las áreas
    - Solo Coordinadores y Directoras
    - Guarda en /modulos/evento-especial
    =========================================================== */
@@ -832,46 +832,7 @@ async function crearModuloEventoEspecial() {
 
   const arr = (v) => Array.isArray(v) ? v : (v ? [v] : []);
 
-  const normAreaEntry = (x) => {
-    if (!x) return null;
-    if (typeof x === 'string') return { nombre: x.trim(), nivel: '' };
-    if (typeof x === 'object') {
-      const nombre = (x.nombre || x.name || x.titulo || x.area || '').toString().trim();
-      const nivel  = (
-        x.nivel ?? x.Nivel ?? x.nivelArea ?? x.nivel_area ??
-        x.nivelProfesional ?? x.grado ?? x.categoria ?? x.seniority ?? ''
-      ).toString().trim();
-      if (!nombre && !nivel) return null;
-      return { nombre, nivel };
-    }
-    return null;
-  };
-
-  const getAreasDetailed = (u) => {
-    const profDet  = Array.isArray(u.areasProfesionalDetalladas) ? u.areasProfesionalDetalladas : [];
-    const coordDet = Array.isArray(u.areasCoordinadasDetalladas) ? u.areasCoordinadasDetalladas : [];
-    let list = [...profDet, ...coordDet].map(normAreaEntry).filter(Boolean);
-    if (list.length) return list;
-
-    const pools = [u.areasProfesional, u.areasCoordinadas, u.areas, u.area, u.areaPrincipal];
-    list = pools.flatMap(arr).map(normAreaEntry).filter(Boolean);
-
-    if (!list.some(a => a.nivel)) {
-      const userLevel = (
-        u.nivelRol || u.nivel || u.nivelProfesional || u.categoria || u.grado || u.seniority || u.pasanteNivel || ''
-      ).toString().trim();
-      if (userLevel) list = list.map(a => ({ ...a, nivel: a.nivel || userLevel }));
-    }
-
-    const seen = new Set();
-    list = list.filter(a => { const k = `${a.nombre}|${a.nivel}`; if (seen.has(k)) return false; seen.add(k); return true; });
-    return list;
-  };
-
-  const isFono     = (s='') => /fonoaudiolog[ií]a/i.test(s);
-  const isPsicoPed = (s='') => /psicopedagog[ií]a/i.test(s);
-  const hasAreaFP  = (u) => getAreasDetailed(u).some(a => isFono(a.nombre) || isPsicoPed(a.nombre));
-
+  // ——— Helpers de roles ———
   const mapRolCanonical = (r = '') => {
     const s = String(r).trim().toLowerCase();
     switch (s) {
@@ -908,12 +869,11 @@ async function crearModuloEventoEspecial() {
     console.error('No se pudieron obtener usuarios:', e);
   }
 
-  // Solo EXTERNOS y Solo Coordinadores / Directoras
-  const candidatosExtern = usuarios.filter(u => !hasAreaFP(u));
-  const coordinadoresExt = candidatosExtern.filter(u => hasRolCanon(u, 'coordinador', 'directora'));
+  // ✅ Todas las áreas: SOLO Coordinadores y Directoras (sin filtrar por “externos”)
+  const coordinacionYDireccion = usuarios.filter(u => hasRolCanon(u, 'coordinador', 'directora'));
 
   const renderRows = (arr) => {
-    if (!arr.length) return `<div class="empty">No hay Coordinadores/DirectorAs externos</div>`;
+    if (!arr.length) return `<div class="empty">No hay Coordinadores/DirectorAs</div>`;
     return arr
       .sort((a,b)=>fullName(a).localeCompare(fullName(b), 'es'))
       .map(u => `
@@ -952,9 +912,9 @@ async function crearModuloEventoEspecial() {
         </div>
 
         <div>
-          <label><strong>Coordinadores/DirectorAs (ÁREAS EXTERNAS)</strong></label>
+          <label><strong>Coordinadores/DirectorAs (todas las áreas)</strong></label>
           <div class="panel">
-            ${renderRows(coordinadoresExt)}
+            ${renderRows(coordinacionYDireccion)}
           </div>
         </div>
       </div>
@@ -980,21 +940,20 @@ async function crearModuloEventoEspecial() {
         return Swal.showValidationMessage('⚠️ Máximo 120 caracteres para el nombre');
       }
 
-      const coordinadoresExternos = [...modal.querySelectorAll('.monto-input')]
+      const coordinadoresSeleccionados = [...modal.querySelectorAll('.monto-input')]
         .map(i => ({ usuario: i.dataset.user, monto: Number(i.value) || 0 }))
         .filter(x => x.usuario && x.monto > 0);
 
       return {
         nombre,
         valorPadres: Number.isNaN(valorPadres) ? 0 : valorPadres,
-        coordinadoresExternos
+        coordinadoresExternos: coordinadoresSeleccionados // mantenemos el mismo nombre de campo esperado por tu backend
       };
     }
   });
 
   if (!formValues) return;
 
-  // Guarda en /modulos/evento-especial
   try {
     const res = await apiFetch(`/modulos/evento-especial`, {
       method: 'POST',
@@ -1008,12 +967,12 @@ async function crearModuloEventoEspecial() {
     }
 
     Swal.fire('Éxito', 'Evento especial guardado correctamente', 'success');
-    // Si querés refrescar listados: cargarListadoEventosEspeciales(); (desde el bloque de eventos)
   } catch (error) {
     console.error('Error guardando evento especial:', error);
     Swal.fire('Error', error?.message || 'Ocurrió un error al guardar el evento especial', 'error');
   }
 }
+
 
 // ===============================
 // EVENTOS ESPECIALES – Listado/Búsqueda
