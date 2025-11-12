@@ -22,6 +22,57 @@ function getActor(req) {
   return { usuarioId: id || undefined, usuario: usuario || undefined, nombre: nombre || undefined };
 }
 
+/* =========================
+   🔸 NUEVO: normalizar cantidad y asigKey
+   ========================= */
+function normalizeCantidad(v) {
+  if (v == null) return 1;
+  if (typeof v === "number" && !Number.isNaN(v)) return v;
+  const s = String(v).trim();
+
+  // "1/4" -> 0.25
+  if (/^\d+\s*\/\s*\d+$/.test(s)) {
+    const [a, b] = s.split("/").map(n => parseFloat(n));
+    if (b && !Number.isNaN(a) && !Number.isNaN(b)) return a / b;
+  }
+  // "0,25" -> 0.25 / "0.25" -> 0.25
+  const n = Number(s.replace(/\./g, "").replace(",", "."));
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
+function mkAsigKey({ moduloId, cantidad, areaId, profesionalId }) {
+  const mid = moduloId ? String(moduloId) : "";
+  const aid = areaId ? String(areaId) : "";
+  const pid = profesionalId ? String(profesionalId) : "";
+  // clave determinística por bloque de asignación
+  return [mid, cantidad, aid, pid].join("|");
+}
+
+function mapAsignacionesConClave(list = []) {
+  if (!Array.isArray(list)) return [];
+  return list.map(it => {
+    const moduloId = it?.moduloId || it?.modulo || it?._id || it?.id;
+    const cantidad = normalizeCantidad(it?.cantidad);
+    const profesionales = Array.isArray(it?.profesionales) ? it.profesionales : [];
+    const p0 = profesionales[0] || {};
+    const areaId = p0?.areaId || p0?.area || p0?.area_id;
+    const profesionalId = p0?.profesionalId || p0?.usuarioId || p0?._id || p0?.id;
+
+    const base = {
+      ...it,
+      moduloId,
+      cantidad,
+      profesionales
+    };
+
+    // si ya viene una asigKey, la respeto; si no, la creo
+    if (!base.asigKey) {
+      base.asigKey = mkAsigKey({ moduloId, cantidad, areaId, profesionalId });
+    }
+    return base;
+  });
+}
+
 // Permite repetidos y limita a 3. E-mail opcional y validado. NUEVO: documento opcional (DNI/CUIT)
 function sanitizeResponsables(responsables) {
   if (!Array.isArray(responsables)) return [];
@@ -108,26 +159,25 @@ function buildPacienteData(body, existing = null) {
     if (resp.length) data.responsables = resp;
   }
 
-  // Módulos comunes (el schema valida)
+  // Módulos comunes (el schema valida) + 🔸 NUEVO: normalizo cantidad y agrego asigKey
   if (Array.isArray(body.modulosAsignados)) {
-    data.modulosAsignados = body.modulosAsignados;
+    data.modulosAsignados = mapAsignacionesConClave(body.modulosAsignados);
   }
 
   // ✅ Módulos ESPECIALES: acepta varios nombres y mapea a modulosEspecialesAsignados
   const especiales = pickModulosEspeciales(body);
   if (Array.isArray(especiales)) {
-    data.modulosEspecialesAsignados = especiales.map(e => {
-      const moduloId = e?.moduloId || e?.modulo || e?.id || e?._id;
-      const cantidad = (e?.cantidad == null ? 1 : Number(e.cantidad));
-      const profesionales = Array.isArray(e?.profesionales) ? e.profesionales
-                         : Array.isArray(e?.coordinadoresExternos) ? e.coordinadoresExternos
-                         : [];
-      return {
-        moduloId,
-        cantidad: isNaN(cantidad) ? 1 : cantidad,
-        profesionales
-      };
-    });
+    // reuso el mismo mapper para mantener cantidad normalizada y asigKey
+    data.modulosEspecialesAsignados = mapAsignacionesConClave(
+      especiales.map(e => {
+        const moduloId = e?.moduloId || e?.modulo || e?.id || e?._id;
+        const cantidad = e?.cantidad;
+        const profesionales = Array.isArray(e?.profesionales) ? e.profesionales
+                           : Array.isArray(e?.coordinadoresExternos) ? e.coordinadoresExternos
+                           : [];
+        return { ...e, moduloId, cantidad, profesionales };
+      })
+    );
   }
 
   // Limpieza de strings
@@ -574,4 +624,3 @@ module.exports = {
   actualizarDiagnostico,
   eliminarDiagnostico
 };
-
