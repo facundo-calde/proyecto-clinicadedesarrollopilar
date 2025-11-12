@@ -323,7 +323,7 @@ async function modificarPaciente(dni) {
   try {
     const p = await apiFetchJson(`/pacientes/${dni}`);
 
-    let MODULOS = [], AREAS = [], USUARIOS = [], MODULOS_ESP = [];
+    let MODULOS = [], AREAS = [], USUARIOS = [];
     try {
       const [m, a, u] = await Promise.all([
         apiFetchJson(`/modulos`),
@@ -333,22 +333,6 @@ async function modificarPaciente(dni) {
       MODULOS  = Array.isArray(m) ? m : [];
       AREAS    = Array.isArray(a) ? a : [];
       USUARIOS = Array.isArray(u) ? u : [];
-
-      // ✅ Endpoint correcto de eventos especiales
-      try {
-        const me = await apiFetchJson(`/modulos/evento-especial`);
-        if (Array.isArray(me) && me.length) MODULOS_ESP = me;
-      } catch (_) {}
-
-      // Fallback: intentar derivar
-      if (!MODULOS_ESP.length && Array.isArray(MODULOS)) {
-        MODULOS_ESP = MODULOS.filter(m =>
-          m?.esEspecial === true ||
-          m?.especial === true ||
-          (typeof m?.tipo === "string" && m.tipo.toLowerCase() === "especial") ||
-          (typeof m?.nombre === "string" && /especial/i.test(m.nombre))
-        );
-      }
     } catch (_) { }
 
     // 👇 usa m.nombre del esquema actual
@@ -356,19 +340,8 @@ async function modificarPaciente(dni) {
       ? MODULOS.map(m => `<option value="${m._id}">${m.nombre}</option>`).join("")
       : `<option value="">No disponible</option>`;
 
-    const MOD_ESP_OPTS = MODULOS_ESP.length
-      ? MODULOS_ESP.map(m => `<option value="${m._id}">${m.nombre}</option>`).join("")
-      : `<option value="">No disponible</option>`;
-
     const AREA_OPTS = AREAS.length
       ? AREAS.map(a => `<option value="${a._id}">${a.nombre}</option>`).join("")
-      : `<option value="">No disponible</option>`;
-
-    // Áreas externas (excluye Fono / Psico) para "especiales"
-    const AREA_OPTS_ESPECIALES = AREAS.length
-      ? AREAS
-          .filter(a => !/fonoaudiolog[ií]a/i.test(a.nombre) && !/psicopedagog[ií]a/i.test(a.nombre))
-          .map(a => `<option value="${a._id}">${a.nombre}</option>`).join("")
       : `<option value="">No disponible</option>`;
 
     // ---- Helpers de filtro por área/rol ----
@@ -471,43 +444,6 @@ async function modificarPaciente(dni) {
         }).join("");
     };
 
-    // Usuarios para módulos ESPECIALES: SOLO externos (no Fono/Psico) y SOLO Coordinadores/Directoras
-    function esExterno(u) {
-      const pools = [
-        ...(Array.isArray(u.areasProfesionalDetalladas) ? u.areasProfesionalDetalladas : []),
-        ...(Array.isArray(u.areasCoordinadasDetalladas) ? u.areasCoordinadasDetalladas : []),
-        ...(Array.isArray(u.areasProfesional) ? u.areasProfesional : []),
-        ...(Array.isArray(u.areasCoordinadas) ? u.areasCoordinadas : []),
-        ...(Array.isArray(u.areas) ? u.areas : []),
-        u.area, u.areaNombre
-      ].filter(Boolean);
-      const hasFP = pools.some(x => {
-        const n = typeof x === 'string'
-          ? x
-          : (x?.nombre || x?.name || x?.area || x?.areaNombre || '');
-        const s = String(n || '');
-        return /fonoaudiolog[ií]a/i.test(s) || /psicopedagog[ií]a/i.test(s);
-      });
-      return !hasFP;
-    }
-    const profesionalesDeAreaEspecial = (areaId) => {
-      const selId = String(areaId || "");
-      const lista = (USUARIOS || [])
-        .filter(u => {
-          if (!esExterno(u)) return false;
-          const R = userRoles(u);
-          const okRol = R.has('coordinador de área') || R.has('directoras') || R.has('coordinador');
-          if (!okRol) return false;
-          if (!selId) return true;
-          return userBelongsToArea(u, selId);
-        })
-        .sort((a,b)=> (a.nombreApellido || "").localeCompare(b.nombreApellido || "", "es"));
-
-      if (!lista.length) return `<option value="">Sin usuarios externos para el área</option>`;
-      return `<option value="">-- Seleccionar --</option>` +
-        lista.map(u => `<option value="${u._id}">${u.nombreApellido || u.nombre || u.usuario} — ${ (userRoles(u).has('directoras') ? 'Directora' : 'Coordinador/a') }</option>`).join('');
-    };
-
     // ---- Template de cada bloque de módulo (COMÚN) ----
     const renderModuloSelect = (index, optsHtml) => `
       <div class="modulo-row" data-index="${index}"
@@ -551,40 +487,6 @@ async function modificarPaciente(dni) {
       </div>
     `;
 
-    // ---- Template de cada bloque de módulo (ESPECIAL) — SIN CANTIDAD ----
-    const renderModuloEspecialSelect = (index, optsHtml) => `
-      <div class="modulo-row mod-esp" data-index="${index}"
-           style="margin-bottom:15px; padding:10px; border:1px solid #ddd; border-radius:6px;">
-        <div style="display:grid; grid-template-columns:minmax(0,1fr); gap:10px; margin-bottom:10px;">
-          <div style="min-width:0;">
-            <label>Módulo especial:</label>
-            <select class="modulo-select swal2-select" style="width:100%; margin:0;">
-              <option value="">-- Seleccionar --</option>
-              ${optsHtml}
-            </select>
-          </div>
-        </div>
-
-        <div class="profesionales-container" style="margin-top:10px;">
-          <h5 style="margin:8px 0;">Usuarios (solo Coordinadores/Directoras de <u>áreas externas</u>):</h5>
-          <div class="profesional-row" style="display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:8px;">
-            <select class="area-select swal2-select" style="width:100%; margin:0;">
-              <option value="">-- Área externa --</option>
-              ${AREA_OPTS_ESPECIALES}
-            </select>
-            <select class="profesional-select swal2-select" style="width:100%; margin:0;">
-              <option value="">-- Seleccionar usuario --</option>
-            </select>
-          </div>
-        </div>
-
-        <button type="button" class="btnAgregarProfesional"
-          style="margin-top:8px; padding:4px 10px; border:1px solid #ccc; border-radius:5px; background:#eee; cursor:pointer;">
-          ➕ Agregar otro
-        </button>
-      </div>
-    `;
-
     // ---- Responsables iniciales ----
     const responsablesIniciales = Array.isArray(p.responsables) && p.responsables.length
       ? p.responsables.slice(0, 3).map(r => ({
@@ -606,7 +508,7 @@ async function modificarPaciente(dni) {
           return arr.slice(0, 3);
         })();
 
-    // ---- Modal principal ----
+    // ---- Modal principal (SIN SECCIÓN DE ESPECIALES) ----
     const { isConfirmed, value: data } = await Swal.fire({
       title: '<h3 style="font-family: Montserrat; font-weight: 600;">Modificar datos del paciente:</h3>',
       html: `
@@ -677,14 +579,6 @@ async function modificarPaciente(dni) {
           <button type="button" id="btnAgregarModulo"
             style="margin-top:10px; padding:5px 10px; border:1px solid #ccc; border-radius:5px; background:#f7f7f7; cursor:pointer;">
             ➕ Agregar otro módulo
-          </button>
-
-          <hr>
-          <h4 style="margin-top:15px;">Módulos <u>especiales</u> asignados</h4>
-          <div id="modulosEspecialesContainer"></div>
-          <button type="button" id="btnAgregarModuloEspecial"
-            style="margin-top:10px; padding:5px 10px; border:1px solid #ccc; border-radius:5px; background:#f7f7f7; cursor:pointer;">
-            ✨ Agregar módulo especial
           </button>
         </form>
       `,
@@ -830,91 +724,6 @@ async function modificarPaciente(dni) {
         document.getElementById("btnAgregarModulo").addEventListener("click", () => {
           addModuloRow();
         });
-
-        // ====== Módulos ESPECIALES (SIN cantidad) ======
-        const modEspCont = document.getElementById("modulosEspecialesContainer");
-
-        const attachAgregarProfesionalEspecial = (modRowEl) => {
-          const btn = modRowEl.querySelector(".btnAgregarProfesional");
-          const container = modRowEl.querySelector(".profesionales-container");
-          if (!btn || !container) return;
-
-          const buildRow = () => `
-            <div class="profesional-row" style="margin-top:5px; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:8px;">
-              <select class="area-select swal2-select" style="width:100%; margin:0;">
-                <option value="">-- Área externa --</option>
-                ${AREA_OPTS_ESPECIALES}
-              </select>
-              <select class="profesional-select swal2-select" style="width:100%; margin:0;">
-                <option value="">-- Seleccionar usuario --</option>
-              </select>
-            </div>`;
-
-          const wireFilter = (row) => {
-            const areaSel = row.querySelector(".area-select");
-            const profSel = row.querySelector(".profesional-select");
-            const render = () => { profSel.innerHTML = profesionalesDeAreaEspecial(areaSel.value); };
-            areaSel.addEventListener("change", render);
-            render();
-          };
-
-          btn.addEventListener("click", () => {
-            container.insertAdjacentHTML("beforeend", buildRow());
-            wireFilter(container.lastElementChild);
-          });
-
-          wireFilter(container.querySelector(".profesional-row"));
-        };
-
-        const addModuloEspecialRow = () => {
-          const index = modEspCont.querySelectorAll(".modulo-row").length;
-          modEspCont.insertAdjacentHTML("beforeend", renderModuloEspecialSelect(index, MOD_ESP_OPTS));
-          const modRowEl = modEspCont.lastElementChild;
-          attachAgregarProfesionalEspecial(modRowEl);
-          return modRowEl;
-        };
-
-        const existentesEsp = Array.isArray(p.modulosEspecialesAsignados)
-          ? p.modulosEspecialesAsignados
-          : (Array.isArray(p.modulosEspeciales) ? p.modulosEspeciales : []); // legacy
-
-        if (!existentesEsp.length) {
-          addModuloEspecialRow();
-        } else {
-          existentesEsp.forEach(m => {
-            const row = addModuloEspecialRow();
-            const selMod = row.querySelector(".modulo-select");
-            if (selMod) selMod.value = String(m.moduloId || "");
-
-            const contProf = row.querySelector(".profesionales-container");
-            const ensureRows = (n) => {
-              const actuales = contProf.querySelectorAll(".profesional-row").length;
-              for (let i = actuales; i < n; i++) {
-                row.querySelector(".btnAgregarProfesional").click();
-              }
-            };
-            const profesionales = Array.isArray(m.profesionales) ? m.profesionales : [];
-            if (!profesionales.length) return;
-
-            ensureRows(profesionales.length);
-            const filas = contProf.querySelectorAll(".profesional-row");
-
-            profesionales.forEach((pr, i) => {
-              const f = filas[i];
-              const areaSel = f.querySelector(".area-select");
-              const profSel = f.querySelector(".profesional-select");
-
-              const areaId = pr.areaId || pr.area || "";
-              areaSel.value = String(areaId);
-              areaSel.dispatchEvent(new Event("change", { bubbles: true }));
-              setTimeout(() => { profSel.value = String(pr.profesionalId || ""); }, 0);
-            });
-          });
-        }
-
-        document.getElementById("btnAgregarModuloEspecial").addEventListener("click", () => {
-          addModuloEspecialRow();
-        });
       },
       width: "80%",
       customClass: { popup: "swal-scrollable-form" },
@@ -996,21 +805,6 @@ async function modificarPaciente(dni) {
           }
         });
 
-        // === Recolectar módulos ESPECIALES (SIN cantidad → siempre 1)
-        const modulosEspecialesAsignados = [];
-        document.querySelectorAll("#modulosEspecialesContainer .modulo-row").forEach((row) => {
-          const moduloId = row.querySelector(".modulo-select")?.value;
-          if (moduloId) {
-            const profesionalesAsignados = [];
-            row.querySelectorAll(".profesional-row").forEach(profRow => {
-              const areaId = profRow.querySelector(".area-select")?.value;
-              const profesionalId = profRow.querySelector(".profesional-select")?.value;
-              if (profesionalId && areaId) profesionalesAsignados.push({ profesionalId, areaId });
-            });
-            modulosEspecialesAsignados.push({ moduloId, cantidad: 1, profesionales: profesionalesAsignados });
-          }
-        });
-
         const planTexto = gv("planPaciente");
 
         let prestador = "", credencial = "", tipo = "";
@@ -1032,8 +826,7 @@ async function modificarPaciente(dni) {
           descripcionEstado,
           prestador, credencial, tipo,
           planPaciente: planTexto,
-          modulosAsignados,
-          modulosEspecialesAsignados
+          modulosAsignados
         };
       }
     });
@@ -1348,7 +1141,7 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
       const relaciones = ['padre', 'madre', 'tutor'];
       const makeRelacionOptions = (seleccionActual = '') =>
         ['<option value="">-- Relación --</option>']
-          .concat(relaciones.map(r =>
+          .concat(relaciones.map r =>
             `<option value="${r}" ${r === seleccionActual ? 'selected' : ''}>${r[0].toUpperCase() + r.slice(1)}</option>`
           )).join('');
 
@@ -1496,7 +1289,6 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
     }
   });
 });
-
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1663,8 +1455,8 @@ async function agregarDocumento(dni) {
 async function editarDocumento(dni, index) {
   try {
     const paciente = await apiFetchJson(`/pacientes/${dni}`);
-    const docs = Array.isArray(paciente.documentosPersonales) ? paciente.documentosPersonales : [];
-    const doc = docs[index];
+    const documentos = Array.isArray(paciente.documentosPersonales) ? paciente.documentosPersonales : [];
+    const doc = documentos[index];
     if (!doc) throw new Error("Documento inválido");
 
     const { value, isConfirmed } = await Swal.fire({
@@ -1787,7 +1579,7 @@ async function eliminarDocumento(dni, id, index) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DIAGNÓSTICOS (informes)
+— DIAGNÓSTICOS (informes)
 // ─────────────────────────────────────────────────────────────────────────────
 async function verDiagnosticos(dni) {
   try {
@@ -2200,3 +1992,4 @@ if (__inputBusq) {
     if (l) l.style.display = 'none';
   });
 }
+
