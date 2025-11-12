@@ -1,3 +1,4 @@
+// backend/jobs/generarCargos.js
 let cron = null;
 try {
   cron = require("node-cron");
@@ -33,6 +34,20 @@ function parseNumberLike(v) {
   return 0;
 }
 
+/** Clave estable de asignación.
+ *  Prioridad:
+ *   1) asig.asigKey (si vino del paciente)
+ *   2) asig._id (si el subdoc tiene _id)
+ *   3) `${moduloId}:${idx}` como fallback determinístico
+ */
+function buildAsigKey(asig, idx) {
+  return String(
+    asig?.asigKey ||
+    asig?._id ||
+    `${asig?.moduloId || ""}:${idx}`
+  );
+}
+
 /**
  * Precio del cargo:
  * 1) Si la asignación trae override (precio/valor/monto/arancel/importe/tarifa), usarlo.
@@ -55,15 +70,6 @@ function pickProfesionalNombre(asig, cacheUsuarios) {
   return u?.nombreApellido || u?.usuario || u?.nombre || undefined;
 }
 
-// genera una clave estable por asignación
-function computeAsigKey(asig, idxFallback) {
-  // Preferimos el _id del subdocumento si existe (Mongo lo crea por defecto)
-  if (asig && asig._id) return String(asig._id);
-  if (asig && asig.asigKey) return String(asig.asigKey);
-  // Fallback predecible si no hay _id (no ideal, pero estable mientras no se reordene el array)
-  return `idx:${idxFallback}`;
-}
-
 /* =============== Core Upsert (reutilizable) =============== */
 /** Upsert del cargo del período. Actualiza si existe y NO está PAGADO. */
 async function upsertCargo({
@@ -77,8 +83,8 @@ async function upsertCargo({
   const moduloNumero  = modulo?.numero || "";
   const descripcion   = `Cargo ${period} — ${moduloNumero ? moduloNumero + ". " : ""}${moduloNombre || "Módulo"}`;
 
-  // 🚫 No tocar cargos ya pagados
-  const filter = { dni, areaId, moduloId, period, asigKey, tipo: "CARGO", estado: { $ne: "PAGADO" } };
+  // 🚫 No tocar cargos ya pagados — anclado a asigKey
+  const filter = { dni, areaId, moduloId, period, tipo: "CARGO", estado: { $ne: "PAGADO" }, asigKey };
 
   const update = {
     $set: {
@@ -141,7 +147,10 @@ async function generarCargosDelMes(period = yyyymm()) {
     const dni = p.dni;
     const pid = p._id;
 
-    for (const [idx, asig] of (p.modulosAsignados || []).entries()) {
+    const asignaciones = Array.isArray(p.modulosAsignados) ? p.modulosAsignados : [];
+    for (let idx = 0; idx < asignaciones.length; idx++) {
+      const asig = asignaciones[idx];
+
       const moduloId = asig.moduloId;
       const modulo   = modById.get(String(moduloId));
       if (!modulo) continue;
@@ -160,7 +169,7 @@ async function generarCargosDelMes(period = yyyymm()) {
 
       const profesionalNombre = pickProfesionalNombre(asig, userById);
       const cantidad = Number(asig.cantidad ?? 1) || 1;
-      const asigKey  = computeAsigKey(asig, idx);
+      const asigKey  = buildAsigKey(asig, idx);
 
       try {
         await upsertCargo({
@@ -216,7 +225,10 @@ async function generarCargosParaPaciente(dni, period = yyyymm()) {
 
   let creados = 0;
 
-  for (const [idx, asig] of (p.modulosAsignados || []).entries()) {
+  const asignaciones = Array.isArray(p.modulosAsignados) ? p.modulosAsignados : [];
+  for (let idx = 0; idx < asignaciones.length; idx++) {
+    const asig = asignaciones[idx];
+
     const moduloId = asig.moduloId;
     const modulo   = modById.get(String(moduloId));
     if (!modulo) continue;
@@ -234,7 +246,7 @@ async function generarCargosParaPaciente(dni, period = yyyymm()) {
 
     const profesionalNombre = pickProfesionalNombre(asig, userById);
     const cantidad = Number(asig.cantidad ?? 1) || 1;
-    const asigKey  = computeAsigKey(asig, idx);
+    const asigKey  = buildAsigKey(asig, idx);
 
     try {
       await upsertCargo({
@@ -282,6 +294,7 @@ module.exports = {
   generarCargosParaPaciente,
   yyyymm,
 };
+
 
 
 

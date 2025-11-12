@@ -1,14 +1,13 @@
 // controllers/pacientescontrollers.js
 const mongoose = require("mongoose");
 const Paciente = require("../models/pacientes");
-// ⬅️ NUEVO: import directo del job para disparar cargos cuando corresponde
 const { generarCargosParaPaciente } = require("../jobs/generarCargos");
 
 // --- Validaciones básicas ---
-const WSP_RE  = /^\d{10,15}$/;                // solo dígitos, 10–15
-const DNI_RE  = /^\d{7,8}$/;                  // 7–8 dígitos
-const DOC_RE  = /^\d{7,13}$/;                 // DNI (7-8) o CUIT (11). Permitimos 7–13 para flexibilidad
-const MAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/; // formato simple
+const WSP_RE  = /^\d{10,15}$/;
+const DNI_RE  = /^\d{7,8}$/;
+const DOC_RE  = /^\d{7,13}$/;
+const MAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CP_OK   = new Set(["Obra Social", "Particular", "Obra Social + Particular"]);
 const ESTADOS = new Set(["Alta", "Baja", "En espera"]);
 
@@ -22,17 +21,40 @@ function getActor(req) {
   return { usuarioId: id || undefined, usuario: usuario || undefined, nombre: nombre || undefined };
 }
 
+// **NUEVO**: asegura asigKey estable en cada asignación
+function ensureAsigKeys(pacienteDoc) {
+  if (Array.isArray(pacienteDoc.modulosAsignados)) {
+    pacienteDoc.modulosAsignados = pacienteDoc.modulosAsignados.map((a, idx) => {
+      if (!a) return a;
+      if (!a.asigKey) {
+        // preferimos usar _id si existe; si no, generamos uno determinístico por posición
+        a.asigKey = String(a._id || `${a.moduloId || ""}:${idx}`);
+      }
+      return a;
+    });
+  }
+  if (Array.isArray(pacienteDoc.modulosEspecialesAsignados)) {
+    pacienteDoc.modulosEspecialesAsignados = pacienteDoc.modulosEspecialesAsignados.map((a, idx) => {
+      if (!a) return a;
+      if (!a.asigKey) {
+        a.asigKey = String(a._id || `esp:${a.moduloId || ""}:${idx}`);
+      }
+      return a;
+    });
+  }
+}
+
 // Permite repetidos y limita a 3. E-mail opcional y validado. NUEVO: documento opcional (DNI/CUIT)
 function sanitizeResponsables(responsables) {
   if (!Array.isArray(responsables)) return [];
   const out = [];
 
   for (const r0 of responsables) {
-    const relacion  = toStr(r0.relacion).trim().toLowerCase(); // padre | madre | tutor
+    const relacion  = toStr(r0.relacion).trim().toLowerCase();
     const nombre    = toStr(r0.nombre).trim();
     const whatsapp  = onlyDigits(r0.whatsapp);
     const emailRaw  = toStr(r0.email).trim().toLowerCase();
-    const documento = onlyDigits(r0.documento); // ← NUEVO
+    const documento = onlyDigits(r0.documento);
 
     if (!["padre", "madre", "tutor"].includes(relacion)) continue;
     if (!nombre) continue;
@@ -72,7 +94,6 @@ function pickModulosEspeciales(body) {
 function buildPacienteData(body, existing = null) {
   const data = {};
 
-  // Campos simples (se asignan tal cual si vienen definidos)
   const simples = [
     "nombre", "fechaNacimiento", "colegio", "curso",
     "colegioMail",
@@ -84,36 +105,30 @@ function buildPacienteData(body, existing = null) {
     if (body[k] !== undefined && body[k] !== null) data[k] = body[k];
   }
 
-  // DNI solo al crear
   if (!existing && body.dni !== undefined) {
     const dni = toStr(body.dni).trim();
     if (DNI_RE.test(dni)) data.dni = dni;
   }
 
-  // Condición de pago válida
   if (data.condicionDePago && !CP_OK.has(data.condicionDePago)) {
     delete data.condicionDePago;
   }
 
-  // Normalizar mail de colegio (opcional)
   if (data.colegioMail !== undefined) {
     const m = toStr(data.colegioMail).trim().toLowerCase();
     data.colegioMail = m && MAIL_RE.test(m) ? m : undefined;
     if (data.colegioMail === undefined) delete data.colegioMail;
   }
 
-  // Responsables (1..3, con validaciones) — incluye documento opcional
   if (body.responsables !== undefined) {
     const resp = sanitizeResponsables(body.responsables);
     if (resp.length) data.responsables = resp;
   }
 
-  // Módulos comunes (el schema valida)
   if (Array.isArray(body.modulosAsignados)) {
     data.modulosAsignados = body.modulosAsignados;
   }
 
-  // ✅ Módulos ESPECIALES: acepta varios nombres y mapea a modulosEspecialesAsignados
   const especiales = pickModulosEspeciales(body);
   if (Array.isArray(especiales)) {
     data.modulosEspecialesAsignados = especiales.map(e => {
@@ -125,12 +140,12 @@ function buildPacienteData(body, existing = null) {
       return {
         moduloId,
         cantidad: isNaN(cantidad) ? 1 : cantidad,
-        profesionales
+        profesionales,
+        asigKey: e?.asigKey // si vino, lo respetamos
       };
     });
   }
 
-  // Limpieza de strings
   for (const [k, v] of Object.entries(data)) {
     if (typeof v === "string") data[k] = v.trim();
   }
@@ -140,7 +155,6 @@ function buildPacienteData(body, existing = null) {
 
 // ========================= Controllers =========================
 
-// GET /api/pacientes/buscar?nombre=...
 const buscarPaciente = async (req, res) => {
   try {
     const q = toStr(req.query.nombre).trim();
@@ -160,7 +174,6 @@ const buscarPaciente = async (req, res) => {
   }
 };
 
-// GET /api/pacientes/:dni
 const obtenerPorDNI = async (req, res) => {
   try {
     const dni = toStr(req.params.dni).trim();
@@ -173,7 +186,6 @@ const obtenerPorDNI = async (req, res) => {
   }
 };
 
-// POST /api/pacientes
 const crearPaciente = async (req, res) => {
   try {
     const data = buildPacienteData(req.body, null);
@@ -185,11 +197,10 @@ const crearPaciente = async (req, res) => {
       return res.status(400).json({ error: "Debe incluir al menos un responsable (padre/madre/tutor)" });
     }
 
-    // Fuerza estado inicial y compone historial
+    // estado inicial + historial
     const actor = getActor(req);
     const observacion = toStr(req.body.observacionCreacion || req.body.descripcionEstado).trim();
 
-    // (igual que antes) estado inicial "En espera"
     data.estado = "En espera";
     data.estadoHistorial = [{
       estadoAnterior: undefined,
@@ -205,11 +216,12 @@ const crearPaciente = async (req, res) => {
     }
 
     const nuevo = new Paciente(data);
+    // asigKey antes de guardar
+    ensureAsigKeys(nuevo);
     await nuevo.save();
 
-    // ⬅️ NUEVO: si entró ya en Alta por algún flujo, disparamos cargos
     if (nuevo.estado === "Alta") {
-      generarCargosParaPaciente(nuevo.dni).catch(console.error); // no bloquea
+      generarCargosParaPaciente(nuevo.dni).catch(console.error);
     }
 
     res.status(201).json(nuevo);
@@ -230,21 +242,18 @@ const crearPaciente = async (req, res) => {
   }
 };
 
-// PUT /api/pacientes/:dni
 const actualizarPaciente = async (req, res) => {
   try {
     const dni = toStr(req.params.dni).trim();
     const paciente = await Paciente.findOne({ dni });
     if (!paciente) return res.status(404).json({ error: "No encontrado" });
 
-    // ⬅️ NUEVO: snapshots antes de tocar nada (para decidir si disparamos cargos)
     const antesEstado = paciente.estado || null;
     const antesMods   = JSON.stringify(paciente.modulosAsignados || []);
 
     const data = buildPacienteData(req.body, paciente);
     const actor = getActor(req);
 
-    // Cambio de estado → historial
     const nuevoEstado = req.body.estado;
     const descripcionEstado = toStr(req.body.descripcionEstado || req.body.estadoDescripcion).trim();
 
@@ -274,19 +283,21 @@ const actualizarPaciente = async (req, res) => {
       }
     }
 
-    // Asignar resto (dni y estado ya tratados)
+    // Asignar resto
     for (const [k, v] of Object.entries(data)) {
       if (k === "dni" || k === "estado") continue;
       paciente[k] = typeof v === "string" ? v.trim() : v;
     }
 
+    // **NUEVO**: garantizar asigKey antes de guardar
+    ensureAsigKeys(paciente);
+
     await paciente.save();
 
-    // ⬅️ NUEVO: dispara cargos si pasó a Alta o cambiaron módulos (comparando snapshots)
     const pasoAAlta     = (antesEstado !== "Alta") && (paciente.estado === "Alta");
     const cambioModulos = (antesMods !== JSON.stringify(paciente.modulosAsignados || []));
     if (pasoAAlta || cambioModulos) {
-      generarCargosParaPaciente(paciente.dni).catch(console.error); // fire-and-forget
+      generarCargosParaPaciente(paciente.dni).catch(console.error);
     }
 
     res.json(paciente);
@@ -302,7 +313,6 @@ const actualizarPaciente = async (req, res) => {
   }
 };
 
-// GET /api/pacientes?limit=20&sort=nombre|created
 const listarPacientes = async (req, res) => {
   try {
     const { nombre, dni, limit = 20, sort } = req.query;
@@ -339,11 +349,8 @@ const listarPacientes = async (req, res) => {
   }
 };
 
-/* ============================================================================
-   DOCUMENTOS PERSONALES (metadata R2)
-   ============================================================================ */
+/* ===================== Documentos personales ===================== */
 
-// POST /api/pacientes/:dni/documentos
 const agregarDocumento = async (req, res) => {
   try {
     const dni = toStr(req.params.dni).trim();
@@ -376,8 +383,6 @@ const agregarDocumento = async (req, res) => {
   }
 };
 
-// PUT /api/pacientes/:dni/documentos/:id
-// Fallback: /api/pacientes/:dni/documentos?index=#
 const actualizarDocumento = async (req, res) => {
   try {
     const dni = toStr(req.params.dni).trim();
@@ -419,8 +424,6 @@ const actualizarDocumento = async (req, res) => {
   }
 };
 
-// DELETE /api/pacientes/:dni/documentos/:id
-// Fallback: /api/pacientes/:dni/documentos?index=#
 const eliminarDocumento = async (req, res) => {
   try {
     const dni = toStr(req.params.dni).trim();
@@ -449,14 +452,27 @@ const eliminarDocumento = async (req, res) => {
   }
 };
 
-/* ============================================================================
-   DIAGNÓSTICOS (metadata R2)
-   ============================================================================ */
+module.exports = {
+  listarPacientes,
+  buscarPaciente,
+  obtenerPorDNI,
+  crearPaciente,
+  actualizarPaciente,
+  agregarDocumento,
+  actualizarDocumento,
+  eliminarDocumento,
+  agregarDiagnostico,
+  actualizarDiagnostico,
+  eliminarDiagnostico
+};
 
-// POST /api/pacientes/:dni/diagnosticos
+/* ============================================================================ */
+/* DIAGNÓSTICOS (mantengo igual que tu versión previa)                          */
+/* ============================================================================ */
+function toStrDX(x){ return (x ?? "").toString(); }
 const agregarDiagnostico = async (req, res) => {
   try {
-    const dni = toStr(req.params.dni).trim();
+    const dni = toStrDX(req.params.dni).trim();
     const p = await Paciente.findOne({ dni });
     if (!p) return res.status(404).json({ error: "Paciente no encontrado" });
 
@@ -468,11 +484,11 @@ const agregarDiagnostico = async (req, res) => {
     if (!Array.isArray(p.diagnosticos)) p.diagnosticos = [];
     const dx = {
       _id: new mongoose.Types.ObjectId(),
-      fecha: toStr(fecha).trim(),
-      area: toStr(area).trim(),
-      observaciones: toStr(observaciones || "").trim() || undefined,
-      archivoKey: toStr(archivoKey).trim(),
-      archivoURL: toStr(archivoURL).trim(),
+      fecha: toStrDX(fecha).trim(),
+      area: toStrDX(area).trim(),
+      observaciones: toStrDX(observaciones || "").trim() || undefined,
+      archivoKey: toStrDX(archivoKey).trim(),
+      archivoURL: toStrDX(archivoURL).trim(),
       creadoEn: new Date()
     };
 
@@ -485,12 +501,9 @@ const agregarDiagnostico = async (req, res) => {
     res.status(500).json({ error: "No se pudo agregar el diagnóstico" });
   }
 };
-
-// PUT /api/pacientes/:dni/diagnosticos/:id
-// Fallback: /api/pacientes/:dni/diagnosticos?index=#
 const actualizarDiagnostico = async (req, res) => {
   try {
-    const dni = toStr(req.params.dni).trim();
+    const dni = toStrDX(req.params.dni).trim();
     const p = await Paciente.findOne({ dni });
     if (!p) return res.status(404).json({ error: "Paciente no encontrado" });
 
@@ -510,14 +523,14 @@ const actualizarDiagnostico = async (req, res) => {
     const { fecha, area, observaciones, archivoKey, archivoURL } = req.body || {};
     const dx = p.diagnosticos[idx];
 
-    if (fecha !== undefined) dx.fecha = toStr(fecha).trim();
-    if (area !== undefined)  dx.area  = toStr(area).trim();
+    if (fecha !== undefined) dx.fecha = toStrDX(fecha).trim();
+    if (area !== undefined)  dx.area  = toStrDX(area).trim();
     if (observaciones !== undefined) {
-      const v = toStr(observaciones).trim();
+      const v = toStrDX(observaciones).trim();
       dx.observaciones = v || undefined;
     }
-    if (archivoKey !== undefined) dx.archivoKey = toStr(archivoKey).trim();
-    if (archivoURL !== undefined) dx.archivoURL = toStr(archivoURL).trim();
+    if (archivoKey !== undefined) dx.archivoKey = toStrDX(archivoKey).trim();
+    if (archivoURL !== undefined) dx.archivoURL = toStrDX(archivoURL).trim();
 
     dx.actualizadoEn = new Date();
 
@@ -528,12 +541,9 @@ const actualizarDiagnostico = async (req, res) => {
     res.status(500).json({ error: "No se pudo actualizar el diagnóstico" });
   }
 };
-
-// DELETE /api/pacientes/:dni/diagnosticos/:id
-// Fallback: /api/pacientes/:dni/diagnosticos?index=#
 const eliminarDiagnostico = async (req, res) => {
   try {
-    const dni = toStr(req.params.dni).trim();
+    const dni = toStrDX(req.params.dni).trim();
     const p = await Paciente.findOne({ dni });
     if (!p) return res.status(404).json({ error: "Paciente no encontrado" });
 
@@ -559,19 +569,4 @@ const eliminarDiagnostico = async (req, res) => {
   }
 };
 
-module.exports = {
-  listarPacientes,
-  buscarPaciente,
-  obtenerPorDNI,
-  crearPaciente,
-  actualizarPaciente,
-
-  agregarDocumento,
-  actualizarDocumento,
-  eliminarDocumento,
-
-  agregarDiagnostico,
-  actualizarDiagnostico,
-  eliminarDiagnostico
-};
 
