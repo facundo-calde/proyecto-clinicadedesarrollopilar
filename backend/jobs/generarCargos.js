@@ -3,7 +3,7 @@ let cron = null;
 try {
   cron = require("node-cron");
 } catch (e) {
-  console.warn("⚠️ node-cron no instalado. El job de cargos no se programará automáticamente.");
+    console.warn("⚠️ node-cron no instalado. El job de cargos no se programará automáticamente.");
 }
 
 const Paciente = require("../models/pacientes");
@@ -18,13 +18,11 @@ function yyyymm(date = new Date()) {
   const m = String(date.getMonth() + 1).padStart(2, "0");
   return `${y}-${m}`;
 }
-
 function inRange(period, desdeMes, hastaMes) {
   const d = desdeMes || "1900-01";
   const h = hastaMes || "9999-12";
   return (period >= d) && (period <= h);
 }
-
 function parseNumberLike(v) {
   if (typeof v === "number") return v;
   if (typeof v === "string" && v.trim()) {
@@ -33,19 +31,22 @@ function parseNumberLike(v) {
   }
   return 0;
 }
-
-/** Clave estable de asignación.
- *  Prioridad:
- *   1) asig.asigKey (si vino del paciente)
- *   2) asig._id (si el subdoc tiene _id)
- *   3) `${moduloId}:${idx}` como fallback determinístico
- */
-function buildAsigKey(asig, idx) {
-  return String(
-    asig?.asigKey ||
-    asig?._id ||
-    `${asig?.moduloId || ""}:${idx}`
-  );
+function normalizeCantidad(v) {
+  if (v == null) return 1;
+  if (typeof v === "number" && !Number.isNaN(v)) return v;
+  const s = String(v).trim();
+  if (/^\d+\s*\/\s*\d+$/.test(s)) {
+    const [a, b] = s.split("/").map(n => parseFloat(n));
+    if (b && !Number.isNaN(a) && !Number.isNaN(b)) return a / b;
+  }
+  const n = Number(s.replace(/\./g, "").replace(",", "."));
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+function mkAsigKey({ moduloId, cantidad, areaId, profesionalId }) {
+  const mid = moduloId ? String(moduloId) : "";
+  const aid = areaId ? String(areaId) : "";
+  const pid = profesionalId ? String(profesionalId) : "";
+  return [mid, cantidad, aid, pid].join("|");
 }
 
 /**
@@ -58,7 +59,6 @@ function getPrecioDesdeValorPadres(modulo, { asig }) {
     .map(parseNumberLike)
     .find(n => n > 0);
   if (override) return override;
-
   return parseNumberLike(modulo?.valorPadres) || 0;
 }
 
@@ -71,45 +71,80 @@ function pickProfesionalNombre(asig, cacheUsuarios) {
 }
 
 /* =============== Core Upsert (reutilizable) =============== */
-/** Upsert del cargo del período. Actualiza si existe y NO está PAGADO. */
+/** Upsert del cargo del período. Evita duplicados usando asigKey. */
 async function upsertCargo({
   dni, pacienteId, areaId, areaNombre,
-  modulo, moduloId, period, cantidad, profesionalNombre, asignacion, asigKey
+  modulo, moduloId, period, cantidad, profesionalNombre,
+  asignacion // debe traer asigKey si el front/controller la generó
 }) {
+  const cant = normalizeCantidad(cantidad);
   const base  = getPrecioDesdeValorPadres(modulo, { asig: asignacion });
-  const total = +(base * (Number(cantidad ?? 1) || 1)).toFixed(2);
+  const total = +(base * (Number(cant) || 1)).toFixed(2);
 
   const moduloNombre  = modulo?.nombre || modulo?.titulo || "";
   const moduloNumero  = modulo?.numero || "";
   const descripcion   = `Cargo ${period} — ${moduloNumero ? moduloNumero + ". " : ""}${moduloNombre || "Módulo"}`;
 
-  // 🚫 No tocar cargos ya pagados — anclado a asigKey
-  const filter = { dni, areaId, moduloId, period, tipo: "CARGO", estado: { $ne: "PAGADO" }, asigKey };
+  // asigKey: usar la que viene o construirla
+  const p0 = Array.isArray(asignacion?.profesionales) ? asignacion.profesionales[0] || {} : {};
+  const areaIdFromAsig = p0?.areaId || areaId;
+  const profesionalId  = p0?.profesionalId || p0?._id || p0?.id || undefined;
+  const asigKey = asignacion?.asigKey || mkAsigKey({
+    moduloId,
+    cantidad: cant,
+    areaId: areaIdFromAsig,
+    profesionalId
+  });
 
+  // ------------------ 1) Intento moderno: por asigKey ------------------
+  const filterByKey = { dni, period, tipo: "CARGO", asigKey };
   const update = {
     $set: {
       descripcion,
       monto: total,
-      cantidad: Number(cantidad ?? 1) || 1,
+      cantidad: Number(cant) || 1,
       profesional: profesionalNombre || undefined,
-      // denormalizados para mostrar en front
       moduloNombre: moduloNombre || undefined,
       areaNombre: areaNombre || undefined,
+      areaId: areaIdFromAsig || areaId,       // asegurar persistencia
+      moduloId: moduloId,                     // idem
+      updatedAt: new Date()
     },
     $setOnInsert: {
       pacienteId,
       fecha: new Date(),
       estado: "PENDIENTE",
       tipo: "CARGO",
-      period,
       dni,
-      areaId,
-      moduloId,
+      period,
       asigKey
-    },
+    }
   };
 
-  await Mov.updateOne(filter, update, { upsert: true });
+  let res = await Mov.updateOne(filterByKey, update, { upsert: true });
+  if (res.matchedCount > 0 || res.upsertedCount > 0) return;
+
+  // ------------------ 2) Compatibilidad: “legacy” (sin asigKey) ------------------
+  // Si había uno existente del mismo módulo/área/período, lo adoptamos y le seteamos asigKey.
+  const legacyFilter = {
+    dni,
+    areaId: areaIdFromAsig || areaId,
+    moduloId,
+    period,
+    tipo: "CARGO",
+    estado: { $ne: "PAGADO" },
+    asigKey: { $exists: false }
+  };
+
+  res = await Mov.updateOne(legacyFilter, {
+    $set: {
+      ...update.$set,
+      asigKey
+    },
+    $setOnInsert: update.$setOnInsert
+  }, { upsert: true });
+
+  // con esto evitamos que, al re-ejecutar, se vuelvan a crear los anteriores
 }
 
 /* =============== Cargos para TODO el mes (cron/masivo) =============== */
@@ -147,10 +182,7 @@ async function generarCargosDelMes(period = yyyymm()) {
     const dni = p.dni;
     const pid = p._id;
 
-    const asignaciones = Array.isArray(p.modulosAsignados) ? p.modulosAsignados : [];
-    for (let idx = 0; idx < asignaciones.length; idx++) {
-      const asig = asignaciones[idx];
-
+    for (const asig of (p.modulosAsignados || [])) {
       const moduloId = asig.moduloId;
       const modulo   = modById.get(String(moduloId));
       if (!modulo) continue;
@@ -160,7 +192,6 @@ async function generarCargosDelMes(period = yyyymm()) {
       const area   = areaById.get(String(areaId));
       const areaNombre = area?.nombre || area?.titulo || "";
 
-      // Vigencia
       const createdAt = p.createdAt || p.creadoEl || new Date();
       const createdPeriod = yyyymm(new Date(createdAt));
       const desdeMes = asig.desdeMes || createdPeriod;
@@ -168,8 +199,7 @@ async function generarCargosDelMes(period = yyyymm()) {
       if (!inRange(period, desdeMes, hastaMes)) continue;
 
       const profesionalNombre = pickProfesionalNombre(asig, userById);
-      const cantidad = Number(asig.cantidad ?? 1) || 1;
-      const asigKey  = buildAsigKey(asig, idx);
+      const cantidad = asig.cantidad;
 
       try {
         await upsertCargo({
@@ -183,7 +213,6 @@ async function generarCargosDelMes(period = yyyymm()) {
           cantidad,
           profesionalNombre,
           asignacion: asig,
-          asigKey,
         });
         procesados++;
       } catch (e) {
@@ -225,10 +254,7 @@ async function generarCargosParaPaciente(dni, period = yyyymm()) {
 
   let creados = 0;
 
-  const asignaciones = Array.isArray(p.modulosAsignados) ? p.modulosAsignados : [];
-  for (let idx = 0; idx < asignaciones.length; idx++) {
-    const asig = asignaciones[idx];
-
+  for (const asig of (p.modulosAsignados || [])) {
     const moduloId = asig.moduloId;
     const modulo   = modById.get(String(moduloId));
     if (!modulo) continue;
@@ -245,8 +271,7 @@ async function generarCargosParaPaciente(dni, period = yyyymm()) {
     if (!inRange(period, desdeMes, hastaMes)) continue;
 
     const profesionalNombre = pickProfesionalNombre(asig, userById);
-    const cantidad = Number(asig.cantidad ?? 1) || 1;
-    const asigKey  = buildAsigKey(asig, idx);
+    const cantidad = asig.cantidad;
 
     try {
       await upsertCargo({
@@ -260,7 +285,6 @@ async function generarCargosParaPaciente(dni, period = yyyymm()) {
         cantidad,
         profesionalNombre,
         asignacion: asig,
-        asigKey,
       });
       creados++;
     } catch (e) {
@@ -273,7 +297,7 @@ async function generarCargosParaPaciente(dni, period = yyyymm()) {
 
 /* =============== Programación (cron) =============== */
 function schedule() {
-  if (!cron) return; // sin cron, no programes
+  if (!cron) return;
   cron.schedule(
     "15 2 * * *",
     async () => {
@@ -294,6 +318,7 @@ module.exports = {
   generarCargosParaPaciente,
   yyyymm,
 };
+
 
 
 
