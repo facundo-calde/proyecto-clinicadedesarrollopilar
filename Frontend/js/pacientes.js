@@ -121,6 +121,45 @@ async function renderFichaPaciente(p) {
     return String(cp);
   };
 
+  // Mapea números a fracciones legibles (sin decimales)
+  const formatCantidad = (x) => {
+    const n = Number(x);
+    if (!Number.isFinite(n)) return "-";
+
+    const FRA = [
+      { v: 1,   t: "1"   },
+      { v: 3/4, t: "3/4" },
+      { v: 2/3, t: "2/3" },
+      { v: 1/2, t: "1/2" },
+      { v: 1/3, t: "1/3" },
+      { v: 1/4, t: "1/4" },
+      { v: 0,   t: "0"   },
+    ];
+    const EPS = 0.02; // tolerancia
+
+    for (const f of FRA) {
+      if (Math.abs(n - f.v) < EPS) return f.t;
+    }
+
+    if (Math.abs(n - Math.round(n)) < EPS) return String(Math.round(n));
+
+    if (n > 0 && n < 1) {
+      const dens = [2, 3, 4];
+      let best = null;
+      for (const d of dens) {
+        const k = Math.round(n * d);
+        const cand = k / d;
+        const err = Math.abs(n - cand);
+        if (k >= 0 && k <= d && (!best || err < best.err)) {
+          best = { t: `${k}/${d}`, err };
+        }
+      }
+      if (best && best.err < 0.08) return best.t;
+    }
+
+    return String(n);
+  };
+
   // ── RESUMEN: creado (En espera), Alta, Baja ───────────────────────────────
   function buildEstadoResumen() {
     const hist = Array.isArray(p.estadoHistorial) ? [...p.estadoHistorial].filter(h => h && h.fecha) : [];
@@ -194,7 +233,9 @@ async function renderFichaPaciente(p) {
             (mod?.nombre) ||
             (typeof mod?.numero !== "undefined" ? `Módulo ${mod.numero}` : null) ||
             m.moduloNombre || m.nombre || "Módulo";
-          const cant = (typeof m.cantidad !== "undefined" && m.cantidad !== null) ? m.cantidad : "-";
+
+          const cantVal = (typeof m.cantidad !== "undefined" && m.cantidad !== null) ? m.cantidad : null;
+          const cant = (cantVal === null) ? "-" : formatCantidad(cantVal);
 
           const det = (Array.isArray(m.profesionales) && m.profesionales.length)
             ? `<ul style="margin:4px 0 0 18px;">
@@ -314,6 +355,7 @@ async function renderFichaPaciente(p) {
     </div>
   `;
 }
+
 
 
 
