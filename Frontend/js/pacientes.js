@@ -357,10 +357,6 @@ async function renderFichaPaciente(p) {
 }
 
 
-
-
-
-
 async function modificarPaciente(dni) {
   try {
     const p = await apiFetchJson(`/pacientes/${dni}`);
@@ -375,7 +371,7 @@ async function modificarPaciente(dni) {
       MODULOS  = Array.isArray(m) ? m : [];
       AREAS    = Array.isArray(a) ? a : [];
       USUARIOS = Array.isArray(u) ? u : [];
-    } catch (_) { }
+    } catch (_) {}
 
     // opciones de selects
     const MOD_OPTS = MODULOS.length
@@ -484,7 +480,7 @@ async function modificarPaciente(dni) {
         }).join("");
     };
 
-    // template módulo (común)
+    // template módulo (una sola fila de profesional, sin "Agregar otro")
     const renderModuloSelect = (index, optsHtml) => `
       <div class="modulo-row" data-index="${index}"
            style="margin-bottom:15px; padding:10px; border:1px solid #ddd; border-radius:6px;">
@@ -508,7 +504,7 @@ async function modificarPaciente(dni) {
         </div>
 
         <div class="profesionales-container" style="margin-top:10px;">
-          <h5 style="margin:8px 0;">Usuarios (profesionales / coordinadores / directoras / pasantes):</h5>
+          <h5 style="margin:8px 0;">Usuario asignado:</h5>
           <div class="profesional-row" style="display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:8px;">
             <select class="area-select swal2-select" style="width:100%; margin:0;">
               <option value="">-- Área --</option>
@@ -519,11 +515,6 @@ async function modificarPaciente(dni) {
             </select>
           </div>
         </div>
-
-        <button type="button" class="btnAgregarProfesional"
-          style="margin-top:8px; padding:4px 10px; border:1px solid #ccc; border-radius:5px; background:#eee; cursor:pointer;">
-          ➕ Agregar otro
-        </button>
       </div>
     `;
 
@@ -682,46 +673,23 @@ async function modificarPaciente(dni) {
         else addRespRow({ relacion: 'tutor' });
         btnAdd.addEventListener('click', () => addRespRow());
 
-        // ====== Módulos (solo comunes) ======
+        // ====== Módulos (sin "Agregar otro" profesional) ======
         const modCont = document.getElementById("modulosContainer");
 
-        const attachAgregarProfesional = (modRowEl) => {
-          const btn = modRowEl.querySelector(".btnAgregarProfesional");
-          const container = modRowEl.querySelector(".profesionales-container");
-          if (!btn || !container) return;
-
-          const buildRow = () => `
-            <div class="profesional-row" style="margin-top:5px; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:8px;">
-              <select class="area-select swal2-select" style="width:100%; margin:0;">
-                <option value="">-- Área --</option>
-                ${AREA_OPTS}
-              </select>
-              <select class="profesional-select swal2-select" style="width:100%; margin:0;">
-                <option value="">-- Seleccionar usuario --</option>
-              </select>
-            </div>`;
-
-          const wireFilter = (row) => {
-            const areaSel = row.querySelector(".area-select");
-            const profSel = row.querySelector(".profesional-select");
-            const render = () => { profSel.innerHTML = profesionalesDeArea(areaSel.value); };
-            areaSel.addEventListener("change", render);
-            render();
-          };
-
-          btn.addEventListener("click", () => {
-            container.insertAdjacentHTML("beforeend", buildRow());
-            wireFilter(container.lastElementChild);
-          });
-
-          wireFilter(container.querySelector(".profesional-row"));
+        const wireFilter = (row) => {
+          const areaSel = row.querySelector(".area-select");
+          const profSel = row.querySelector(".profesional-select");
+          const render = () => { profSel.innerHTML = profesionalesDeArea(areaSel.value); };
+          areaSel.addEventListener("change", render);
+          render();
         };
 
         const addModuloRow = () => {
           const index = modCont.querySelectorAll(".modulo-row").length;
           modCont.insertAdjacentHTML("beforeend", renderModuloSelect(index, MOD_OPTS));
           const modRowEl = modCont.lastElementChild;
-          attachAgregarProfesional(modRowEl);
+          // una sola fila de profesional
+          wireFilter(modRowEl.querySelector(".profesional-row"));
           return modRowEl;
         };
 
@@ -736,21 +704,10 @@ async function modificarPaciente(dni) {
             if (selMod) selMod.value = String(m.moduloId || "");
             if (selCant) selCant.value = String(m.cantidad ?? "0");
 
-            const contProf = row.querySelector(".profesionales-container");
-            const ensureRows = (n) => {
-              const actuales = contProf.querySelectorAll(".profesional-row").length;
-              for (let i = actuales; i < n; i++) {
-                row.querySelector(".btnAgregarProfesional").click();
-              }
-            };
-            const profesionales = Array.isArray(m.profesionales) ? m.profesionales : [];
-            if (!profesionales.length) return;
-
-            ensureRows(profesionales.length);
-            const filas = contProf.querySelectorAll(".profesional-row");
-
-            profesionales.forEach((pr, i) => {
-              const f = filas[i];
+            // Solo pre-cargar el PRIMER profesional si había varios
+            const pr = (Array.isArray(m.profesionales) && m.profesionales.length) ? m.profesionales[0] : null;
+            if (pr) {
+              const f = row.querySelector(".profesional-row");
               const areaSel = f.querySelector(".area-select");
               const profSel = f.querySelector(".profesional-select");
 
@@ -758,7 +715,7 @@ async function modificarPaciente(dni) {
               areaSel.value = String(areaId);
               areaSel.dispatchEvent(new Event("change", { bubbles: true }));
               setTimeout(() => { profSel.value = String(pr.profesionalId || ""); }, 0);
-            });
+            }
           });
         }
 
@@ -830,18 +787,16 @@ async function modificarPaciente(dni) {
           responsables.push(r);
         }
 
-        // módulos comunes
+        // módulos comunes (una sola fila de profesional por módulo)
         const modulosAsignados = [];
         document.querySelectorAll("#modulosContainer .modulo-row").forEach((row) => {
           const moduloId = row.querySelector(".modulo-select")?.value;
           const cantidad = parseFloat(row.querySelector(".cantidad-select")?.value);
           if (moduloId && cantidad > 0) {
-            const profesionalesAsignados = [];
-            row.querySelectorAll(".profesional-row").forEach(profRow => {
-              const areaId = profRow.querySelector(".area-select")?.value;
-              const profesionalId = profRow.querySelector(".profesional-select")?.value;
-              if (profesionalId && areaId) profesionalesAsignados.push({ profesionalId, areaId });
-            });
+            const profRow = row.querySelector(".profesional-row");
+            const areaId = profRow?.querySelector(".area-select")?.value || "";
+            const profesionalId = profRow?.querySelector(".profesional-select")?.value || "";
+            const profesionalesAsignados = (areaId && profesionalId) ? [{ profesionalId, areaId }] : [];
             modulosAsignados.push({ moduloId, cantidad, profesionales: profesionalesAsignados });
           }
         });
@@ -882,7 +837,7 @@ async function modificarPaciente(dni) {
 
     if (!putRes.ok) {
       let msg = "Error al guardar";
-      try { const j = await putRes.json(); msg = j?.error || msg; } catch { }
+      try { const j = await putRes.json(); msg = j?.error || msg; } catch {}
       if (putRes.status === 401) msg = 'Token requerido o inválido. Iniciá sesión nuevamente.';
       throw new Error(msg);
     }
@@ -896,8 +851,6 @@ async function modificarPaciente(dni) {
     Swal.fire("❌ Error al cargar/modificar paciente", err.message || "", "error");
   }
 }
-
-
 
 
 
