@@ -481,6 +481,7 @@ async function modificarPaciente(dni) {
     };
 
     // template módulo (una sola fila de profesional, sin "Agregar otro")
+    // >>> Cambio: 1 queda seleccionado por default
     const renderModuloSelect = (index, optsHtml) => `
       <div class="modulo-row" data-index="${index}"
            style="margin-bottom:15px; padding:10px; border:1px solid #ddd; border-radius:6px;">
@@ -498,7 +499,7 @@ async function modificarPaciente(dni) {
               <option value="0.25">1/4</option>
               <option value="0.5">1/2</option>
               <option value="0.75">3/4</option>
-              <option value="1">1</option>
+              <option value="1" selected>1</option>
             </select>
           </div>
         </div>
@@ -688,6 +689,11 @@ async function modificarPaciente(dni) {
           const index = modCont.querySelectorAll(".modulo-row").length;
           modCont.insertAdjacentHTML("beforeend", renderModuloSelect(index, MOD_OPTS));
           const modRowEl = modCont.lastElementChild;
+
+          // >>> Cambio adicional: asegurar por código que la cantidad arranque en 1
+          const selCant = modRowEl.querySelector(".cantidad-select");
+          if (selCant) selCant.value = "1";
+
           // una sola fila de profesional
           wireFilter(modRowEl.querySelector(".profesional-row"));
           return modRowEl;
