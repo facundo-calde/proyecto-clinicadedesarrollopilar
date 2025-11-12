@@ -335,7 +335,7 @@ async function modificarPaciente(dni) {
       USUARIOS = Array.isArray(u) ? u : [];
     } catch (_) { }
 
-    // 👇 usa m.nombre del esquema actual
+    // opciones de selects
     const MOD_OPTS = MODULOS.length
       ? MODULOS.map(m => `<option value="${m._id}">${m.nombre}</option>`).join("")
       : `<option value="">No disponible</option>`;
@@ -344,10 +344,8 @@ async function modificarPaciente(dni) {
       ? AREAS.map(a => `<option value="${a._id}">${a.nombre}</option>`).join("")
       : `<option value="">No disponible</option>`;
 
-    // ---- Helpers de filtro por área/rol ----
-    const norm = (s) => (s ?? "").toString()
-      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase().trim();
+    // helpers de normalización/roles/áreas
+    const norm  = (s) => (s ?? "").toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
     const HEX24 = /^[a-f0-9]{24}$/i;
 
     const AREA_ID_TO_NAME_NORM = new Map();
@@ -422,14 +420,14 @@ async function modificarPaciente(dni) {
       return false;
     }
 
-    // Usuarios para módulos comunes (roles asignables, opcionalmente filtrados por área)
+    // lista de profesionales por área (módulos comunes)
     const profesionalesDeArea = (areaId) => {
       const selId = String(areaId || "");
       const lista = (USUARIOS || [])
         .filter(u => {
           const roles = userRoles(u);
           if (![...roles].some(r => ROLES_ASIGNABLES.has(r))) return false;
-          if (roles.has("directoras")) return true;
+          if (roles.has("directoras")) return true; // siempre visibles
           if (!selId) return true;
           return userBelongsToArea(u, selId);
         })
@@ -444,7 +442,7 @@ async function modificarPaciente(dni) {
         }).join("");
     };
 
-    // ---- Template de cada bloque de módulo (COMÚN) ----
+    // template módulo (común)
     const renderModuloSelect = (index, optsHtml) => `
       <div class="modulo-row" data-index="${index}"
            style="margin-bottom:15px; padding:10px; border:1px solid #ddd; border-radius:6px;">
@@ -487,7 +485,7 @@ async function modificarPaciente(dni) {
       </div>
     `;
 
-    // ---- Responsables iniciales ----
+    // responsables iniciales
     const responsablesIniciales = Array.isArray(p.responsables) && p.responsables.length
       ? p.responsables.slice(0, 3).map(r => ({
           relacion: r.relacion, nombre: r.nombre, whatsapp: r.whatsapp,
@@ -508,7 +506,7 @@ async function modificarPaciente(dni) {
           return arr.slice(0, 3);
         })();
 
-    // ---- Modal principal (SIN SECCIÓN DE ESPECIALES) ----
+    // modal
     const { isConfirmed, value: data } = await Swal.fire({
       title: '<h3 style="font-family: Montserrat; font-weight: 600;">Modificar datos del paciente:</h3>',
       html: `
@@ -634,16 +632,17 @@ async function modificarPaciente(dni) {
           cont.lastElementChild.querySelector('.btn-remove')
             .addEventListener('click', () => cont.removeChild(document.getElementById(rowId)));
         };
-        const responsablesIniciales =
+        const _responsablesIniciales =
           (Array.isArray(p.responsables) && p.responsables.length)
             ? p.responsables.slice(0, 3)
             : (p.tutor?.nombre && p.tutor?.whatsapp ? [{ relacion:'tutor', nombre:p.tutor.nombre, whatsapp:p.tutor.whatsapp }] : []);
-        if (responsablesIniciales.length) responsablesIniciales.forEach(r => addRespRow(r));
+        if (_responsablesIniciales.length) _responsablesIniciales.forEach(r => addRespRow(r));
         else addRespRow({ relacion: 'tutor' });
         btnAdd.addEventListener('click', () => addRespRow());
 
-        // ====== Módulos (comunes) ======
+        // ====== Módulos (solo comunes) ======
         const modCont = document.getElementById("modulosContainer");
+
         const attachAgregarProfesional = (modRowEl) => {
           const btn = modRowEl.querySelector(".btnAgregarProfesional");
           const container = modRowEl.querySelector(".profesionales-container");
@@ -789,7 +788,7 @@ async function modificarPaciente(dni) {
           responsables.push(r);
         }
 
-        // === Recolectar módulos comunes
+        // módulos comunes
         const modulosAsignados = [];
         document.querySelectorAll("#modulosContainer .modulo-row").forEach((row) => {
           const moduloId = row.querySelector(".modulo-select")?.value;
@@ -1141,7 +1140,7 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
       const relaciones = ['padre', 'madre', 'tutor'];
       const makeRelacionOptions = (seleccionActual = '') =>
         ['<option value="">-- Relación --</option>']
-          .concat(relaciones.map r =>
+          .concat(relaciones.map(r =>
             `<option value="${r}" ${r === seleccionActual ? 'selected' : ''}>${r[0].toUpperCase() + r.slice(1)}</option>`
           )).join('');
 
@@ -1289,6 +1288,7 @@ document.getElementById("btnNuevoPaciente").addEventListener("click", () => {
     }
   });
 });
+
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1455,8 +1455,8 @@ async function agregarDocumento(dni) {
 async function editarDocumento(dni, index) {
   try {
     const paciente = await apiFetchJson(`/pacientes/${dni}`);
-    const documentos = Array.isArray(paciente.documentosPersonales) ? paciente.documentosPersonales : [];
-    const doc = documentos[index];
+    const docs = Array.isArray(paciente.documentosPersonales) ? paciente.documentosPersonales : [];
+    const doc = docs[index];
     if (!doc) throw new Error("Documento inválido");
 
     const { value, isConfirmed } = await Swal.fire({
@@ -1579,7 +1579,7 @@ async function eliminarDocumento(dni, id, index) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-— DIAGNÓSTICOS (informes)
+// DIAGNÓSTICOS (informes)
 // ─────────────────────────────────────────────────────────────────────────────
 async function verDiagnosticos(dni) {
   try {
@@ -1992,4 +1992,3 @@ if (__inputBusq) {
     if (l) l.style.display = 'none';
   });
 }
-
