@@ -1139,7 +1139,7 @@ async function crearModuloEventoEspecial() {
     }
   };
 
-// === Reemplazo completo: editar Evento Especial ===
+// === Reemplazo completo: editar Evento Especial (todas las áreas) ===
 window.modificarEventoEspecial = async (idOrNombre) => {
   try {
     // 1) Traer el evento + usuarios
@@ -1168,38 +1168,7 @@ window.modificarEventoEspecial = async (idOrNombre) => {
       return cands[0] || 'Sin nombre';
     };
 
-    const arr = (v) => Array.isArray(v) ? v : (v ? [v] : []);
-    const isFono     = (s='') => /fonoaudiolog[ií]a/i.test(s);
-    const isPsicoPed = (s='') => /psicopedagog[ií]a/i.test(s);
-
-    const normAreaEntry = (x) => {
-      if (!x) return null;
-      if (typeof x === 'string') return { nombre: x.trim(), nivel: '' };
-      if (typeof x === 'object') {
-        const nombre = (x.nombre || x.name || x.titulo || x.area || '').toString().trim();
-        const nivel  = (
-          x.nivel ?? x.Nivel ?? x.nivelArea ?? x.nivel_area ??
-          x.nivelProfesional ?? x.grado ?? x.categoria ?? x.seniority ?? ''
-        ).toString().trim();
-        if (!nombre && !nivel) return null;
-        return { nombre, nivel };
-      }
-      return null;
-    };
-
-    const getAreasDetailed = (u) => {
-      const profDet  = Array.isArray(u.areasProfesionalDetalladas) ? u.areasProfesionalDetalladas : [];
-      const coordDet = Array.isArray(u.areasCoordinadasDetalladas) ? u.areasCoordinadasDetalladas : [];
-      let list = [...profDet, ...coordDet].map(normAreaEntry).filter(Boolean);
-      if (list.length) return list;
-
-      const pools = [u.areasProfesional, u.areasCoordinadas, u.areas, u.area, u.areaPrincipal];
-      list = pools.flatMap(arr).map(normAreaEntry).filter(Boolean);
-      return list;
-    };
-
-    const hasAreaFP  = (u) => getAreasDetailed(u).some(a => isFono(a.nombre) || isPsicoPed(a.nombre));
-
+    // Roles
     const mapRolCanonical = (r = '') => {
       const s = String(r).trim().toLowerCase();
       switch (s) {
@@ -1225,9 +1194,8 @@ window.modificarEventoEspecial = async (idOrNombre) => {
       return wanted.some(w => R.has(w));
     };
 
-    // Para EVENTO ESPECIAL: solo EXTERNOS y solo Coordinadores/DirectorAs
-    const candidatosExtern = usuarios.filter(u => !hasAreaFP(u));
-    const coordinadoresExt = candidatosExtern.filter(u => hasRolCanon(u, 'coordinador', 'directora'));
+    // ✅ Todas las áreas: solo Coordinadores/DirectorAs (sin filtro de “externos”)
+    const coordYDir = usuarios.filter(u => hasRolCanon(u, 'coordinador', 'directora'));
 
     // Prefill montos (ev.coordinadoresExternos = [{usuario, monto}])
     const mapMontos = new Map();
@@ -1237,7 +1205,7 @@ window.modificarEventoEspecial = async (idOrNombre) => {
     });
 
     const renderRows = (arr) => {
-      if (!arr.length) return `<div class="empty">No hay Coordinadores/DirectorAs externos</div>`;
+      if (!arr.length) return `<div class="empty">No hay Coordinadores/DirectorAs</div>`;
       return arr
         .sort((a,b)=>fullName(a).localeCompare(fullName(b), 'es'))
         .map(u => {
@@ -1281,9 +1249,9 @@ window.modificarEventoEspecial = async (idOrNombre) => {
           </div>
 
           <div>
-            <label><strong>Coordinadores/DirectorAs (ÁREAS EXTERNAS)</strong></label>
+            <label><strong>Coordinadores/DirectorAs (todas las áreas)</strong></label>
             <div class="panel">
-              ${renderRows(coordinadoresExt)}
+              ${renderRows(coordYDir)}
             </div>
           </div>
         </div>
@@ -1303,7 +1271,7 @@ window.modificarEventoEspecial = async (idOrNombre) => {
         return {
           nombre: ev.nombre,
           valorPadres: Number.isNaN(valorPadres) ? 0 : valorPadres,
-          coordinadoresExternos
+          coordinadoresExternos // mismo campo que espera tu backend
         };
       }
     });
@@ -1320,7 +1288,6 @@ window.modificarEventoEspecial = async (idOrNombre) => {
 
     if (resUpdate.ok) {
       await Swal.fire('Éxito', 'Evento especial actualizado correctamente', 'success');
-      // refrescar listado si lo tenés en la pantalla:
       if (typeof cargarListadoEventosEspeciales === 'function') cargarListadoEventosEspeciales();
     } else {
       throw new Error(data?.error || 'No se pudo actualizar el evento especial');
