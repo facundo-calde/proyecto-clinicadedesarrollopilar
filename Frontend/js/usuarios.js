@@ -533,16 +533,23 @@ async function mostrarFormularioUsuario(u = {}, modoEdicion = false) {
         set("whatsapp", u.whatsapp);
         set("mail", u.mail);
 
-        // --- Precarga de montos + obs (orden correcto) ---
-        const salEl  = document.getElementById("salarioAcuerdo");
+        // --- Precarga de montos + obs (orden correcto y seguro) ---
+        const salEl = document.getElementById("salarioAcuerdo");
         const fijoEl = document.getElementById("fijoAcuerdo");
         const toMoney = v => (v ?? "") === "" ? "" : nfARS.format(Number(cleanNumber(String(v))));
 
-        if (salEl)  salEl.value  = toMoney(u.salarioAcuerdo);
+        if (salEl) salEl.value = toMoney(u.salarioAcuerdo);
         if (fijoEl) fijoEl.value = toMoney(u.fijoAcuerdo);
 
         set("salarioAcuerdoObs", u.salarioAcuerdoObs ?? "");
-        set("fijoAcuerdoObs",    u.fijoAcuerdoObs ?? "");
+        set("fijoAcuerdoObs", u.fijoAcuerdoObs ?? "");
+
+        // 👇 aseguramos que no se borre por timing de SweetAlert
+        setTimeout(() => {
+          formatInputARS(salEl);
+          formatInputARS(fijoEl);
+        }, 100);
+
 
         // --- recién ahora engancho la máscara ---
         formatInputARS(salEl);
