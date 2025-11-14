@@ -450,7 +450,7 @@ async function edcFetchUsuarios() {
       }
     });
   }
-// ==============================
+/// ==============================
 // Modal de detalle por área (Excel + editable + selects)
 // ==============================
 async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
@@ -490,6 +490,22 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
     MODULOS.forEach((m) => {
       moduloMap[String(m._id)] = m;
     });
+
+    // Helper global: saber si un módulo es evento especial
+    const esEventoEspecial = (m) => {
+      if (!m || typeof m !== "object") return false;
+      if (m.esEspecial || m.esEventoEspecial || m.eventoEspecial) return true;
+
+      const tipo = (m.tipo || "").toLowerCase();
+      const cat  = (m.categoria || m.clase || "").toLowerCase();
+      const nom  = (m.nombre || "").toLowerCase();
+
+      if (tipo.includes("evento")) return true;
+      if (cat.includes("evento")) return true;
+      if (nom.includes("evento")) return true;
+
+      return false;
+    };
 
     // Profesionales por rol y área
     const PROFESIONALES = USUARIOS_ALL.filter((u) => {
@@ -543,7 +559,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
     const movimientos = Array.isArray(data.movimientos) ? data.movimientos : [];
     const facturasRaw = Array.isArray(data.facturas) ? data.facturas : [];
 
-    // ---------- Normalizar líneas de módulos ----------
+    // ---------- Normalizar líneas de módulos / pagos ----------
     let lineas = (filas.length ? filas : movimientos).map((f) => {
       const mes = f.mes || f.periodo || f.period || "";
       const cantidad = f.cantidad ?? f.cant ?? 1;
@@ -570,16 +586,27 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         if (moduloRef) moduloId = String(moduloRef._id);
       }
 
-      const precioModulo =
+      const precioBase =
         (moduloRef &&
-          (Number(moduloRef.valorModulo || moduloRef.precioModulo || moduloRef.precio || 0))) ||
-        Number(f.precioModulo || f.valorModulo || 0);
+          Number(
+            moduloRef.valorPadres ||
+            moduloRef.valorModulo ||
+            moduloRef.precioModulo ||
+            moduloRef.precio ||
+            0
+          )) ||
+        Number(
+          f.precioModulo ||
+          f.valorPadres ||
+          f.valorModulo ||
+          0
+        );
 
       const aPagar = Number(
         f.aPagar != null
           ? f.aPagar
-          : precioModulo
-          ? precioModulo * (Number(cantidad) || 0)
+          : precioBase
+          ? precioBase * (Number(cantidad) || 0)
           : f.monto || 0
       );
 
@@ -633,7 +660,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         moduloNombre,
         profesionalId: profId,
         profesionalNombre: profNombre,
-        precioModulo,
+        precioModulo: precioBase,
         aPagar,
         pagPadres,
         detPadres,
@@ -670,13 +697,35 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
       });
     }
 
-    // ---------- Cálculo de totales ----------
+    // ---------- Cálculo de totales (diferencia módulo vs evento) ----------
     const calcTotales = () => {
       lineas = lineas.map((l) => {
-        if (l.precioModulo && !isNaN(l.precioModulo)) {
-          const cant = Number(l.cantidad) || 0;
-          l.aPagar = l.precioModulo * cant;
+        const m   = l.moduloId ? moduloMap[String(l.moduloId)] : null;
+        const esp = esEventoEspecial(m);
+
+        const precioBase =
+          (m &&
+            Number(
+              m.valorPadres ||
+              m.valorModulo ||
+              m.precioModulo ||
+              m.precio ||
+              0
+            )) ||
+          Number(l.precioModulo || 0);
+
+        l.precioModulo = precioBase;
+
+        const cant = Number(l.cantidad) || 0;
+
+        // 🔵 MÓDULO MENSUAL → precio * cantidad
+        // 🟣 EVENTO ESPECIAL → solo precio (una vez)
+        if (esp) {
+          l.aPagar = precioBase;
+        } else {
+          l.aPagar = precioBase * cant;
         }
+
         return l;
       });
 
@@ -692,7 +741,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
       );
 
       const difFactPag    = totalFacturado - totalPagado; // facturas - pagado
-      const saldoRestante = totalAPagar - totalPagado;    // módulos - pagado
+      const saldoRestante = totalAPagar - totalPagado;    // módulos/eventos - pagado
 
       return { totalAPagar, totalPagado, totalFacturado, difFactPag, saldoRestante };
     };
@@ -701,7 +750,6 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
     const areaNombreActual =
       (areaSel && areaSel.nombre) || "Todas las áreas";
 
-    // Color según área
     const areaColor = (() => {
       const n = (areaNombreActual || "").toLowerCase();
       const nNorm = n.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
@@ -817,7 +865,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           </div>
         </div>
 
-        <!-- DIFERENCIA (sin saldo) -->
+        <!-- DIFERENCIA -->
         <div id="edcResumenDif" style="margin-top:8px;padding:6px 8px;border-radius:6px;background:#fffbea;border:1px solid #f0c36d;">
         </div>
 
@@ -855,27 +903,10 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         const resumenDif = popup.querySelector("#edcResumenDif");
         const tituloEl   = popup.querySelector("#edcTituloArea");
 
-        // Helper para saber si es evento especial
-        const esEventoEspecial = (m) => {
-          if (!m || typeof m !== "object") return false;
-          if (m.esEspecial || m.esEventoEspecial || m.eventoEspecial) return true;
-
-          const tipo = (m.tipo || "").toLowerCase();
-          const cat  = (m.categoria || m.clase || "").toLowerCase();
-          const nom  = (m.nombre || "").toLowerCase();
-
-          if (tipo.includes("evento")) return true;
-          if (cat.includes("evento")) return true;
-          if (nom.includes("evento")) return true;
-
-          return false;
-        };
-
         const render = () => {
           const { totalAPagar, totalPagado, totalFacturado, difFactPag, saldoRestante } =
             calcTotales();
 
-          // opciones para selects
           const buildModuloOptions = (selId) => {
             const normales   = MODULOS.filter(m => !esEventoEspecial(m));
             const especiales = MODULOS.filter(esEventoEspecial);
@@ -929,7 +960,6 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
               }),
             ].join("");
 
-          // Título con saldo en la misma línea
           if (tituloEl) {
             tituloEl.innerHTML = `
               ${paciente.nombre} — ${areaNombreActual}
@@ -1035,7 +1065,6 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
             </tr>
           `;
 
-          // Solo diferencia abajo
           resumenDif.innerHTML = `
             <div><strong>Diferencia entre facturado y pagado:</strong>
               <span style="margin-left:6px;">${fmtARS(difFactPag)}</span>
@@ -1060,9 +1089,20 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
                   m.nombre ||
                   `${m.numero || ""} ${m.descripcion || ""}`.trim();
                 lineas[idx].moduloNombre = texto;
-                lineas[idx].precioModulo = Number(
-                  m.valorModulo || m.precioModulo || m.precio || 0
+
+                const precioBase = Number(
+                  m.valorPadres ||
+                  m.valorModulo ||
+                  m.precioModulo ||
+                  m.precio ||
+                  0
                 );
+                lineas[idx].precioModulo = precioBase;
+
+                // si es evento especial, forzamos cantidad 1 (pago único)
+                if (esEventoEspecial(m)) {
+                  lineas[idx].cantidad = 1;
+                }
               }
               render();
               return;
@@ -1111,7 +1151,6 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         root.addEventListener("input", handleChange);
         root.addEventListener("change", handleChange);
 
-        // Botón agregar línea
         const btnAddLinea = popup.querySelector("#edcBtnAddLinea");
         if (btnAddLinea) {
           btnAddLinea.addEventListener("click", () => {
@@ -1133,7 +1172,6 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           });
         }
 
-        // Botón agregar factura
         const btnAddFactura = popup.querySelector("#edcBtnAddFactura");
         if (btnAddFactura) {
           btnAddFactura.addEventListener("click", () => {
@@ -1148,7 +1186,6 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           });
         }
 
-        // Select de área dentro del modal
         const selAreaModal = popup.querySelector("#edcAreaSelectModal");
         if (selAreaModal) {
           selAreaModal.addEventListener("change", () => {
@@ -1162,7 +1199,6 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           });
         }
 
-        // Botón Guardar cambios (llama a backend)
         const btnGuardar = popup.querySelector("#edcBtnGuardar");
         if (btnGuardar) {
           btnGuardar.addEventListener("click", async () => {
@@ -1195,7 +1231,6 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           });
         }
 
-        // Botón PDF
         const btnPDF = popup.querySelector("#edcBtnDescargarPDF");
         if (btnPDF) {
           btnPDF.addEventListener("click", () => {
@@ -1220,6 +1255,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
     });
   }
 }
+
 
 
 
