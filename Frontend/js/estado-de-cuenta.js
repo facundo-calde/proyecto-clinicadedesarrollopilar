@@ -411,203 +411,135 @@
     });
   }
 
-  // ==============================
-  // Modal de detalle por área (diseño tipo Excel)
-  // ==============================
-  async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
-    try {
-      // 1) Armar URL
-      let path = `/estado-de-cuenta/${paciente.dni}`;
-      const qs = [];
-      if (areaSel && areaSel.id) qs.push(`areaId=${encodeURIComponent(areaSel.id)}`);
-      if (areaSel && areaSel.nombre) qs.push(`areaNombre=${encodeURIComponent(areaSel.nombre)}`);
-      if (qs.length) path += `?${qs.join("&")}`;
+ // ==============================
+// Modal de detalle por área (diseño tipo Excel)
+// ==============================
+async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
+  try {
+    // 1) Armar URL
+    let path = `/estado-de-cuenta/${paciente.dni}`;
+    const qs = [];
+    if (areaSel && areaSel.id) qs.push(`areaId=${encodeURIComponent(areaSel.id)}`);
+    if (areaSel && areaSel.nombre) qs.push(`areaNombre=${encodeURIComponent(areaSel.nombre)}`);
+    if (qs.length) path += `?${qs.join("&")}`;
 
-      // 2) Traer datos
-      const data = await edcApiJson(path);
+    // 2) Traer datos
+    const data = await edcApiJson(path);
 
-      const filas = Array.isArray(data.filas) ? data.filas : [];
-      const movimientos = Array.isArray(data.movimientos) ? data.movimientos : [];
-      const facturas = Array.isArray(data.facturas) ? data.facturas : [];
+    const filas      = Array.isArray(data.filas) ? data.filas : [];
+    const movimientos = Array.isArray(data.movimientos) ? data.movimientos : [];
+    const facturas   = Array.isArray(data.facturas) ? data.facturas : [];
 
-      const tot = data.totales || {};
-      const totalAPagar = Number(tot.aPagar || 0);
-      const totalPagado = Number(
-        (tot.pagadoOS || 0) +
-          (tot.pagadoPART || 0) +
-          (tot.ajustesMas || 0) -
-          (tot.ajustesMenos || 0)
-      );
-      const totalSaldo = Number(
-        tot.saldo != null ? tot.saldo : totalAPagar - totalPagado
-      );
+    const tot = data.totales || {};
+    const totalAPagar = Number(tot.aPagar || 0);
+    const totalPagado = Number(
+      (tot.pagadoOS || 0) +
+      (tot.pagadoPART || 0) +
+      (tot.ajustesMas || 0) -
+      (tot.ajustesMenos || 0)
+    );
+    const totalFacturado = facturas.reduce(
+      (acc, f) => acc + Number(f.monto || f.total || 0),
+      0
+    );
+    const difFactPag = totalFacturado - totalPagado;
 
-      const totalFacturado = facturas.reduce(
-        (acc, f) => acc + Number(f.monto || f.total || 0),
-        0
-      );
-      const difFactPag = totalFacturado - totalPagado;
+    // 3) Normalizar filas (módulos/pagos)
+    const filasParaMostrar = filas.length
+      ? filas.map(f => {
+          const mes = f.mes || "-";
+          const modulo = f.moduloNombre || f.modulo || f.moduloNumero || "-";
+          const cantidad = f.cantidad ?? f.cant ?? 1;
+          const profesional =
+            f.profesional ||
+            (f.profesionales &&
+              (f.profesionales.profesional?.[0] ||
+               f.profesionales.coordinador?.[0] ||
+               f.profesionales.pasante?.[0] ||
+               f.profesionales.directora?.[0])) ||
+            "-";
 
-      // 3) Normalizar filas tipo Excel
-      const filasParaMostrar = filas.length
-        ? filas.map((f) => {
-            const mes = f.mes || "-";
-            const modulo = f.moduloNombre || f.modulo || f.moduloNumero || "-";
-            const cantidad =
-              f.cantidad != null ? f.cantidad : f.cant != null ? f.cant : 1;
-            const profesional =
-              f.profesional ||
-              (f.profesionales &&
-                (f.profesionales.profesional?.[0] ||
-                  f.profesionales.coordinador?.[0] ||
-                  f.profesionales.pasante?.[0] ||
-                  f.profesionales.directora?.[0])) ||
-              "-";
+          const aPagar = Number(f.aPagar || 0);
+          const pagPadres = Number(
+            f.pagadoPadres ?? f.pagadoPART ?? f.pagoPadres ?? 0
+          );
+          const pagOS = Number(
+            f.pagadoOS ?? f.pagoOS ?? f.pagadoObraSocial ?? 0
+          );
 
-            // Montos padres vs OS
-            const pagPadres = Number(
-              f.pagadoPadres ??
-                f.pagadoPART ??
-                f.pagoPadres ??
-                0
-            );
-            const pagOS = Number(
-              f.pagadoOS ??
-                f.pagoOS ??
-                f.pagadoObraSocial ??
-                0
-            );
+          const detPadres = f.detallePadres || f.obsPadres || f.detallePART || "";
+          const detOS     = f.detalleOS || f.detalleObraSocial || f.obsOS || "";
 
-            const aPagar = Number(f.aPagar || 0);
-
-            const detPadres =
-              f.detallePadres || f.obsPadres || f.detallePART || "";
-            const detOS =
-              f.detalleOS ||
-              f.detalleObraSocial ||
-              f.obsOS ||
-              "";
-
-            return {
-              mes,
-              modulo,
-              cantidad,
-              profesional,
-              aPagar,
-              pagPadres,
-              pagOS,
-              detPadres,
-              detOS,
-            };
-          })
-        : movimientos.map((m) => {
-            const mes = m.mes || m.period || m.periodo || "-";
-            const modulo =
-              m.moduloNombre || m.modulo || m.moduloNumero || "-";
-            const cantidad =
-              m.cantidad != null ? m.cantidad : m.cant != null ? m.cant : 1;
-            const profesional = m.profesional || m.profesionalNombre || "-";
-
-            const pagPadres = Number(
-              m.pagadoPadres ??
-                m.pagadoPART ??
-                (m.tipo === "PADRES" ? m.monto : 0) ??
-                0
-            );
-            const pagOS = Number(
-              m.pagadoOS ??
-                (m.tipo === "OBRA_SOCIAL" ? m.monto : 0) ??
-                0
-            );
-
-            const aPagar = Number(
-              m.aPagar != null ? m.aPagar : m.monto || 0
-            );
-
-            const detPadres =
-              m.detallePadres ||
-              m.observacionPadres ||
-              m.observaciones ||
-              "";
-            const detOS =
-              m.detalleOS ||
-              m.detalleObraSocial ||
-              m.observacionOS ||
-              "";
-
-            return {
-              mes,
-              modulo,
-              cantidad,
-              profesional,
-              aPagar,
-              pagPadres,
-              pagOS,
-              detPadres,
-              detOS,
-            };
-          });
-
-      const rowsHtml = filasParaMostrar
-        .map(
-          (r) => `
-        <tr>
-          <td class="edc-col-mes">${r.mes}</td>
-          <td class="edc-col-cant" style="text-align:center;">${r.cantidad}</td>
-          <td class="edc-col-mod">${r.modulo}</td>
-          <td class="edc-col-prof">${r.profesional}</td>
-          <td class="edc-col-apag">${fmtARS(r.aPagar)}</td>
-          <td class="edc-col-pag">${fmtARS(r.pagPadres)}</td>
-          <td class="edc-col-obs">${r.detPadres || ""}</td>
-          <td class="edc-col-pag">${fmtARS(r.pagOS)}</td>
-          <td class="edc-col-obs">${r.detOS || ""}</td>
-        </tr>
-      `
-        )
-        .join("");
-
-      // FACTURAS (lado derecho)
-      const factRowsHtml = facturas
-        .map((f) => {
-          const mes =
-            f.mes ||
-            f.periodo ||
-            (f.fecha
-              ? new Date(f.fecha).toLocaleDateString("es-AR", {
-                  year: "numeric",
-                  month: "2-digit",
-                })
-              : "-");
-          const fecha = f.fecha
-            ? new Date(f.fecha).toLocaleDateString("es-AR")
-            : "-";
-          const nro = f.numero || f.nro || f.nFactura || "-";
-          const monto = Number(f.monto || f.total || 0);
-          const detalle =
-            f.detalle || f.descripcion || f.observacion || "";
-
-          return `
-          <tr>
-            <td class="edc-col-mes">${mes}</td>
-            <td style="text-align:center;min-width:80px;">${nro}</td>
-            <td class="edc-col-apag">${fmtARS(monto)}</td>
-            <td class="edc-col-obs">${detalle}</td>
-            <td class="edc-col-mes">${fecha}</td>
-          </tr>
-        `;
+          return { mes, modulo, cantidad, profesional, aPagar, pagPadres, pagOS, detPadres, detOS };
         })
-        .join("");
+      : movimientos.map(m => {
+          const mes = m.mes || m.period || m.periodo || "-";
+          const modulo = m.moduloNombre || m.modulo || m.moduloNumero || "-";
+          const cantidad = m.cantidad ?? m.cant ?? 1;
+          const profesional = m.profesional || m.profesionalNombre || "-";
 
-      const areaNombre =
-        (areaSel && areaSel.nombre) || "Todas las áreas";
+          const aPagar = Number(m.aPagar ?? m.monto ?? 0);
+          const pagPadres = Number(
+            m.pagadoPadres ?? m.pagadoPART ?? (m.tipo === "PADRES" ? m.monto : 0) ?? 0
+          );
+          const pagOS = Number(
+            m.pagadoOS ?? (m.tipo === "OBRA_SOCIAL" ? m.monto : 0) ?? 0
+          );
 
-      const html = `
+          const detPadres = m.detallePadres || m.observacionPadres || m.observaciones || "";
+          const detOS     = m.detalleOS || m.detalleObraSocial || m.observacionOS || "";
+
+          return { mes, modulo, cantidad, profesional, aPagar, pagPadres, pagOS, detPadres, detOS };
+        });
+
+    const rowsHtml = filasParaMostrar.map(r => `
+      <tr>
+        <td class="edc-col-mes">${r.mes}</td>
+        <td class="edc-col-cant" style="text-align:center;">${r.cantidad}</td>
+        <td class="edc-col-mod">${r.modulo}</td>
+        <td class="edc-col-prof">${r.profesional}</td>
+        <td class="edc-col-apag">${fmtARS(r.aPagar)}</td>
+        <td class="edc-col-pag">${fmtARS(r.pagPadres)}</td>
+        <td class="edc-col-obs">${r.detPadres || ""}</td>
+        <td class="edc-col-pag">${fmtARS(r.pagOS)}</td>
+        <td class="edc-col-obs">${r.detOS || ""}</td>
+      </tr>
+    `).join("");
+
+    // FACTURAS
+    const factRowsHtml = facturas.map(f => {
+      const mes = f.mes ||
+        f.periodo ||
+        (f.fecha
+          ? new Date(f.fecha).toLocaleDateString("es-AR", { year: "numeric", month: "2-digit" })
+          : "-");
+      const fecha = f.fecha ? new Date(f.fecha).toLocaleDateString("es-AR") : "-";
+      const nro   = f.numero || f.nro || f.nFactura || "-";
+      const monto = Number(f.monto || f.total || 0);
+      const detalle = f.detalle || f.descripcion || f.observacion || "";
+
+      return `
+        <tr>
+          <td class="edc-col-mes">${mes}</td>
+          <td style="text-align:center;min-width:80px;">${nro}</td>
+          <td class="edc-col-apag">${fmtARS(monto)}</td>
+          <td class="edc-col-obs">${detalle}</td>
+          <td class="edc-col-mes">${fecha}</td>
+        </tr>
+      `;
+    }).join("");
+
+    const areaNombre = (areaSel && areaSel.nombre) || "Todas las áreas";
+
+    const html = `
       <div style="text-align:left;font-family:'Segoe UI',sans-serif;">
-        <!-- CABECERA VERDE -->
+        <h3 style="margin:0 0 6px 0;">${paciente.nombre} — ${areaNombre}</h3>
+
+        <!-- BARRA VERDE SUPERIOR -->
         <div style="
           background:#7fbf32;
           color:#fff;
-          padding:6px 10px;
+          padding:4px 10px;
           font-weight:600;
           display:flex;
           justify-content:space-between;
@@ -615,14 +547,10 @@
           border-radius:6px 6px 0 0;
         ">
           <span>AREA: ${areaNombre.toUpperCase()}</span>
-          ${
-            facturas.length
-              ? `<span style="font-size:13px;">DIF ENTRE FACT Y PAGADO: ${fmtARS(difFactPag)}</span>`
-              : ""
-          }
+          ${facturas.length ? `<span style="font-size:13px;">DIF ENTRE FACT Y PAGADO: ${fmtARS(difFactPag)}</span>` : ""}
         </div>
 
-        <!-- CUERPO PRINCIPAL -->
+        <!-- CUERPO EN DOS SECCIONES -->
         <div style="
           border:1px solid #7fbf32;
           border-top:none;
@@ -649,10 +577,7 @@
                 </tr>
               </thead>
               <tbody>
-                ${
-                  rowsHtml ||
-                  `<tr><td colspan="9" style="padding:10px;"><em>Sin movimientos para esta área.</em></td></tr>`
-                }
+                ${rowsHtml || `<tr><td colspan="9" style="padding:10px;"><em>Sin movimientos para esta área.</em></td></tr>`}
               </tbody>
               <tfoot>
                 <tr class="edc-total-row">
@@ -670,9 +595,7 @@
           </div>
 
           <!-- DERECHA: FACTURAS -->
-          ${
-            facturas.length
-              ? `
+          ${facturas.length ? `
           <div style="flex:2;min-width:0;">
             <div style="background:#7fbf32;color:#fff;padding:4px 6px;font-weight:600;margin-bottom:4px;">
               FACTURAS
@@ -698,26 +621,16 @@
                 </tr>
               </tfoot>
             </table>
-          </div>
-          `
-              : ""
-          }
+          </div>` : ""}
         </div>
 
-        <!-- TOTALES FINALES / DIF -->
-        ${
-          facturas.length
-            ? `
+        ${facturas.length ? `
         <div style="margin-top:8px;padding:6px 8px;border-radius:6px;background:#fffbea;border:1px solid #f0c36d;">
           <strong>Diferencia entre facturado y pagado:</strong>
           <span style="margin-left:6px;">${fmtARS(difFactPag)}</span>
-        </div>
-        `
-            : ""
-        }
+        </div>` : ""}
 
-        <!-- BOTÓN PDF -->
-        <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:10px;">
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">
           <button id="edcBtnDescargarPDF"
                   class="swal2-confirm swal2-styled"
                   style="background:#6c5ce7;">
@@ -727,37 +640,34 @@
       </div>
     `;
 
-      await Swal.fire({
-        title: "Estado de cuenta",
-        html,
-        width: 1100,
-        showCloseButton: true,
-        confirmButtonText: "Cerrar",
-      });
+    await Swal.fire({
+      title: "Estado de cuenta",
+      html,
+      width: 1200,
+      showCloseButton: true,
+      confirmButtonText: "Cerrar",
+    });
 
-      // 4) Acción Descargar PDF
-      const $pdfBtn = document.getElementById("edcBtnDescargarPDF");
-      if ($pdfBtn) {
-        $pdfBtn.addEventListener("click", () => {
-          let url = `/api/estado-de-cuenta/${encodeURIComponent(
-            paciente.dni
-          )}/extracto`;
-          const qs2 = [];
-          if (areaSel && areaSel.id)
-            qs2.push(`areaId=${encodeURIComponent(areaSel.id)}`);
-          if (qs2.length) url += `?${qs2.join("&")}`;
-          window.open(url, "_blank");
-        });
-      }
-    } catch (e) {
-      console.error("Error al abrir modal de estado de cuenta:", e);
-      await Swal.fire({
-        icon: "error",
-        title: "Error",
-        text: "No se pudo cargar el estado de cuenta del área seleccionada.",
+    const $pdfBtn = document.getElementById("edcBtnDescargarPDF");
+    if ($pdfBtn) {
+      $pdfBtn.addEventListener("click", () => {
+        let url = `/api/estado-de-cuenta/${encodeURIComponent(paciente.dni)}/extracto`;
+        const qs2 = [];
+        if (areaSel && areaSel.id) qs2.push(`areaId=${encodeURIComponent(areaSel.id)}`);
+        if (qs2.length) url += `?${qs2.join("&")}`;
+        window.open(url, "_blank");
       });
     }
+  } catch (e) {
+    console.error("Error al abrir modal de estado de cuenta:", e);
+    await Swal.fire({
+      icon: "error",
+      title: "Error",
+      text: "No se pudo cargar el estado de cuenta del área seleccionada.",
+    });
   }
+}
+
 
   // ==============================
   // Modal ficha de paciente + selector de área
