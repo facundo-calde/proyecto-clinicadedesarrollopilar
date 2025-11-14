@@ -641,12 +641,19 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
     `;
 
     await Swal.fire({
-      title: "Estado de cuenta",
-      html,
-      width: 1200,
-      showCloseButton: true,
-      confirmButtonText: "Cerrar",
-    });
+  title: "Estado de cuenta",
+  html,
+  showCloseButton: true,
+  confirmButtonText: "Cerrar",
+
+  // 👉 FORZAR QUE OCUPE TODA LA PANTALLA
+  width: "95vw",
+  padding: 0,
+  customClass: {
+    popup: "edc-fullscreen-modal",
+  },
+});
+
 
     const $pdfBtn = document.getElementById("edcBtnDescargarPDF");
     if ($pdfBtn) {
