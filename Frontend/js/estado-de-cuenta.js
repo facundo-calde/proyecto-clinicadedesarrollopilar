@@ -237,14 +237,32 @@
       return [];
     }
   }
+// Trae módulos normales + eventos especiales
 async function edcFetchModulos() {
   try {
-    const data = await edcApiJson('/modulos');
-    return Array.isArray(data) ? data : [];
-  } catch {
+    // Ajustá las rutas si en tu backend tienen otro nombre
+    const [modsResp, eventosResp] = await Promise.all([
+      edcApiJson("/modulos"),              // módulos mensuales
+      edcApiJson("/moduloEventoEspecial"), // eventos especiales
+    ]);
+
+    const modulos  = Array.isArray(modsResp) ? modsResp : [];
+    const eventos  = Array.isArray(eventosResp) ? eventosResp : [];
+
+    // Marcamos los eventos especiales para que el select los ponga en el optgroup correcto
+    const eventosMarcados = eventos.map(e => ({
+      ...e,
+      esEventoEspecial: true,
+    }));
+
+    // Devolvemos todo junto
+    return [...modulos, ...eventosMarcados];
+  } catch (err) {
+    console.error("Error al obtener módulos / eventos:", err);
     return [];
   }
 }
+
 
 async function edcFetchUsuarios() {
   try {
