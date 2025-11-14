@@ -939,7 +939,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
             <div><strong>Diferencia entre facturado y pagado:</strong>
               <span style="margin-left:6px;">${fmtARS(difFactPag)}</span>
             </div>
-            <div style="margin-top:4px;"><strong>Saldo (módulos - pagado):</strong>
+            <div style="margin-top:4px;"><strong>Saldo:</strong>
               <span style="margin-left:6px;">${fmtARS(saldoRestante)}</span>
             </div>
           `;
