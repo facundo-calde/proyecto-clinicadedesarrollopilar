@@ -638,7 +638,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
       return { mes, nro, monto, detalle, fecha };
     });
 
-    // si no hay facturas, creo una fila vacía para poder cargar una
+    // si no hay facturas, creo una fila vacía
     if (!facturas.length) {
       facturas.push({
         mes: "",
@@ -714,7 +714,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           AREA: ${areaNombreActual.toUpperCase()}
         </div>
 
-        <!-- CUERPO PRINCIPAL -->
+        <!-- CUERPO PRINCIPAL: AHORA EN COLUMNA -->
         <div style="
           border:1px solid #7fbf32;
           border-top:none;
@@ -722,10 +722,12 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           padding:8px;
           background:#f8fff4;
           display:flex;
+          flex-direction:column;
           gap:10px;
         ">
-          <!-- IZQUIERDA: MÓDULOS / PAGOS -->
-          <div style="flex:3;min-width:0;">
+
+          <!-- MÓDULOS / PAGOS (arriba, ancho completo) -->
+          <div style="width:100%;min-width:0;">
             <table class="edc-table">
               <thead>
                 <tr class="edc-th">
@@ -746,8 +748,8 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
             <button id="edcBtnAddLinea" class="swal2-confirm swal2-styled" style="margin-top:6px;background:#6c5ce7;">+ Agregar línea</button>
           </div>
 
-          <!-- DERECHA: FACTURAS -->
-          <div style="flex:2;min-width:0;">
+          <!-- FACTURAS (abajo, ancho completo) -->
+          <div style="width:100%;min-width:0;">
             <div style="background:#7fbf32;color:#fff;padding:4px 6px;font-weight:600;margin-bottom:4px;">
               FACTURAS
             </div>
@@ -845,7 +847,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
               return `
               <tr>
                 <td class="edc-col-mes">
-                  <input data-idx="${idx}" data-field="mes" class="edc-input-linea" style="width:90px;" value="${r.mes || ""}">
+                  <input type="month" data-idx="${idx}" data-field="mes" class="edc-input-linea" style="width:110px;" value="${r.mes || ""}">
                 </td>
                 <td class="edc-col-cant">
                   <select data-idx="${idx}" data-field="cantidad" class="edc-input-linea" style="width:80px;">
