@@ -427,6 +427,9 @@ async function edcFetchUsuarios() {
       }
     });
   }
+// ==============================
+// Modal de detalle por área (Excel + editable + selects)
+// ==============================
 async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
   try {
     // Catálogos
@@ -665,7 +668,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         0
       );
 
-      const difFactPag   = totalFacturado - totalPagado; // facturas - pagado
+      const difFactPag    = totalFacturado - totalPagado; // facturas - pagado
       const saldoRestante = totalAPagar - totalPagado;    // módulos - pagado
 
       return { totalAPagar, totalPagado, totalFacturado, difFactPag, saldoRestante };
@@ -675,28 +678,26 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
     const areaNombreActual =
       (areaSel && areaSel.nombre) || "Todas las áreas";
 
-    // Color según área (ajustado)
-   const areaColor = (() => {
-  const n = (areaNombreActual || "").toLowerCase();
-  // quitar acentos para comparar
-  const nNorm = n.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    // Color según área (con normalización de acentos)
+    const areaColor = (() => {
+      const n = (areaNombreActual || "").toLowerCase();
+      const nNorm = n.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
-  if (nNorm.includes("psicoped")) return "#8b3ffc";          // violeta
-  if (nNorm.includes("fono")) return "#7fbf32";              // verde
-  if (nNorm.includes("terapia ocup")) return "#ff3b30";      // rojo
+      if (nNorm.includes("psicoped")) return "#8b3ffc";          // violeta
+      if (nNorm.includes("fono")) return "#7fbf32";              // verde
+      if (nNorm.includes("terapia ocup")) return "#ff3b30";      // rojo
 
-  // Atención temprana -> CELESTE
-  if (nNorm.includes("atencion temprana")) return "#00c9d6";
+      // Atención temprana -> CELESTE
+      if (nNorm.includes("atencion temprana")) return "#00c9d6";
 
-  // Abordaje integral a personas con discapacidad -> AZUL
-  if (nNorm.includes("abordaje integral") || nNorm.includes("discapacidad"))
-    return "#2457ff";
+      // Abordaje integral a personas con discapacidad -> AZUL
+      if (nNorm.includes("abordaje integral") || nNorm.includes("discapacidad"))
+        return "#2457ff";
 
-  if (nNorm.includes("habilidades sociales")) return "#ffd800"; // amarillo
+      if (nNorm.includes("habilidades sociales")) return "#ffd800"; // amarillo
 
-  return "#7fbf32"; // default
-})();
-
+      return "#7fbf32"; // default
+    })();
 
     const areaOptionsHtml = [
       `<option value="">(Todas las áreas)</option>`,
@@ -710,6 +711,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
 
     const html = `
       <div id="edcModalRoot" style="text-align:left;font-family:'Segoe UI',sans-serif;">
+        <!-- Select de área -->
         <div style="margin-bottom:8px; display:flex; align-items:center; gap:8px;">
           <strong>Área:</strong>
           <select id="edcAreaSelectModal" style="padding:4px 6px; border-radius:6px; border:1px solid #bbb; min-width:220px;">
@@ -717,10 +719,12 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           </select>
         </div>
 
-        <h3 style="margin:0 0 6px 0; color:${areaColor};">
+        <!-- Título con saldo en la misma línea -->
+        <h3 id="edcTituloArea" style="margin:0 0 6px 0; color:${areaColor};">
           ${paciente.nombre} — ${areaNombreActual}
         </h3>
 
+        <!-- Barra de color -->
         <div style="
           background:${areaColor};
           color:#fff;
@@ -731,6 +735,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           AREA: ${areaNombreActual.toUpperCase()}
         </div>
 
+        <!-- Cuerpo principal -->
         <div style="
           border:1px solid ${areaColor};
           border-top:none;
@@ -742,7 +747,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           gap:10px;
         ">
 
-          <!-- MÓDULOS -->
+          <!-- MÓDULOS / PAGOS -->
           <div style="width:100%;min-width:0;">
             <table class="edc-table">
               <thead>
@@ -790,7 +795,13 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         <div id="edcResumenDif" style="margin-top:8px;padding:6px 8px;border-radius:6px;background:#fffbea;border:1px solid #f0c36d;">
         </div>
 
+        <!-- BOTONES -->
         <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:10px;">
+          <button id="edcBtnGuardar"
+                  class="swal2-confirm swal2-styled"
+                  style="background:#00a86b;">
+            Guardar cambios
+          </button>
           <button id="edcBtnDescargarPDF"
                   class="swal2-confirm swal2-styled"
                   style="background:#6c5ce7;">
@@ -800,6 +811,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
       </div>
     `;
 
+    // ================== Mostrar modal ==================
     await Swal.fire({
       title: "Estado de cuenta",
       html,
@@ -815,15 +827,38 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         const tbodyFac   = popup.querySelector("#edcBodyFacturas");
         const tfootFac   = popup.querySelector("#edcFootFacturas");
         const resumenDif = popup.querySelector("#edcResumenDif");
+        const tituloEl   = popup.querySelector("#edcTituloArea");
+
+        // Helper para saber si es evento especial
+        const esEventoEspecial = (m) => {
+          if (!m || typeof m !== "object") return false;
+          if (m.esEspecial || m.esEventoEspecial || m.eventoEspecial) return true;
+
+          const tipo = (m.tipo || "").toLowerCase();
+          const cat  = (m.categoria || m.clase || "").toLowerCase();
+          const nom  = (m.nombre || "").toLowerCase();
+
+          if (tipo.includes("evento")) return true;
+          if (cat.includes("evento")) return true;
+          if (nom.includes("evento")) return true;
+
+          return false;
+        };
 
         const render = () => {
           const { totalAPagar, totalPagado, totalFacturado, difFactPag, saldoRestante } =
             calcTotales();
 
-          const buildModuloOptions = (selId) =>
-            [
-              `<option value="">(Elegir módulo)</option>`,
-              ...MODULOS.map((m) => {
+          // opciones para selects
+          const buildModuloOptions = (selId) => {
+            const normales   = MODULOS.filter(m => !esEventoEspecial(m));
+            const especiales = MODULOS.filter(esEventoEspecial);
+
+            let html = `<option value="">(Elegir módulo / evento)</option>`;
+
+            if (normales.length) {
+              html += `<optgroup label="Módulos mensuales">`;
+              html += normales.map((m) => {
                 const text =
                   m.nombre ||
                   `${m.numero || ""} ${m.descripcion || ""}`.trim();
@@ -831,8 +866,26 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
                 return `<option value="${id}" ${
                   selId === id ? "selected" : ""
                 }>${text}</option>`;
-              }),
-            ].join("");
+              }).join("");
+              html += `</optgroup>`;
+            }
+
+            if (especiales.length) {
+              html += `<optgroup label="Eventos especiales">`;
+              html += especiales.map((m) => {
+                const text =
+                  m.nombre ||
+                  `${m.numero || ""} ${m.descripcion || ""}`.trim();
+                const id = String(m._id);
+                return `<option value="${id}" ${
+                  selId === id ? "selected" : ""
+                }>${text}</option>`;
+              }).join("");
+              html += `</optgroup>`;
+            }
+
+            return html;
+          };
 
           const buildProfOptions = (selId) =>
             [
@@ -849,6 +902,16 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
                 }>${text}</option>`;
               }),
             ].join("");
+
+          // Título con saldo en la misma línea
+          if (tituloEl) {
+            tituloEl.innerHTML = `
+              ${paciente.nombre} — ${areaNombreActual}
+              <span style="float:right;font-weight:600;">
+                Saldo: ${fmtARS(saldoRestante)}
+              </span>
+            `;
+          }
 
           // ----- líneas -----
           tbodyLin.innerHTML = lineas
@@ -1024,6 +1087,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         root.addEventListener("input", handleChange);
         root.addEventListener("change", handleChange);
 
+        // Botón agregar línea
         const btnAddLinea = popup.querySelector("#edcBtnAddLinea");
         if (btnAddLinea) {
           btnAddLinea.addEventListener("click", () => {
@@ -1045,6 +1109,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           });
         }
 
+        // Botón agregar factura
         const btnAddFactura = popup.querySelector("#edcBtnAddFactura");
         if (btnAddFactura) {
           btnAddFactura.addEventListener("click", () => {
@@ -1059,6 +1124,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           });
         }
 
+        // Select de área dentro del modal
         const selAreaModal = popup.querySelector("#edcAreaSelectModal");
         if (selAreaModal) {
           selAreaModal.addEventListener("change", () => {
@@ -1072,6 +1138,40 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           });
         }
 
+        // Botón Guardar cambios (llama a backend)
+        const btnGuardar = popup.querySelector("#edcBtnGuardar");
+        if (btnGuardar) {
+          btnGuardar.addEventListener("click", async () => {
+            try {
+              const payload = {
+                dni: paciente.dni,
+                areaId: areaSel && areaSel.id ? areaSel.id : null,
+                lineas,
+                facturas,
+              };
+
+              await edcApiJson(`/estado-de-cuenta/${encodeURIComponent(paciente.dni)}`, {
+                method: "PUT",
+                body: JSON.stringify(payload),
+              });
+
+              await Swal.fire({
+                icon: "success",
+                title: "Guardado",
+                text: "Estado de cuenta actualizado.",
+              });
+            } catch (err) {
+              console.error(err);
+              await Swal.fire({
+                icon: "error",
+                title: "Error",
+                text: "No se pudieron guardar los cambios.",
+              });
+            }
+          });
+        }
+
+        // Botón PDF
         const btnPDF = popup.querySelector("#edcBtnDescargarPDF");
         if (btnPDF) {
           btnPDF.addEventListener("click", () => {
