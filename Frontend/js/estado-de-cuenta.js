@@ -719,7 +719,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           </select>
         </div>
 
-        <!-- Título con saldo en la misma línea -->
+        <!-- Título (saldo se completa en render) -->
         <h3 id="edcTituloArea" style="margin:0 0 6px 0; color:${areaColor};">
           ${paciente.nombre} — ${areaNombreActual}
         </h3>
@@ -735,7 +735,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           AREA: ${areaNombreActual.toUpperCase()}
         </div>
 
-        <!-- Cuerpo principal -->
+        <!-- Cuerpo principal: módulos + facturas en paralelo -->
         <div style="
           border:1px solid ${areaColor};
           border-top:none;
@@ -743,12 +743,13 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           padding:8px;
           background:#f8fff4;
           display:flex;
-          flex-direction:column;
+          flex-direction:row;
+          flex-wrap:wrap;
           gap:10px;
         ">
 
           <!-- MÓDULOS / PAGOS -->
-          <div style="width:100%;min-width:0;">
+          <div style="flex:2; min-width:480px;">
             <table class="edc-table">
               <thead>
                 <tr class="edc-th">
@@ -770,7 +771,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           </div>
 
           <!-- FACTURAS -->
-          <div style="width:100%;min-width:0;">
+          <div style="flex:1; min-width:360px;">
             <div style="background:${areaColor};color:#fff;padding:4px 6px;font-weight:600;margin-bottom:4px;">
               FACTURAS
             </div>
@@ -778,7 +779,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
               <thead>
                 <tr class="edc-th">
                   <th class="edc-col-mes">MES</th>
-                  <th style="min-width:80px;">N FACTURA</th>
+                  <th style="min-width:70px;">N° FACT.</th>
                   <th class="edc-col-apag">MONTO</th>
                   <th class="edc-col-obs">DETALLE</th>
                   <th class="edc-col-mes">FECHA PAGO</th>
@@ -791,7 +792,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           </div>
         </div>
 
-        <!-- DIFERENCIAS / SALDO -->
+        <!-- DIFERENCIA (sin saldo) -->
         <div id="edcResumenDif" style="margin-top:8px;padding:6px 8px;border-radius:6px;background:#fffbea;border:1px solid #f0c36d;">
         </div>
 
@@ -982,10 +983,10 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
               (f, idx) => `
             <tr>
               <td class="edc-col-mes">
-                <input type="month" data-idx="${idx}" data-field="mes" class="edc-input-fact" style="width:120px;" value="${f.mes || ""}">
+                <input type="month" data-idx="${idx}" data-field="mes" class="edc-input-fact" style="width:110px;" value="${f.mes || ""}">
               </td>
-              <td style="text-align:center;min-width:80px;">
-                <input data-idx="${idx}" data-field="nro" class="edc-input-fact" style="width:80px;" value="${f.nro || ""}">
+              <td style="text-align:center;min-width:70px;">
+                <input data-idx="${idx}" data-field="nro" class="edc-input-fact" style="width:70px;" value="${f.nro || ""}">
               </td>
               <td class="edc-col-apag">
                 <input data-idx="${idx}" data-field="monto" class="edc-input-fact" style="width:100px;text-align:right;" value="${f.monto}">
@@ -1009,12 +1010,10 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
             </tr>
           `;
 
+          // Solo diferencia abajo
           resumenDif.innerHTML = `
             <div><strong>Diferencia entre facturado y pagado:</strong>
               <span style="margin-left:6px;">${fmtARS(difFactPag)}</span>
-            </div>
-            <div style="margin-top:4px;"><strong>Saldo:</strong>
-              <span style="margin-left:6px;">${fmtARS(saldoRestante)}</span>
             </div>
           `;
         };
