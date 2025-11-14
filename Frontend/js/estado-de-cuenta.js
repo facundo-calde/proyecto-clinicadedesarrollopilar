@@ -428,11 +428,11 @@ async function edcFetchUsuarios() {
     });
   }
 // ==============================
-// Modal de detalle por área (diseño tipo Excel + editable + selects)
+// Modal de detalle por área (Excel + editable + selects)
 // ==============================
 async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
   try {
-    // Traer catálogos (áreas, módulos, usuarios)
+    // Catálogos
     const [AREAS, MODULOS_ALL, USUARIOS_ALL] = await Promise.all([
       edcFetchAreas(),
       edcFetchModulos(),
@@ -442,7 +442,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
     const areaId     = areaSel && areaSel.id ? String(areaSel.id) : null;
     const areaNombre = areaSel && areaSel.nombre ? String(areaSel.nombre) : null;
 
-    // Filtrar módulos por área si se puede, si no, se muestran todos
+    // Módulos filtrados por área (si se puede)
     const MODULOS = MODULOS_ALL.filter((m) => {
       if (!areaId && !areaNombre) return true;
       const mAreaId =
@@ -460,7 +460,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
       )
         return true;
 
-      return !mAreaId && !mAreaNom; // si no tiene área ligada, lo dejamos
+      return !mAreaId && !mAreaNom;
     });
 
     const moduloMap = {};
@@ -468,7 +468,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
       moduloMap[String(m._id)] = m;
     });
 
-    // Profesionales: rol + área
+    // Profesionales por rol y área
     const PROFESIONALES = USUARIOS_ALL.filter((u) => {
       const roles = [];
       if (u.rol) roles.push(String(u.rol));
@@ -507,7 +507,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
       profMap[String(p._id)] = p;
     });
 
-    // 1) Armar URL para datos de estado de cuenta
+    // ================== Datos de estado de cuenta ==================
     let path = `/estado-de-cuenta/${paciente.dni}`;
     const qs = [];
     if (areaSel && areaSel.id) qs.push(`areaId=${encodeURIComponent(areaSel.id)}`);
@@ -520,7 +520,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
     const movimientos = Array.isArray(data.movimientos) ? data.movimientos : [];
     const facturasRaw = Array.isArray(data.facturas) ? data.facturas : [];
 
-    // Normalizar líneas de módulos/pagos a un array editable
+    // ---------- Normalizar líneas de módulos ----------
     let lineas = (filas.length ? filas : movimientos).map((f) => {
       const mes = f.mes || f.periodo || f.period || "";
       const cantidad = f.cantidad ?? f.cant ?? 1;
@@ -620,7 +620,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
       };
     });
 
-    // Normalizar facturas a array editable
+    // ---------- Normalizar facturas ----------
     let facturas = facturasRaw.map((f) => {
       const mes =
         f.mes ||
@@ -638,7 +638,18 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
       return { mes, nro, monto, detalle, fecha };
     });
 
-    // Helpers de cálculo
+    // si no hay facturas, creo una fila vacía para poder cargar una
+    if (!facturas.length) {
+      facturas.push({
+        mes: "",
+        nro: "",
+        monto: 0,
+        detalle: "",
+        fecha: "",
+      });
+    }
+
+    // ---------- Cálculo de totales ----------
     const calcTotales = () => {
       // actualizar A PAGAR si tenemos precioModulo
       lineas = lineas.map((l) => {
@@ -666,6 +677,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
       return { totalAPagar, totalPagado, totalFacturado, difFactPag };
     };
 
+    // ---------- HTML base del modal ----------
     const areaNombreActual =
       (areaSel && areaSel.nombre) || "Todas las áreas";
 
@@ -679,7 +691,6 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
       ),
     ].join("");
 
-    // HTML base
     const html = `
       <div id="edcModalRoot" style="text-align:left;font-family:'Segoe UI',sans-serif;">
         <!-- Select de área -->
@@ -772,6 +783,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
       </div>
     `;
 
+    // ================== Mostrar modal ==================
     await Swal.fire({
       title: "Estado de cuenta",
       html,
@@ -792,40 +804,43 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           const { totalAPagar, totalPagado, totalFacturado, difFactPag } =
             calcTotales();
 
-          // opciones selects
-          const moduloOptions = [
-            `<option value="">(Elegir módulo)</option>`,
-            ...MODULOS.map((m) => {
-              const text =
-                m.nombre ||
-                `${m.numero || ""} ${m.descripcion || ""}`.trim();
-              return `<option value="${m._id}">${text}</option>`;
-            }),
-          ].join("");
+          // opciones para selects
+          const buildModuloOptions = (selId) =>
+            [
+              `<option value="">(Elegir módulo)</option>`,
+              ...MODULOS.map((m) => {
+                const text =
+                  m.nombre ||
+                  `${m.numero || ""} ${m.descripcion || ""}`.trim();
+                const id = String(m._id);
+                return `<option value="${id}" ${
+                  selId === id ? "selected" : ""
+                }>${text}</option>`;
+              }),
+            ].join("");
 
-          const profOptions = [
-            `<option value="">(Elegir profesional)</option>`,
-            ...PROFESIONALES.map((p) => {
-              const text =
-                p.nombreApellido ||
-                p.nombreCompleto ||
-                p.nombre ||
-                "";
-              return `<option value="${p._id}">${text}</option>`;
-            }),
-          ].join("");
+          const buildProfOptions = (selId) =>
+            [
+              `<option value="">(Elegir profesional)</option>`,
+              ...PROFESIONALES.map((p) => {
+                const text =
+                  p.nombreApellido ||
+                  p.nombreCompleto ||
+                  p.nombre ||
+                  "";
+                const id = String(p._id);
+                return `<option value="${id}" ${
+                  selId === id ? "selected" : ""
+                }>${text}</option>`;
+              }),
+            ].join("");
 
-          // Render líneas
+          // ----- líneas -----
           tbodyLin.innerHTML = lineas
             .map((r, idx) => {
-              const selMod =
-                r.moduloId && moduloMap[String(r.moduloId)]
-                  ? String(r.moduloId)
-                  : "";
-              const selProf =
-                r.profesionalId && profMap[String(r.profesionalId)]
-                  ? String(r.profesionalId)
-                  : "";
+              const selMod  = r.moduloId ? String(r.moduloId) : "";
+              const selProf = r.profesionalId ? String(r.profesionalId) : "";
+              const vCant   = Number(r.cantidad) || 0;
 
               return `
               <tr>
@@ -833,22 +848,21 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
                   <input data-idx="${idx}" data-field="mes" class="edc-input-linea" style="width:90px;" value="${r.mes || ""}">
                 </td>
                 <td class="edc-col-cant">
-                  <input data-idx="${idx}" data-field="cantidad" class="edc-input-linea" style="width:60px;text-align:right;" value="${r.cantidad}">
+                  <select data-idx="${idx}" data-field="cantidad" class="edc-input-linea" style="width:80px;">
+                    <option value="1" ${vCant === 1 ? "selected" : ""}>1</option>
+                    <option value="0.3333" ${vCant === 0.3333 ? "selected" : ""}>1/3</option>
+                    <option value="0.5" ${vCant === 0.5 ? "selected" : ""}>1/2</option>
+                    <option value="0.25" ${vCant === 0.25 ? "selected" : ""}>1/4</option>
+                  </select>
                 </td>
                 <td class="edc-col-mod">
                   <select data-idx="${idx}" data-field="moduloId" class="edc-input-linea" style="width:100%;">
-                    ${moduloOptions.replace(
-                      `value="${selMod}"`,
-                      `value="${selMod}" selected`
-                    )}
+                    ${buildModuloOptions(selMod)}
                   </select>
                 </td>
                 <td class="edc-col-prof">
                   <select data-idx="${idx}" data-field="profesionalId" class="edc-input-linea" style="width:100%;">
-                    ${profOptions.replace(
-                      `value="${selProf}"`,
-                      `value="${selProf}" selected`
-                    )}
+                    ${buildProfOptions(selProf)}
                   </select>
                 </td>
                 <td class="edc-col-apag">
@@ -884,7 +898,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
             </tr>
           `;
 
-          // Render facturas
+          // ----- facturas -----
           tbodyFac.innerHTML = facturas
             .map(
               (f, idx) => `
@@ -925,8 +939,8 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
 
         render();
 
-        // Inputs de líneas
-        root.addEventListener("input", (e) => {
+        // Handler común para inputs/selects
+        const handleChange = (e) => {
           const t = e.target;
           if (t.classList.contains("edc-input-linea")) {
             const idx = Number(t.dataset.idx);
@@ -987,7 +1001,10 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
             }
             render();
           }
-        });
+        };
+
+        root.addEventListener("input", handleChange);
+        root.addEventListener("change", handleChange);
 
         // Botón agregar línea
         const btnAddLinea = popup.querySelector("#edcBtnAddLinea");
@@ -995,7 +1012,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           btnAddLinea.addEventListener("click", () => {
             lineas.push({
               mes: "",
-              cantidad: 0,
+              cantidad: 1,
               moduloId: "",
               moduloNombre: "",
               profesionalId: "",
@@ -1040,7 +1057,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           });
         }
 
-        // Botón PDF (misma lógica que antes)
+        // Botón PDF (igual que antes)
         const btnPDF = popup.querySelector("#edcBtnDescargarPDF");
         if (btnPDF) {
           btnPDF.addEventListener("click", () => {
