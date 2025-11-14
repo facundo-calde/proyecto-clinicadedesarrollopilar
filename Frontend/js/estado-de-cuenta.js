@@ -730,61 +730,67 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           AREA: ${areaNombreActual.toUpperCase()}
         </div>
 
-        <!-- Cuerpo principal: módulos + facturas en paralelo con scroll horizontal -->
+        <!-- Contenedor general con scroll horizontal -->
         <div style="
           border:1px solid ${areaColor};
           border-top:none;
           border-radius:0 0 6px 6px;
           padding:8px;
           background:#f8fff4;
-          display:flex;
-          flex-direction:row;
-          flex-wrap:nowrap;
-          gap:10px;
           overflow-x:auto;
         ">
+          <!-- Cuerpo en paralelo: módulos + facturas -->
+          <div style="
+            display:flex;
+            flex-direction:row;
+            flex-wrap:nowrap;
+            gap:10px;
+            width:max-content;
+          ">
 
-          <!-- MÓDULOS / PAGOS -->
-          <div style="flex:0 0 900px; min-width:900px;">
-            <table class="edc-table">
-              <thead>
-                <tr class="edc-th">
-                  <th class="edc-col-mes">MES</th>
-                  <th class="edc-col-cant">CANT</th>
-                  <th class="edc-col-mod">CÓDIGO / MÓDULO</th>
-                  <th class="edc-col-prof">PROFESIONAL</th>
-                  <th class="edc-col-apag">A PAGAR</th>
-                  <th class="edc-col-pag">PAGADO POR PADRES</th>
-                  <th class="edc-col-obs">DETALLE</th>
-                  <th class="edc-col-pag">PAGADO POR O.S</th>
-                  <th class="edc-col-obs">DETALLE</th>
-                </tr>
-              </thead>
-              <tbody id="edcBodyLineas"></tbody>
-              <tfoot id="edcFootLineas"></tfoot>
-            </table>
-            <button id="edcBtnAddLinea" class="swal2-confirm swal2-styled" style="margin-top:6px;background:#6c5ce7;">+ Agregar línea</button>
-          </div>
-
-          <!-- FACTURAS -->
-          <div style="flex:0 0 520px; min-width:520px;">
-            <div style="background:${areaColor};color:#fff;padding:4px 6px;font-weight:600;margin-bottom:4px;">
-              FACTURAS
+            <!-- MÓDULOS / PAGOS -->
+            <div style="flex:0 0 auto; min-width:900px;">
+              <table class="edc-table">
+                <thead>
+                  <tr class="edc-th">
+                    <th class="edc-col-mes">MES</th>
+                    <th class="edc-col-cant">CANT</th>
+                    <th class="edc-col-mod">CÓDIGO / MÓDULO</th>
+                    <th class="edc-col-prof">PROFESIONAL</th>
+                    <th class="edc-col-apag">A PAGAR</th>
+                    <th class="edc-col-pag">PAGADO POR PADRES</th>
+                    <th class="edc-col-obs">DETALLE</th>
+                    <th class="edc-col-pag">PAGADO POR O.S</th>
+                    <th class="edc-col-obs">DETALLE</th>
+                  </tr>
+                </thead>
+                <tbody id="edcBodyLineas"></tbody>
+                <tfoot id="edcFootLineas"></tfoot>
+              </table>
+              <button id="edcBtnAddLinea" class="swal2-confirm swal2-styled" style="margin-top:6px;background:#6c5ce7;">+ Agregar línea</button>
             </div>
-            <table class="edc-table">
-              <thead>
-                <tr class="edc-th">
-                  <th class="edc-col-mes">MES</th>
-                  <th style="min-width:70px;">N° FACT.</th>
-                  <th class="edc-col-apag">MONTO</th>
-                  <th class="edc-col-obs">DETALLE</th>
-                  <th class="edc-col-mes">FECHA PAGO</th>
-                </tr>
-              </thead>
-              <tbody id="edcBodyFacturas"></tbody>
-              <tfoot id="edcFootFacturas"></tfoot>
-            </table>
-            <button id="edcBtnAddFactura" class="swal2-confirm swal2-styled" style="margin-top:6px;background:#6c5ce7;">+ Agregar factura</button>
+
+            <!-- FACTURAS -->
+            <div style="flex:0 0 auto; min-width:520px;">
+              <div style="background:${areaColor};color:#fff;padding:4px 6px;font-weight:600;margin-bottom:4px;">
+                FACTURAS
+              </div>
+              <table class="edc-table">
+                <thead>
+                  <tr class="edc-th">
+                    <th class="edc-col-mes">MES</th>
+                    <th style="min-width:70px;">N° FACT.</th>
+                    <th class="edc-col-apag">MONTO</th>
+                    <th class="edc-col-obs">DETALLE</th>
+                    <th class="edc-col-mes">FECHA PAGO</th>
+                  </tr>
+                </thead>
+                <tbody id="edcBodyFacturas"></tbody>
+                <tfoot id="edcFootFacturas"></tfoot>
+              </table>
+              <button id="edcBtnAddFactura" class="swal2-confirm swal2-styled" style="margin-top:6px;background:#6c5ce7;">+ Agregar factura</button>
+            </div>
+
           </div>
         </div>
 
