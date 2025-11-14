@@ -638,7 +638,6 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
       return { mes, nro, monto, detalle, fecha };
     });
 
-    // si no hay facturas, creo una fila vacía
     if (!facturas.length) {
       facturas.push({
         mes: "",
@@ -651,7 +650,6 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
 
     // ---------- Cálculo de totales ----------
     const calcTotales = () => {
-      // actualizar A PAGAR si tenemos precioModulo
       lineas = lineas.map((l) => {
         if (l.precioModulo && !isNaN(l.precioModulo)) {
           const cant = Number(l.cantidad) || 0;
@@ -671,15 +669,25 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         0
       );
 
-      // DIFERENCIA: lo que cuesta el módulo - lo que se pagó
       const difFactPag = totalAPagar - totalPagado;
-
       return { totalAPagar, totalPagado, totalFacturado, difFactPag };
     };
 
     // ---------- HTML base del modal ----------
     const areaNombreActual =
       (areaSel && areaSel.nombre) || "Todas las áreas";
+
+    // Color según área
+    const areaColor = (() => {
+      const n = (areaNombreActual || "").toLowerCase();
+      if (n.includes("psicoped")) return "#8b3ffc";            // violeta
+      if (n.includes("fono")) return "#7fbf32";                // verde
+      if (n.includes("terapia ocup")) return "#ff3b30";        // rojo
+      if (n.includes("atención temprana")) return "#00c9d6";   // celeste
+      if (n.includes("discapacidad")) return "#2457ff";        // azul
+      if (n.includes("habilidades sociales")) return "#ffd800";// amarillo
+      return "#7fbf32";                                       // default verde
+    })();
 
     const areaOptionsHtml = [
       `<option value="">(Todas las áreas)</option>`,
@@ -701,11 +709,13 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           </select>
         </div>
 
-        <h3 style="margin:0 0 6px 0;">${paciente.nombre} — ${areaNombreActual}</h3>
+        <h3 style="margin:0 0 6px 0; color:${areaColor};">
+          ${paciente.nombre} — ${areaNombreActual}
+        </h3>
 
-        <!-- BARRA VERDE SUPERIOR -->
+        <!-- BARRA COLOR SEGÚN ÁREA -->
         <div style="
-          background:#7fbf32;
+          background:${areaColor};
           color:#fff;
           padding:4px 10px;
           font-weight:600;
@@ -714,9 +724,9 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           AREA: ${areaNombreActual.toUpperCase()}
         </div>
 
-        <!-- CUERPO PRINCIPAL: AHORA EN COLUMNA -->
+        <!-- CUERPO PRINCIPAL EN COLUMNA -->
         <div style="
-          border:1px solid #7fbf32;
+          border:1px solid ${areaColor};
           border-top:none;
           border-radius:0 0 6px 6px;
           padding:8px;
@@ -726,7 +736,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           gap:10px;
         ">
 
-          <!-- MÓDULOS / PAGOS (arriba, ancho completo) -->
+          <!-- MÓDULOS / PAGOS -->
           <div style="width:100%;min-width:0;">
             <table class="edc-table">
               <thead>
@@ -748,9 +758,9 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
             <button id="edcBtnAddLinea" class="swal2-confirm swal2-styled" style="margin-top:6px;background:#6c5ce7;">+ Agregar línea</button>
           </div>
 
-          <!-- FACTURAS (abajo, ancho completo) -->
+          <!-- FACTURAS -->
           <div style="width:100%;min-width:0;">
-            <div style="background:#7fbf32;color:#fff;padding:4px 6px;font-weight:600;margin-bottom:4px;">
+            <div style="background:${areaColor};color:#fff;padding:4px 6px;font-weight:600;margin-bottom:4px;">
               FACTURAS
             </div>
             <table class="edc-table">
@@ -806,7 +816,6 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           const { totalAPagar, totalPagado, totalFacturado, difFactPag } =
             calcTotales();
 
-          // opciones para selects
           const buildModuloOptions = (selId) =>
             [
               `<option value="">(Elegir módulo)</option>`,
@@ -941,7 +950,6 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
 
         render();
 
-        // Handler común para inputs/selects
         const handleChange = (e) => {
           const t = e.target;
           if (t.classList.contains("edc-input-linea")) {
@@ -1008,7 +1016,6 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         root.addEventListener("input", handleChange);
         root.addEventListener("change", handleChange);
 
-        // Botón agregar línea
         const btnAddLinea = popup.querySelector("#edcBtnAddLinea");
         if (btnAddLinea) {
           btnAddLinea.addEventListener("click", () => {
@@ -1030,7 +1037,6 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           });
         }
 
-        // Botón agregar factura
         const btnAddFactura = popup.querySelector("#edcBtnAddFactura");
         if (btnAddFactura) {
           btnAddFactura.addEventListener("click", () => {
@@ -1045,7 +1051,6 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           });
         }
 
-        // Select de área dentro del modal
         const selAreaModal = popup.querySelector("#edcAreaSelectModal");
         if (selAreaModal) {
           selAreaModal.addEventListener("change", () => {
@@ -1059,7 +1064,6 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           });
         }
 
-        // Botón PDF (igual que antes)
         const btnPDF = popup.querySelector("#edcBtnDescargarPDF");
         if (btnPDF) {
           btnPDF.addEventListener("click", () => {
