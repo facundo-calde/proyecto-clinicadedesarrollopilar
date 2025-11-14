@@ -237,42 +237,35 @@
       return [];
     }
   }
-// Trae módulos normales + eventos especiales, pero si falla eventos NO rompe nada
 async function edcFetchModulos() {
   let modulos = [];
   let eventos = [];
 
-  // 1) Módulos normales (obligatorio)
+  // 1) módulos normales
   try {
-    // Si querés solo _id y nombre podés usar ?lite=1
     const resMods = await edcApiJson("/modulos?lite=1");
     if (Array.isArray(resMods)) modulos = resMods;
   } catch (err) {
-    console.error("Error al obtener /modulos:", err);
-    modulos = [];
+    console.error("Error cargando /modulos:", err);
   }
 
-  // 2) Eventos especiales (opcional, no puede romper los módulos)
+  // 2) eventos especiales (esta es la ruta REAL)
   try {
-    const resEventos = await edcApiJson("/moduloseventoespecial");
+    const resEventos = await edcApiJson("/modulos/evento-especial");
     if (Array.isArray(resEventos)) eventos = resEventos;
   } catch (err) {
-    console.warn(
-      "No se pudieron obtener eventos especiales (/moduloseventoespecial). Se usarán solo los módulos.",
-      err
-    );
-    eventos = [];
+    console.warn("No se pudieron cargar eventos especiales:", err);
   }
 
-  // 3) Marcar eventos para que el select los ponga en el optgroup "Eventos especiales"
-  const eventosMarcados = eventos.map((e) => ({
+  // marcar eventos
+  const eventosMarcados = eventos.map(e => ({
     ...e,
     esEventoEspecial: true,
   }));
 
-  // 4) Devolver todo junto
   return [...modulos, ...eventosMarcados];
 }
+
 
 
 
