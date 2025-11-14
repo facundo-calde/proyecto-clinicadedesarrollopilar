@@ -427,9 +427,6 @@ async function edcFetchUsuarios() {
       }
     });
   }
-// ==============================
-// Modal de detalle por área (Excel + editable + selects)
-// ==============================
 async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
   try {
     // Catálogos
@@ -584,7 +581,6 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         f.observacionOS ||
         "";
 
-      // profesional
       const profNombre =
         f.profesional ||
         (f.profesionales &&
@@ -669,24 +665,26 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         0
       );
 
-      const difFactPag = totalAPagar - totalPagado;
-      return { totalAPagar, totalPagado, totalFacturado, difFactPag };
+      const difFactPag   = totalFacturado - totalPagado; // facturas - pagado
+      const saldoRestante = totalAPagar - totalPagado;    // módulos - pagado
+
+      return { totalAPagar, totalPagado, totalFacturado, difFactPag, saldoRestante };
     };
 
     // ---------- HTML base del modal ----------
     const areaNombreActual =
       (areaSel && areaSel.nombre) || "Todas las áreas";
 
-    // Color según área
+    // Color según área (ajustado)
     const areaColor = (() => {
       const n = (areaNombreActual || "").toLowerCase();
-      if (n.includes("psicoped")) return "#8b3ffc";            // violeta
-      if (n.includes("fono")) return "#7fbf32";                // verde
-      if (n.includes("terapia ocup")) return "#ff3b30";        // rojo
-      if (n.includes("atención temprana")) return "#00c9d6";   // celeste
-      if (n.includes("discapacidad")) return "#2457ff";        // azul
-      if (n.includes("habilidades sociales")) return "#ffd800";// amarillo
-      return "#7fbf32";                                       // default verde
+      if (n.includes("psicoped")) return "#8b3ffc";             // violeta
+      if (n.includes("fono")) return "#7fbf32";                 // verde
+      if (n.includes("terapia ocup")) return "#ff3b30";         // rojo
+      if (n.includes("atención temprana")) return "#2457ff";    // azul
+      if (n.includes("discapacidad")) return "#00c9d6";         // celeste
+      if (n.includes("habilidades sociales")) return "#ffd800"; // amarillo
+      return "#7fbf32";                                        // default verde
     })();
 
     const areaOptionsHtml = [
@@ -701,7 +699,6 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
 
     const html = `
       <div id="edcModalRoot" style="text-align:left;font-family:'Segoe UI',sans-serif;">
-        <!-- Select de área -->
         <div style="margin-bottom:8px; display:flex; align-items:center; gap:8px;">
           <strong>Área:</strong>
           <select id="edcAreaSelectModal" style="padding:4px 6px; border-radius:6px; border:1px solid #bbb; min-width:220px;">
@@ -713,7 +710,6 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           ${paciente.nombre} — ${areaNombreActual}
         </h3>
 
-        <!-- BARRA COLOR SEGÚN ÁREA -->
         <div style="
           background:${areaColor};
           color:#fff;
@@ -724,7 +720,6 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           AREA: ${areaNombreActual.toUpperCase()}
         </div>
 
-        <!-- CUERPO PRINCIPAL EN COLUMNA -->
         <div style="
           border:1px solid ${areaColor};
           border-top:none;
@@ -736,7 +731,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           gap:10px;
         ">
 
-          <!-- MÓDULOS / PAGOS -->
+          <!-- MÓDULOS -->
           <div style="width:100%;min-width:0;">
             <table class="edc-table">
               <thead>
@@ -780,11 +775,10 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           </div>
         </div>
 
-        <!-- DIFERENCIA -->
+        <!-- DIFERENCIAS / SALDO -->
         <div id="edcResumenDif" style="margin-top:8px;padding:6px 8px;border-radius:6px;background:#fffbea;border:1px solid #f0c36d;">
         </div>
 
-        <!-- BOTÓN PDF -->
         <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:10px;">
           <button id="edcBtnDescargarPDF"
                   class="swal2-confirm swal2-styled"
@@ -795,7 +789,6 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
       </div>
     `;
 
-    // ================== Mostrar modal ==================
     await Swal.fire({
       title: "Estado de cuenta",
       html,
@@ -813,7 +806,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         const resumenDif = popup.querySelector("#edcResumenDif");
 
         const render = () => {
-          const { totalAPagar, totalPagado, totalFacturado, difFactPag } =
+          const { totalAPagar, totalPagado, totalFacturado, difFactPag, saldoRestante } =
             calcTotales();
 
           const buildModuloOptions = (selId) =>
@@ -943,8 +936,12 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           `;
 
           resumenDif.innerHTML = `
-            <strong>Diferencia entre facturado y pagado:</strong>
-            <span style="margin-left:6px;">${fmtARS(difFactPag)}</span>
+            <div><strong>Diferencia entre facturado y pagado:</strong>
+              <span style="margin-left:6px;">${fmtARS(difFactPag)}</span>
+            </div>
+            <div style="margin-top:4px;"><strong>Saldo (módulos - pagado):</strong>
+              <span style="margin-left:6px;">${fmtARS(saldoRestante)}</span>
+            </div>
           `;
         };
 
