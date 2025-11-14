@@ -244,21 +244,21 @@ async function edcFetchModulos() {
 
   // 1) Módulos normales (obligatorio)
   try {
-    const resMods = await edcApiJson("/modulos");
+    // Si querés solo _id y nombre podés usar ?lite=1
+    const resMods = await edcApiJson("/modulos?lite=1");
     if (Array.isArray(resMods)) modulos = resMods;
   } catch (err) {
     console.error("Error al obtener /modulos:", err);
-    // si acá falla, al menos devolvemos []
+    modulos = [];
   }
 
   // 2) Eventos especiales (opcional, no puede romper los módulos)
   try {
-    // ⚠️ Ajustá esta ruta si tu backend usa otro path
-    const resEventos = await edcApiJson("/moduloEventoEspecial");
+    const resEventos = await edcApiJson("/moduloseventoespecial");
     if (Array.isArray(resEventos)) eventos = resEventos;
   } catch (err) {
     console.warn(
-      "No se pudieron obtener eventos especiales (/moduloEventoEspecial). Se usarán solo los módulos.",
+      "No se pudieron obtener eventos especiales (/moduloseventoespecial). Se usarán solo los módulos.",
       err
     );
     eventos = [];
@@ -273,6 +273,7 @@ async function edcFetchModulos() {
   // 4) Devolver todo junto
   return [...modulos, ...eventosMarcados];
 }
+
 
 
 async function edcFetchUsuarios() {
