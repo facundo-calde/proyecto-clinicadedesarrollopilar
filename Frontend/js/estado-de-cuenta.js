@@ -678,25 +678,20 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
     const areaNombreActual =
       (areaSel && areaSel.nombre) || "Todas las áreas";
 
-    // Color según área (con normalización de acentos)
+    // Color según área
     const areaColor = (() => {
       const n = (areaNombreActual || "").toLowerCase();
       const nNorm = n.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
-      if (nNorm.includes("psicoped")) return "#8b3ffc";          // violeta
-      if (nNorm.includes("fono")) return "#7fbf32";              // verde
-      if (nNorm.includes("terapia ocup")) return "#ff3b30";      // rojo
-
-      // Atención temprana -> CELESTE
+      if (nNorm.includes("psicoped")) return "#8b3ffc";
+      if (nNorm.includes("fono")) return "#7fbf32";
+      if (nNorm.includes("terapia ocup")) return "#ff3b30";
       if (nNorm.includes("atencion temprana")) return "#00c9d6";
-
-      // Abordaje integral a personas con discapacidad -> AZUL
       if (nNorm.includes("abordaje integral") || nNorm.includes("discapacidad"))
         return "#2457ff";
+      if (nNorm.includes("habilidades sociales")) return "#ffd800";
 
-      if (nNorm.includes("habilidades sociales")) return "#ffd800"; // amarillo
-
-      return "#7fbf32"; // default
+      return "#7fbf32";
     })();
 
     const areaOptionsHtml = [
@@ -735,7 +730,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           AREA: ${areaNombreActual.toUpperCase()}
         </div>
 
-        <!-- Cuerpo principal: módulos + facturas en paralelo -->
+        <!-- Cuerpo principal: módulos + facturas en paralelo con scroll horizontal -->
         <div style="
           border:1px solid ${areaColor};
           border-top:none;
@@ -744,12 +739,13 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           background:#f8fff4;
           display:flex;
           flex-direction:row;
-          flex-wrap:wrap;
+          flex-wrap:nowrap;
           gap:10px;
+          overflow-x:auto;
         ">
 
           <!-- MÓDULOS / PAGOS -->
-          <div style="flex:2; min-width:480px;">
+          <div style="flex:0 0 900px; min-width:900px;">
             <table class="edc-table">
               <thead>
                 <tr class="edc-th">
@@ -771,7 +767,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           </div>
 
           <!-- FACTURAS -->
-          <div style="flex:1; min-width:360px;">
+          <div style="flex:0 0 520px; min-width:520px;">
             <div style="background:${areaColor};color:#fff;padding:4px 6px;font-weight:600;margin-bottom:4px;">
               FACTURAS
             </div>
