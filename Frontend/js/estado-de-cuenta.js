@@ -676,16 +676,27 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
       (areaSel && areaSel.nombre) || "Todas las áreas";
 
     // Color según área (ajustado)
-    const areaColor = (() => {
-      const n = (areaNombreActual || "").toLowerCase();
-      if (n.includes("psicoped")) return "#8b3ffc";             // violeta
-      if (n.includes("fono")) return "#7fbf32";                 // verde
-      if (n.includes("terapia ocup")) return "#ff3b30";         // rojo
-      if (n.includes("atención temprana")) return "#2457ff";    // azul
-      if (n.includes("discapacidad")) return "#00c9d6";         // celeste
-      if (n.includes("habilidades sociales")) return "#ffd800"; // amarillo
-      return "#7fbf32";                                        // default verde
-    })();
+   const areaColor = (() => {
+  const n = (areaNombreActual || "").toLowerCase();
+  // quitar acentos para comparar
+  const nNorm = n.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+  if (nNorm.includes("psicoped")) return "#8b3ffc";          // violeta
+  if (nNorm.includes("fono")) return "#7fbf32";              // verde
+  if (nNorm.includes("terapia ocup")) return "#ff3b30";      // rojo
+
+  // Atención temprana -> CELESTE
+  if (nNorm.includes("atencion temprana")) return "#00c9d6";
+
+  // Abordaje integral a personas con discapacidad -> AZUL
+  if (nNorm.includes("abordaje integral") || nNorm.includes("discapacidad"))
+    return "#2457ff";
+
+  if (nNorm.includes("habilidades sociales")) return "#ffd800"; // amarillo
+
+  return "#7fbf32"; // default
+})();
+
 
     const areaOptionsHtml = [
       `<option value="">(Todas las áreas)</option>`,
