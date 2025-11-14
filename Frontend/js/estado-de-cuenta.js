@@ -237,6 +237,23 @@
       return [];
     }
   }
+async function edcFetchModulos() {
+  try {
+    const data = await edcApiJson('/modulos');
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+async function edcFetchUsuarios() {
+  try {
+    const data = await edcApiJson('/usuarios');
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
 
   // ==============================
   // RENDER DEL ESTADO DE CUENTA (en página)
@@ -410,55 +427,136 @@
       }
     });
   }
-
- // ==============================
-// Modal de detalle por área (diseño tipo Excel)
 // ==============================
-// ==============================
-// Modal de detalle por área (diseño tipo Excel + editable)
+// Modal de detalle por área (diseño tipo Excel + editable + selects)
 // ==============================
 async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
   try {
-    // Traer todas las áreas para el select superior
-    const AREAS = await edcFetchAreas();
+    // Traer catálogos (áreas, módulos, usuarios)
+    const [AREAS, MODULOS_ALL, USUARIOS_ALL] = await Promise.all([
+      edcFetchAreas(),
+      edcFetchModulos(),
+      edcFetchUsuarios(),
+    ]);
 
-    // 1) Armar URL
+    const areaId     = areaSel && areaSel.id ? String(areaSel.id) : null;
+    const areaNombre = areaSel && areaSel.nombre ? String(areaSel.nombre) : null;
+
+    // Filtrar módulos por área si se puede, si no, se muestran todos
+    const MODULOS = MODULOS_ALL.filter((m) => {
+      if (!areaId && !areaNombre) return true;
+      const mAreaId =
+        m.areaId || (m.area && m.area._id) || m.area || null;
+      const mAreaNom =
+        m.areaNombre ||
+        (typeof m.area === "string" ? m.area : m.area && m.area.nombre) ||
+        null;
+
+      if (areaId && mAreaId && String(mAreaId) === areaId) return true;
+      if (
+        areaNombre &&
+        mAreaNom &&
+        mAreaNom.toLowerCase() === areaNombre.toLowerCase()
+      )
+        return true;
+
+      return !mAreaId && !mAreaNom; // si no tiene área ligada, lo dejamos
+    });
+
+    const moduloMap = {};
+    MODULOS.forEach((m) => {
+      moduloMap[String(m._id)] = m;
+    });
+
+    // Profesionales: rol + área
+    const PROFESIONALES = USUARIOS_ALL.filter((u) => {
+      const roles = [];
+      if (u.rol) roles.push(String(u.rol));
+      if (u.role) roles.push(String(u.role));
+      if (Array.isArray(u.roles)) roles.push(...u.roles.map(String));
+
+      const esProf = roles.some((r) =>
+        r.toLowerCase().includes("prof")
+      );
+      if (!esProf) return false;
+
+      if (!areaId && !areaNombre) return true;
+
+      const areasUser = [];
+
+      if (Array.isArray(u.areasProfesional)) {
+        u.areasProfesional.forEach((a) => {
+          if (!a) return;
+          if (typeof a === "string") areasUser.push(a.toLowerCase());
+          else if (a.nombre) areasUser.push(a.nombre.toLowerCase());
+          else if (a.area) areasUser.push(String(a.area).toLowerCase());
+        });
+      }
+      if (u.area && typeof u.area === "string")
+        areasUser.push(u.area.toLowerCase());
+      if (u.areaNombre) areasUser.push(u.areaNombre.toLowerCase());
+
+      if (areaNombre && areasUser.includes(areaNombre.toLowerCase()))
+        return true;
+
+      return !areasUser.length;
+    });
+
+    const profMap = {};
+    PROFESIONALES.forEach((p) => {
+      profMap[String(p._id)] = p;
+    });
+
+    // 1) Armar URL para datos de estado de cuenta
     let path = `/estado-de-cuenta/${paciente.dni}`;
     const qs = [];
     if (areaSel && areaSel.id) qs.push(`areaId=${encodeURIComponent(areaSel.id)}`);
     if (areaSel && areaSel.nombre) qs.push(`areaNombre=${encodeURIComponent(areaSel.nombre)}`);
     if (qs.length) path += `?${qs.join("&")}`;
 
-    // 2) Traer datos
     const data = await edcApiJson(path);
 
     const filas       = Array.isArray(data.filas) ? data.filas : [];
     const movimientos = Array.isArray(data.movimientos) ? data.movimientos : [];
     const facturasRaw = Array.isArray(data.facturas) ? data.facturas : [];
 
-    const tot = data.totales || {};
-
     // Normalizar líneas de módulos/pagos a un array editable
     let lineas = (filas.length ? filas : movimientos).map((f) => {
-      const mes = f.mes || f.periodo || f.period || "-";
-      const modulo = f.moduloNombre || f.modulo || f.moduloNumero || "-";
+      const mes = f.mes || f.periodo || f.period || "";
       const cantidad = f.cantidad ?? f.cant ?? 1;
-      const profesional =
-        f.profesional ||
-        (f.profesionales &&
-          (f.profesionales.profesional?.[0] ||
-            f.profesionales.coordinador?.[0] ||
-            f.profesionales.pasante?.[0] ||
-            f.profesionales.directora?.[0])) ||
-        "-";
 
-      const precioModulo = Number(f.precioModulo || f.valorModulo || 0);
+      const moduloNombre =
+        f.moduloNombre || f.modulo || f.moduloNumero || "";
+      const moduloIdCrudo =
+        f.moduloId ||
+        f.moduloIdMongo ||
+        (typeof f.modulo === "string" &&
+        /^[0-9a-fA-F]{24}$/.test(f.modulo)
+          ? f.modulo
+          : null);
+
+      let moduloId = moduloIdCrudo || "";
+      let moduloRef = moduloId ? moduloMap[String(moduloId)] : null;
+
+      if (!moduloRef && moduloNombre) {
+        moduloRef = MODULOS.find(
+          (m) =>
+            (m.nombre || m.codigo || m.titulo || "").toLowerCase() ===
+            String(moduloNombre).toLowerCase()
+        );
+        if (moduloRef) moduloId = String(moduloRef._id);
+      }
+
+      const precioModulo =
+        (moduloRef &&
+          (Number(moduloRef.valorModulo || moduloRef.precioModulo || moduloRef.precio || 0))) ||
+        Number(f.precioModulo || f.valorModulo || 0);
 
       const aPagar = Number(
         f.aPagar != null
           ? f.aPagar
           : precioModulo
-          ? precioModulo * cantidad
+          ? precioModulo * (Number(cantidad) || 0)
           : f.monto || 0
       );
 
@@ -486,11 +584,33 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         f.observacionOS ||
         "";
 
+      // profesional
+      const profNombre =
+        f.profesional ||
+        (f.profesionales &&
+          (f.profesionales.profesional?.[0] ||
+            f.profesionales.coordinador?.[0] ||
+            f.profesionales.pasante?.[0] ||
+            f.profesionales.directora?.[0])) ||
+        "";
+      let profId = f.profesionalId || "";
+
+      if (!profId && profNombre) {
+        const found = PROFESIONALES.find((p) => {
+          const nom =
+            p.nombreApellido || p.nombreCompleto || p.nombre || "";
+          return nom.toLowerCase() === profNombre.toLowerCase();
+        });
+        if (found) profId = String(found._id);
+      }
+
       return {
         mes,
-        modulo,
         cantidad: Number(cantidad) || 0,
-        profesional,
+        moduloId,
+        moduloNombre,
+        profesionalId: profId,
+        profesionalNombre: profNombre,
         precioModulo,
         aPagar,
         pagPadres,
@@ -539,12 +659,13 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         (acc, f) => acc + (Number(f.monto) || 0),
         0
       );
-      const difFactPag = totalFacturado - totalPagado;
+
+      // DIFERENCIA: lo que cuesta el módulo - lo que se pagó
+      const difFactPag = totalAPagar - totalPagado;
 
       return { totalAPagar, totalPagado, totalFacturado, difFactPag };
     };
 
-    // plantilla HTML base con contenedores vacíos (se rellenan luego)
     const areaNombreActual =
       (areaSel && areaSel.nombre) || "Todas las áreas";
 
@@ -558,6 +679,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
       ),
     ].join("");
 
+    // HTML base
     const html = `
       <div id="edcModalRoot" style="text-align:left;font-family:'Segoe UI',sans-serif;">
         <!-- Select de área -->
@@ -635,7 +757,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           </div>
         </div>
 
-        <!-- DIFERENCIA FACT vs PAGADO -->
+        <!-- DIFERENCIA -->
         <div id="edcResumenDif" style="margin-top:8px;padding:6px 8px;border-radius:6px;background:#fffbea;border:1px solid #f0c36d;">
         </div>
 
@@ -650,7 +772,6 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
       </div>
     `;
 
-    // 3) Mostrar Swal a pantalla completa
     await Swal.fire({
       title: "Estado de cuenta",
       html,
@@ -671,41 +792,83 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           const { totalAPagar, totalPagado, totalFacturado, difFactPag } =
             calcTotales();
 
+          // opciones selects
+          const moduloOptions = [
+            `<option value="">(Elegir módulo)</option>`,
+            ...MODULOS.map((m) => {
+              const text =
+                m.nombre ||
+                `${m.numero || ""} ${m.descripcion || ""}`.trim();
+              return `<option value="${m._id}">${text}</option>`;
+            }),
+          ].join("");
+
+          const profOptions = [
+            `<option value="">(Elegir profesional)</option>`,
+            ...PROFESIONALES.map((p) => {
+              const text =
+                p.nombreApellido ||
+                p.nombreCompleto ||
+                p.nombre ||
+                "";
+              return `<option value="${p._id}">${text}</option>`;
+            }),
+          ].join("");
+
           // Render líneas
           tbodyLin.innerHTML = lineas
-            .map(
-              (r, idx) => `
-            <tr>
-              <td class="edc-col-mes">
-                <input data-idx="${idx}" data-field="mes" class="edc-input-linea" style="width:90px;" value="${r.mes || ""}">
-              </td>
-              <td class="edc-col-cant">
-                <input data-idx="${idx}" data-field="cantidad" class="edc-input-linea" style="width:60px;text-align:right;" value="${r.cantidad}">
-              </td>
-              <td class="edc-col-mod">
-                <input data-idx="${idx}" data-field="modulo" class="edc-input-linea" style="width:100%;" value="${r.modulo}">
-              </td>
-              <td class="edc-col-prof">
-                <input data-idx="${idx}" data-field="profesional" class="edc-input-linea" style="width:100%;" value="${r.profesional}">
-              </td>
-              <td class="edc-col-apag">
-                ${fmtARS(r.aPagar)}
-              </td>
-              <td class="edc-col-pag">
-                <input data-idx="${idx}" data-field="pagPadres" class="edc-input-linea" style="width:100px;text-align:right;" value="${r.pagPadres}">
-              </td>
-              <td class="edc-col-obs">
-                <input data-idx="${idx}" data-field="detPadres" class="edc-input-linea" style="width:100%;" value="${r.detPadres || ""}">
-              </td>
-              <td class="edc-col-pag">
-                <input data-idx="${idx}" data-field="pagOS" class="edc-input-linea" style="width:100px;text-align:right;" value="${r.pagOS}">
-              </td>
-              <td class="edc-col-obs">
-                <input data-idx="${idx}" data-field="detOS" class="edc-input-linea" style="width:100%;" value="${r.detOS || ""}">
-              </td>
-            </tr>
-          `
-            )
+            .map((r, idx) => {
+              const selMod =
+                r.moduloId && moduloMap[String(r.moduloId)]
+                  ? String(r.moduloId)
+                  : "";
+              const selProf =
+                r.profesionalId && profMap[String(r.profesionalId)]
+                  ? String(r.profesionalId)
+                  : "";
+
+              return `
+              <tr>
+                <td class="edc-col-mes">
+                  <input data-idx="${idx}" data-field="mes" class="edc-input-linea" style="width:90px;" value="${r.mes || ""}">
+                </td>
+                <td class="edc-col-cant">
+                  <input data-idx="${idx}" data-field="cantidad" class="edc-input-linea" style="width:60px;text-align:right;" value="${r.cantidad}">
+                </td>
+                <td class="edc-col-mod">
+                  <select data-idx="${idx}" data-field="moduloId" class="edc-input-linea" style="width:100%;">
+                    ${moduloOptions.replace(
+                      `value="${selMod}"`,
+                      `value="${selMod}" selected`
+                    )}
+                  </select>
+                </td>
+                <td class="edc-col-prof">
+                  <select data-idx="${idx}" data-field="profesionalId" class="edc-input-linea" style="width:100%;">
+                    ${profOptions.replace(
+                      `value="${selProf}"`,
+                      `value="${selProf}" selected`
+                    )}
+                  </select>
+                </td>
+                <td class="edc-col-apag">
+                  ${fmtARS(r.aPagar)}
+                </td>
+                <td class="edc-col-pag">
+                  <input data-idx="${idx}" data-field="pagPadres" class="edc-input-linea" style="width:100px;text-align:right;" value="${r.pagPadres}">
+                </td>
+                <td class="edc-col-obs">
+                  <input data-idx="${idx}" data-field="detPadres" class="edc-input-linea" style="width:100%;" value="${r.detPadres || ""}">
+                </td>
+                <td class="edc-col-pag">
+                  <input data-idx="${idx}" data-field="pagOS" class="edc-input-linea" style="width:100px;text-align:right;" value="${r.pagOS}">
+                </td>
+                <td class="edc-col-obs">
+                  <input data-idx="${idx}" data-field="detOS" class="edc-input-linea" style="width:100%;" value="${r.detOS || ""}">
+                </td>
+              </tr>
+            `;
+            })
             .join("");
 
           tfootLin.innerHTML = `
@@ -727,7 +890,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
               (f, idx) => `
             <tr>
               <td class="edc-col-mes">
-                <input data-idx="${idx}" data-field="mes" class="edc-input-fact" style="width:90px;" value="${f.mes || ""}">
+                <input type="month" data-idx="${idx}" data-field="mes" class="edc-input-fact" style="width:120px;" value="${f.mes || ""}">
               </td>
               <td style="text-align:center;min-width:80px;">
                 <input data-idx="${idx}" data-field="nro" class="edc-input-fact" style="width:80px;" value="${f.nro || ""}">
@@ -739,7 +902,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
                 <input data-idx="${idx}" data-field="detalle" class="edc-input-fact" style="width:100%;" value="${f.detalle || ""}">
               </td>
               <td class="edc-col-mes">
-                <input data-idx="${idx}" data-field="fecha" class="edc-input-fact" style="width:110px;" value="${f.fecha || ""}">
+                <input type="date" data-idx="${idx}" data-field="fecha" class="edc-input-fact" style="width:130px;" value="${f.fecha || ""}">
               </td>
             </tr>
           `
@@ -762,14 +925,53 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
 
         render();
 
-        // Delegación de eventos para inputs de líneas
+        // Inputs de líneas
         root.addEventListener("input", (e) => {
           const t = e.target;
           if (t.classList.contains("edc-input-linea")) {
             const idx = Number(t.dataset.idx);
             const field = t.dataset.field;
-            if (field === "cantidad" || field === "pagPadres" || field === "pagOS") {
-              lineas[idx][field] = Number(t.value.replace(",", ".")) || 0;
+
+            if (field === "moduloId") {
+              const id = t.value || "";
+              lineas[idx].moduloId = id;
+              const m = id ? moduloMap[String(id)] : null;
+              if (m) {
+                const texto =
+                  m.nombre ||
+                  `${m.numero || ""} ${m.descripcion || ""}`.trim();
+                lineas[idx].moduloNombre = texto;
+                lineas[idx].precioModulo = Number(
+                  m.valorModulo || m.precioModulo || m.precio || 0
+                );
+              }
+              render();
+              return;
+            }
+
+            if (field === "profesionalId") {
+              const id = t.value || "";
+              lineas[idx].profesionalId = id;
+              const p = id ? profMap[String(id)] : null;
+              if (p) {
+                lineas[idx].profesionalNombre =
+                  p.nombreApellido ||
+                  p.nombreCompleto ||
+                  p.nombre ||
+                  "";
+              }
+              render();
+              return;
+            }
+
+            if (
+              field === "cantidad" ||
+              field === "pagPadres" ||
+              field === "pagOS"
+            ) {
+              lineas[idx][field] = Number(
+                String(t.value).replace(",", ".")
+              ) || 0;
             } else {
               lineas[idx][field] = t.value;
             }
@@ -778,7 +980,8 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
             const idx = Number(t.dataset.idx);
             const field = t.dataset.field;
             if (field === "monto") {
-              facturas[idx][field] = Number(t.value.replace(",", ".")) || 0;
+              facturas[idx][field] =
+                Number(String(t.value).replace(",", ".")) || 0;
             } else {
               facturas[idx][field] = t.value;
             }
@@ -792,9 +995,11 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           btnAddLinea.addEventListener("click", () => {
             lineas.push({
               mes: "",
-              modulo: "",
               cantidad: 0,
-              profesional: "",
+              moduloId: "",
+              moduloNombre: "",
+              profesionalId: "",
+              profesionalNombre: "",
               precioModulo: 0,
               aPagar: 0,
               pagPadres: 0,
@@ -835,7 +1040,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           });
         }
 
-        // Botón PDF (sigue llamando a tu endpoint actual)
+        // Botón PDF (misma lógica que antes)
         const btnPDF = popup.querySelector("#edcBtnDescargarPDF");
         if (btnPDF) {
           btnPDF.addEventListener("click", () => {
@@ -860,6 +1065,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
     });
   }
 }
+
 
 
 
