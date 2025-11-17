@@ -151,12 +151,16 @@ const crearModulo = async (req, res) => {
   }
 };
 
-// GET /modulos  (?lite=1 para solo _id y nombre)
+// GET /modulos  (?lite=1 para solo _id, nombre y valorPadres)
 const obtenerModulos = async (req, res) => {
   try {
     const lite = String(req.query.lite || '').trim() === '1';
     if (lite) {
-      const list = await Modulo.find().select('_id nombre').sort({ nombre: 1 }).lean();
+      // 🔹 acá agregamos valorPadres para que el front pueda calcular el importe
+      const list = await Modulo.find()
+        .select('_id nombre valorPadres')
+        .sort({ nombre: 1 })
+        .lean();
       return res.json(list);
     }
     // completo, pero evitando que se pierda _id: usar lean()
@@ -452,4 +456,5 @@ module.exports = {
   actualizarEventoEspecial,
   eliminarEventoEspecial,
 };
+
 
