@@ -1,10 +1,10 @@
 // controllers/estadocuentacontrollers.js
-const mongoose = require("mongoose");
+const mongoose   = require("mongoose");
 const PDFDocument = require("pdfkit");
-const Paciente = require("../models/pacientes");
-const Usuario  = require("../models/usuarios");
-const Modulo   = require("../models/modulos");
-const Area     = require("../models/area");
+const Paciente   = require("../models/pacientes");
+const Usuario    = require("../models/usuarios");
+const Modulo     = require("../models/modulos");
+const Area       = require("../models/area");
 const Movimiento = require("../models/estadoDeCuentaMovimiento");
 
 const toStr = (v) => (v ?? "").toString();
@@ -22,15 +22,21 @@ function parseCantidad(v) {
   return isNaN(n) ? 1 : n;
 }
 
+function parseNumberLike(v, def = 0) {
+  if (typeof v === "number") return v;
+  if (typeof v === "string" && v.trim()) {
+    const n = Number(v.replace(/\./g, "").replace(",", "."));
+    if (!isNaN(n)) return n;
+  }
+  return def;
+}
+
 function getPrecioModulo(mod) {
-  const cands = ["precio", "valor", "monto", "arancel", "importe", "tarifa"];
+  const cands = ["precio", "valor", "monto", "arancel", "importe", "tarifa", "valorPadres"];
   for (const k of cands) {
     const v = mod?.[k];
-    if (typeof v === "number") return v;
-    if (typeof v === "string" && v.trim()) {
-      const n = Number(v.replace(/\./g, "").replace(",", "."));
-      if (!isNaN(n)) return n;
-    }
+    const n = parseNumberLike(v, NaN);
+    if (!Number.isNaN(n)) return n;
   }
   return 0;
 }
@@ -70,7 +76,7 @@ async function buildFilasArea(paciente, areaId) {
 
   const [mods, usuarios] = await Promise.all([
     moduloIds.length ? Modulo.find({ _id: { $in: moduloIds } }).lean() : [],
-    profIds.length ? Usuario.find({ _id: { $in: profIds } }).lean() : [],
+    profIds.length    ? Usuario.find({ _id: { $in: profIds } }).lean() : [],
   ]);
 
   const modById = mapById(mods);
@@ -124,8 +130,10 @@ const obtenerEstadoDeCuenta = async (req, res) => {
 
     const tieneOS = /obra social/i.test(paciente.condicionDePago || "");
 
+    // Filas base desde módulos asignados
     const filas = await buildFilasArea(paciente, areaId);
 
+    // Movimientos crudos
     const whereMov = {
       dni,
       ...(areaId ? { areaId: new mongoose.Types.ObjectId(areaId) } : {}),
@@ -133,12 +141,24 @@ const obtenerEstadoDeCuenta = async (req, res) => {
     };
     const movs = await Movimiento.find(whereMov).sort({ fecha: 1 }).lean();
 
+    // Facturas (tipo FACT) para el modal nuevo
+    const facturas = movs
+      .filter(m => m.tipo === "FACT")
+      .map(m => ({
+        _id: m._id,
+        mes: m.period || (m.fecha ? m.fecha.toISOString().slice(0, 7) : ""),
+        nro: m.nroRecibo || m.tipoFactura || "",
+        monto: Number(m.monto || 0),
+        detalle: m.descripcion || m.observaciones || "",
+        fecha: m.fecha ? m.fecha.toISOString().slice(0, 10) : "",
+      }));
+
     let pagadoOS = 0, pagadoPART = 0, cargos = 0, ajustesMas = 0, ajustesMenos = 0;
     for (const m of movs) {
-      if (m.tipo === "OS") pagadoOS += m.monto;
-      else if (m.tipo === "PART") pagadoPART += m.monto;
-      else if (m.tipo === "CARGO") cargos += m.monto;
-      else if (m.tipo === "AJUSTE+") ajustesMas += m.monto;
+      if (m.tipo === "OS")        pagadoOS     += m.monto;
+      else if (m.tipo === "PART") pagadoPART   += m.monto;
+      else if (m.tipo === "CARGO") cargos      += m.monto;
+      else if (m.tipo === "AJUSTE+") ajustesMas   += m.monto;
       else if (m.tipo === "AJUSTE-") ajustesMenos += m.monto;
     }
 
@@ -160,12 +180,178 @@ const obtenerEstadoDeCuenta = async (req, res) => {
       area: areaId ? await Area.findById(areaId).select("nombre").lean() : null,
       period: period || null,
       filas,
-      totales: { aPagar: totalAPagar, pagadoOS, pagadoPART, cargos, ajustesMas, ajustesMenos, saldo, estado },
+      facturas,            // 👈 agregado para el modal
+      totales: {
+        aPagar: totalAPagar,
+        pagadoOS,
+        pagadoPART,
+        cargos,
+        ajustesMas,
+        ajustesMenos,
+        saldo,
+        estado
+      },
       movimientos: movs,
     });
   } catch (err) {
     console.error("estado-de-cuenta GET:", err);
     res.status(500).json({ error: "Error al obtener estado de cuenta" });
+  }
+};
+
+// ----------------- PUT /api/estado-de-cuenta/:dni -----------------
+// Guarda líneas (CARGO) y facturas (FACT) que vienen del modal
+const actualizarEstadoDeCuenta = async (req, res) => {
+  try {
+    const dni = toStr(req.params.dni).trim();
+    const { areaId: rawAreaId, lineas, facturas } = req.body || {};
+
+    const paciente = await Paciente.findOne({ dni }).lean();
+    if (!paciente) return res.status(404).json({ error: "Paciente no encontrado" });
+
+    const areaId = rawAreaId ? new mongoose.Types.ObjectId(rawAreaId) : null;
+    const area = areaId ? await Area.findById(areaId).lean() : null;
+
+    const lineasArr   = Array.isArray(lineas) ? lineas : [];
+    const facturasArr = Array.isArray(facturas) ? facturas : [];
+
+    // ---- catálogos para módulos y profesionales ----
+    const moduloIds = [
+      ...new Set(lineasArr.map(l => l.moduloId).filter(Boolean).map(String)),
+    ];
+    const profesionalIds = [
+      ...new Set(lineasArr.map(l => l.profesionalId).filter(Boolean).map(String)),
+    ];
+
+    const [modulos, profesionales] = await Promise.all([
+      moduloIds.length
+        ? Modulo.find({ _id: { $in: moduloIds } }).lean()
+        : [],
+      profesionalIds.length
+        ? Usuario.find({ _id: { $in: profesionalIds } }).lean()
+        : [],
+    ]);
+
+    const modById  = mapById(modulos);
+    const profById = mapById(profesionales);
+
+    // ---- limpiamos lo que vamos a regenerar (CARGO + FACT) ----
+    const baseFilter = { dni };
+    if (areaId) baseFilter.areaId = areaId;
+
+    const periodsCargos = [
+      ...new Set(lineasArr.map(l => l.mes || l.period || "").filter(Boolean)),
+    ];
+
+    const deleteFilterCargos = {
+      ...baseFilter,
+      tipo: "CARGO",
+      ...(periodsCargos.length ? { period: { $in: periodsCargos } } : {}),
+    };
+
+    const deleteFilterFacts = {
+      ...baseFilter,
+      tipo: "FACT",
+    };
+
+    await Promise.all([
+      Movimiento.deleteMany(deleteFilterCargos),
+      Movimiento.deleteMany(deleteFilterFacts),
+    ]);
+
+    const docsToInsert = [];
+
+    // ---- reconstruir CARGOS desde lineas ----
+    for (const l of lineasArr) {
+      const period = (l.mes || l.period || "").trim(); // YYYY-MM
+      if (!period) continue;
+
+      const moduloIdStr = l.moduloId ? String(l.moduloId) : null;
+      const modDoc = moduloIdStr ? modById.get(moduloIdStr) : null;
+
+      const cant = parseCantidad(l.cantidad ?? 1);
+      const precioLinea =
+        l.precioModulo != null
+          ? parseNumberLike(l.precioModulo, 0)
+          : getPrecioModulo(modDoc);
+      const montoCargo = +(precioLinea * (Number(cant) || 0)).toFixed(2);
+
+      const profesionalIdStr = l.profesionalId ? String(l.profesionalId) : null;
+      const profDoc = profesionalIdStr ? profById.get(profesionalIdStr) : null;
+      const profesionalNombre =
+        l.profesionalNombre ||
+        labelUsuario(profDoc) ||
+        undefined;
+
+      const moduloNombre =
+        l.moduloNombre ||
+        modDoc?.nombre ||
+        modDoc?.codigo ||
+        modDoc?.numero ||
+        "";
+
+      const fechaCargo = new Date(`${period}-01T00:00:00.000Z`);
+
+      docsToInsert.push({
+        pacienteId: paciente._id,
+        dni,
+        areaId: areaId || undefined,
+        areaNombre: area?.nombre || l.areaNombre || undefined,
+
+        moduloId: modDoc?._id || moduloIdStr || undefined,
+        moduloNombre: moduloNombre || undefined,
+
+        period,
+        tipo: "CARGO",
+        fecha: fechaCargo,
+        monto: montoCargo,
+        cantidad: Number(cant) || 1,
+        profesional: profesionalNombre,
+        descripcion: `Cargo ${period} — ${moduloNombre || "Módulo"}`,
+        estado: "PENDIENTE",
+      });
+    }
+
+    // ---- reconstruir FACTURAS desde facturas ----
+    for (const f of facturasArr) {
+      const period = (f.mes || "").trim(); // YYYY-MM
+      const monto  = parseNumberLike(f.monto, 0);
+      if (!monto) continue; // si no tiene monto, no tiene sentido
+
+      const fecha =
+        f.fecha && String(f.fecha).trim()
+          ? new Date(f.fecha)
+          : new Date(`${period || "1970-01"}-01T00:00:00.000Z`);
+
+      docsToInsert.push({
+        pacienteId: paciente._id,
+        dni,
+        areaId: areaId || undefined,
+        areaNombre: area?.nombre || undefined,
+
+        period: period || undefined,
+        tipo: "FACT",
+        fecha,
+        monto,
+
+        nroRecibo: f.nro || undefined,
+        descripcion: f.detalle || undefined,
+        observaciones: f.detalle || undefined,
+        estado: "PENDIENTE",
+      });
+    }
+
+    if (docsToInsert.length) {
+      await Movimiento.insertMany(docsToInsert);
+    }
+
+    return res.json({
+      ok: true,
+      inserted: docsToInsert.length,
+    });
+  } catch (err) {
+    console.error("estado-de-cuenta PUT:", err);
+    res.status(500).json({ error: "No se pudo actualizar el estado de cuenta" });
   }
 };
 
@@ -211,7 +397,7 @@ const eliminarMovimiento = async (req, res) => {
   }
 };
 
-// ----------------- ✅ NUEVO: GET /api/estado-de-cuenta/movimientos/:dni -----------------
+// ----------------- GET /api/estado-de-cuenta/movimientos/:dni -----------------
 const getPorDni = async (req, res) => {
   try {
     const { dni } = req.params;
@@ -248,10 +434,10 @@ async function generarExtractoPDF(req, res) {
 
     let pagadoOS = 0, pagadoPART = 0, cargos = 0, ajustesMas = 0, ajustesMenos = 0;
     for (const m of movs) {
-      if (m.tipo === "OS") pagadoOS += m.monto;
-      else if (m.tipo === "PART") pagadoPART += m.monto;
-      else if (m.tipo === "CARGO") cargos += m.monto;
-      else if (m.tipo === "AJUSTE+") ajustesMas += m.monto;
+      if (m.tipo === "OS")        pagadoOS     += m.monto;
+      else if (m.tipo === "PART") pagadoPART   += m.monto;
+      else if (m.tipo === "CARGO") cargos      += m.monto;
+      else if (m.tipo === "AJUSTE+") ajustesMas   += m.monto;
       else if (m.tipo === "AJUSTE-") ajustesMenos += m.monto;
     }
 
@@ -349,11 +535,12 @@ async function generarExtractoPDF(req, res) {
 
 module.exports = {
   obtenerEstadoDeCuenta,
+  actualizarEstadoDeCuenta,  // 👈 nuevo
   crearMovimiento,
   eliminarMovimiento,
   generarExtractoPDF,
   getPorDni,
-  // exporto helpers si los necesitás en tests:
   __test__: { buildFilasArea, parseCantidad, getPrecioModulo }
 };
+
 

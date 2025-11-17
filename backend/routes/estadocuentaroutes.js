@@ -4,6 +4,7 @@ const router = express.Router();
 
 const {
   obtenerEstadoDeCuenta,
+  actualizarEstadoDeCuenta,   // 👈 agregado
   crearMovimiento,
   eliminarMovimiento,
   generarExtractoPDF,
@@ -37,6 +38,9 @@ router.post("/:dni/movimientos", crearMovimiento);
 
 // Eliminar movimiento por ID
 router.delete("/movimientos/:movId", eliminarMovimiento);
+
+// ✅ Actualizar estado de cuenta (líneas + facturas)
+router.put("/:dni", actualizarEstadoDeCuenta);
 
 // Estado general por paciente/área (?areaId=...&period=YYYY-MM)
 router.get("/:dni", obtenerEstadoDeCuenta);

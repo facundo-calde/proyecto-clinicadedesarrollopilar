@@ -3,7 +3,7 @@ let cron = null;
 try {
   cron = require("node-cron");
 } catch (e) {
-    console.warn("⚠️ node-cron no instalado. El job de cargos no se programará automáticamente.");
+  console.warn("⚠️ node-cron no instalado. El job de cargos no se programará automáticamente.");
 }
 
 const Paciente = require("../models/pacientes");
@@ -18,11 +18,13 @@ function yyyymm(date = new Date()) {
   const m = String(date.getMonth() + 1).padStart(2, "0");
   return `${y}-${m}`;
 }
+
 function inRange(period, desdeMes, hastaMes) {
   const d = desdeMes || "1900-01";
   const h = hastaMes || "9999-12";
-  return (period >= d) && (period <= h);
+  return period >= d && period <= h;
 }
+
 function parseNumberLike(v) {
   if (typeof v === "number") return v;
   if (typeof v === "string" && v.trim()) {
@@ -31,6 +33,7 @@ function parseNumberLike(v) {
   }
   return 0;
 }
+
 function normalizeCantidad(v) {
   if (v == null) return 1;
   if (typeof v === "number" && !Number.isNaN(v)) return v;
@@ -42,11 +45,25 @@ function normalizeCantidad(v) {
   const n = Number(s.replace(/\./g, "").replace(",", "."));
   return Number.isFinite(n) && n > 0 ? n : 1;
 }
+
 function mkAsigKey({ moduloId, cantidad, areaId, profesionalId }) {
   const mid = moduloId ? String(moduloId) : "";
   const aid = areaId ? String(areaId) : "";
   const pid = profesionalId ? String(profesionalId) : "";
   return [mid, cantidad, aid, pid].join("|");
+}
+
+/** Avanzar un mes: "2025-03" -> "2025-04" */
+function nextPeriod(period) {
+  if (!period || !/^\d{4}-\d{2}$/.test(period)) return period;
+  let y = parseInt(period.slice(0, 4), 10);
+  let m = parseInt(period.slice(5, 7), 10);
+  m += 1;
+  if (m > 12) {
+    m = 1;
+    y += 1;
+  }
+  return `${y}-${String(m).padStart(2, "0")}`;
 }
 
 /**
@@ -71,19 +88,29 @@ function pickProfesionalNombre(asig, cacheUsuarios) {
 }
 
 /* =============== Core Upsert (reutilizable) =============== */
-/** Upsert del cargo del período. Evita duplicados usando asigKey. */
+/**
+ * Upsert del cargo del período. Evita duplicados usando asigKey.
+ * Acá sólo manejamos MÓDULOS MENSUALES (no eventos especiales).
+ */
 async function upsertCargo({
-  dni, pacienteId, areaId, areaNombre,
-  modulo, moduloId, period, cantidad, profesionalNombre,
-  asignacion // debe traer asigKey si el front/controller la generó
+  dni,
+  pacienteId,
+  areaId,
+  areaNombre,
+  modulo,
+  moduloId,
+  period,
+  cantidad,
+  profesionalNombre,
+  asignacion,
 }) {
-  const cant = normalizeCantidad(cantidad);
+  const cant  = normalizeCantidad(cantidad);
   const base  = getPrecioDesdeValorPadres(modulo, { asig: asignacion });
   const total = +(base * (Number(cant) || 1)).toFixed(2);
 
-  const moduloNombre  = modulo?.nombre || modulo?.titulo || "";
-  const moduloNumero  = modulo?.numero || "";
-  const descripcion   = `Cargo ${period} — ${moduloNumero ? moduloNumero + ". " : ""}${moduloNombre || "Módulo"}`;
+  const moduloNombre = modulo?.nombre || modulo?.titulo || "";
+  const moduloNumero = modulo?.numero || "";
+  const descripcion  = `Cargo ${period} — ${moduloNumero ? moduloNumero + ". " : ""}${moduloNombre || "Módulo"}`;
 
   // asigKey: usar la que viene o construirla
   const p0 = Array.isArray(asignacion?.profesionales) ? asignacion.profesionales[0] || {} : {};
@@ -106,8 +133,10 @@ async function upsertCargo({
       profesional: profesionalNombre || undefined,
       moduloNombre: moduloNombre || undefined,
       areaNombre: areaNombre || undefined,
-      areaId: areaIdFromAsig || areaId,       // asegurar persistencia
-      moduloId: moduloId,                     // idem
+      areaId: areaIdFromAsig || areaId,
+      moduloId: moduloId,
+      // explícitamente marcamos como NO evento especial
+      esEventoEspecial: false,
       updatedAt: new Date()
     },
     $setOnInsert: {
@@ -117,7 +146,8 @@ async function upsertCargo({
       tipo: "CARGO",
       dni,
       period,
-      asigKey
+      asigKey,
+      esEventoEspecial: false
     }
   };
 
@@ -136,18 +166,25 @@ async function upsertCargo({
     asigKey: { $exists: false }
   };
 
-  res = await Mov.updateOne(legacyFilter, {
-    $set: {
-      ...update.$set,
-      asigKey
+  res = await Mov.updateOne(
+    legacyFilter,
+    {
+      $set: {
+        ...update.$set,
+        asigKey
+      },
+      $setOnInsert: update.$setOnInsert
     },
-    $setOnInsert: update.$setOnInsert
-  }, { upsert: true });
-
+    { upsert: true }
+  );
   // con esto evitamos que, al re-ejecutar, se vuelvan a crear los anteriores
 }
 
 /* =============== Cargos para TODO el mes (cron/masivo) =============== */
+/**
+ * Genera cargos del MES indicado (period, ej "2025-03") para TODOS los pacientes en Alta.
+ * Sólo genera para ese mes puntual (no hace histórico).
+ */
 async function generarCargosDelMes(period = yyyymm()) {
   const pacientes = await Paciente.find({ estado: "Alta" }).lean();
   if (!pacientes.length) return { pacientes: 0, cargos: 0 };
@@ -192,10 +229,12 @@ async function generarCargosDelMes(period = yyyymm()) {
       const area   = areaById.get(String(areaId));
       const areaNombre = area?.nombre || area?.titulo || "";
 
-      const createdAt = p.createdAt || p.creadoEl || new Date();
+      const createdAt     = p.createdAt || p.creadoEl || new Date();
       const createdPeriod = yyyymm(new Date(createdAt));
-      const desdeMes = asig.desdeMes || createdPeriod;
-      const hastaMes = asig.hastaMes || null;
+      const desdeMes      = asig.desdeMes || createdPeriod;
+      const hastaMes      = asig.hastaMes || null;
+
+      // este job masivo sigue siendo "por mes": sólo actúa si ese period puntual está dentro del rango
       if (!inRange(period, desdeMes, hastaMes)) continue;
 
       const profesionalNombre = pickProfesionalNombre(asig, userById);
@@ -224,6 +263,14 @@ async function generarCargosDelMes(period = yyyymm()) {
 }
 
 /* =============== Cargos instantáneos para UN paciente (alta/asignación) =============== */
+/**
+ * Genera cargos para UN paciente.
+ *
+ * 🔹 Acá es donde se respeta lo que pediste:
+ *   - Si la asignación tiene un `desdeMes` anterior (ej. "2025-01") y hoy estamos en "2025-04",
+ *     se generan cargos para TODOS los meses: 2025-01, 2025-02, 2025-03, 2025-04.
+ *   - Los cargos se generan una vez por mes gracias al índice único (no duplica).
+ */
 async function generarCargosParaPaciente(dni, period = yyyymm()) {
   if (!dni) return { ok: false, reason: "dni requerido" };
 
@@ -231,14 +278,14 @@ async function generarCargosParaPaciente(dni, period = yyyymm()) {
   if (!p) return { ok: true, created: 0 };
 
   // Precarga
-  const modIds = new Set();
+  const modIds  = new Set();
   const userIds = new Set();
   const areaIds = new Set();
   for (const a of (p.modulosAsignados || [])) {
     if (a.moduloId) modIds.add(String(a.moduloId));
     for (const pr of (a.profesionales || [])) {
       if (pr.profesionalId) userIds.add(String(pr.profesionalId));
-      if (pr.areaId) areaIds.add(String(pr.areaId));
+      if (pr.areaId)        areaIds.add(String(pr.areaId));
     }
   }
 
@@ -264,31 +311,43 @@ async function generarCargosParaPaciente(dni, period = yyyymm()) {
     const area   = areaById.get(String(areaId));
     const areaNombre = area?.nombre || area?.titulo || "";
 
-    const createdAt = p.createdAt || p.creadoEl || new Date();
+    const createdAt     = p.createdAt || p.creadoEl || new Date();
     const createdPeriod = yyyymm(new Date(createdAt));
-    const desdeMes = asig.desdeMes || createdPeriod;
-    const hastaMes = asig.hastaMes || null;
-    if (!inRange(period, desdeMes, hastaMes)) continue;
 
-    const profesionalNombre = pickProfesionalNombre(asig, userById);
-    const cantidad = asig.cantidad;
+    let desdeMes = asig.desdeMes || createdPeriod;
+    let hastaMes = asig.hastaMes || null;
 
-    try {
-      await upsertCargo({
-        dni,
-        pacienteId: p._id,
-        areaId,
-        areaNombre,
-        modulo,
-        moduloId,
-        period,
-        cantidad,
-        profesionalNombre,
-        asignacion: asig,
-      });
-      creados++;
-    } catch (e) {
-      if (e?.code !== 11000) console.error("cargo upsert (paciente)", e);
+    // No generar cargos antes de que exista el paciente
+    if (desdeMes < createdPeriod) desdeMes = createdPeriod;
+
+    // Límite superior: si hay hastaMes, respetarlo; si no, usamos el "period" que nos pasan (por defecto, mes actual)
+    let limiteSuperior = hastaMes || period;
+
+    // Si el rango no tiene sentido, lo salteamos
+    if (!inRange(limiteSuperior, desdeMes, limiteSuperior)) continue;
+
+    // Generar cargos de TODOS los meses desde desdeMes hasta limiteSuperior (incluido)
+    for (let per = desdeMes; per <= limiteSuperior; per = nextPeriod(per)) {
+      try {
+        const profesionalNombre = pickProfesionalNombre(asig, userById);
+        const cantidad = asig.cantidad;
+
+        await upsertCargo({
+          dni,
+          pacienteId: p._id,
+          areaId,
+          areaNombre,
+          modulo,
+          moduloId,
+          period: per,
+          cantidad,
+          profesionalNombre,
+          asignacion: asig,
+        });
+        creados++;
+      } catch (e) {
+        if (e?.code !== 11000) console.error("cargo upsert (paciente)", e);
+      }
     }
   }
 
@@ -318,7 +377,6 @@ module.exports = {
   generarCargosParaPaciente,
   yyyymm,
 };
-
 
 
 
