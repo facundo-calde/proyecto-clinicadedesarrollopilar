@@ -32,14 +32,24 @@ function parseNumberLike(v, def = 0) {
 }
 
 function getPrecioModulo(mod) {
-  const cands = ["precio", "valor", "monto", "arancel", "importe", "tarifa", "valorPadres"];
+  if (!mod) return 0;
+
+  // 👈 ponemos valorPadres primero, que es lo que usa hoy el esquema de Módulo
+  const cands = ["valorPadres", "precio", "valor", "monto", "arancel", "importe", "tarifa"];
+
   for (const k of cands) {
-    const v = mod?.[k];
-    const n = parseNumberLike(v, NaN);
-    if (!Number.isNaN(n)) return n;
+    const v = mod[k];
+    if (typeof v === "number") {
+      return v;
+    }
+    if (typeof v === "string" && v.trim()) {
+      const n = Number(v.replace(/\./g, "").replace(",", "."));
+      if (!isNaN(n)) return n;
+    }
   }
   return 0;
 }
+
 
 function labelUsuario(u) {
   if (!u) return "";
