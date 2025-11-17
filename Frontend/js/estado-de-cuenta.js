@@ -570,10 +570,22 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         if (moduloRef) moduloId = String(moduloRef._id);
       }
 
+      // 👇 AHORA TOMA valorPadres (backend lo manda en /modulos?lite=1)
       const precioModulo =
         (moduloRef &&
-          (Number(moduloRef.valorModulo || moduloRef.precioModulo || moduloRef.precio || 0))) ||
-        Number(f.precioModulo || f.valorModulo || 0);
+          Number(
+            moduloRef.valorPadres ??
+            moduloRef.valorModulo ??
+            moduloRef.precioModulo ??
+            moduloRef.precio ??
+            0
+          )) ||
+        Number(
+          f.valorPadres ||
+          f.precioModulo ||
+          f.valorModulo ||
+          0
+        );
 
       const aPagar = Number(
         f.aPagar != null
@@ -1061,7 +1073,11 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
                   `${m.numero || ""} ${m.descripcion || ""}`.trim();
                 lineas[idx].moduloNombre = texto;
                 lineas[idx].precioModulo = Number(
-                  m.valorModulo || m.precioModulo || m.precio || 0
+                  m.valorPadres ??
+                  m.valorModulo ??
+                  m.precioModulo ??
+                  m.precio ??
+                  0
                 );
               }
               render();
@@ -1220,6 +1236,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
     });
   }
 }
+
 
 
 
