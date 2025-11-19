@@ -162,7 +162,7 @@ const obtenerEstadoDeCuenta = async (req, res) => {
     };
     const movs = await Movimiento.find(whereMov).sort({ fecha: 1 }).lean();
 
-    // Facturas (tipo FACT) para el modal nuevo
+    // Facturas (tipo FACT)
     const facturas = movs
       .filter(m => m.tipo === "FACT")
       .map(m => ({
@@ -174,7 +174,13 @@ const obtenerEstadoDeCuenta = async (req, res) => {
         fecha: m.fecha ? m.fecha.toISOString().slice(0, 10) : "",
       }));
 
-    let pagadoOS = 0, pagadoPART = 0, cargos = 0, ajustesMas = 0, ajustesMenos = 0;
+    // Totales
+    let pagadoOS = 0,
+      pagadoPART = 0,
+      cargos = 0,
+      ajustesMas = 0,
+      ajustesMenos = 0;
+
     for (const m of movs) {
       if (m.tipo === "OS") pagadoOS += m.monto;
       else if (m.tipo === "PART") pagadoPART += m.monto;
@@ -185,11 +191,42 @@ const obtenerEstadoDeCuenta = async (req, res) => {
 
     if (!tieneOS) pagadoOS = 0;
 
-    // 🔴 Ahora el total a pagar viene SOLO de los CARGO acumulados
     const totalCargos = cargos;
     const totalPagado = pagadoOS + pagadoPART + ajustesMas - ajustesMenos;
     const saldo = Number((totalCargos - totalPagado).toFixed(2));
     const estado = saldo <= 0 ? "PAGADO" : "PENDIENTE";
+
+    // ============================================================
+    //   🔥 INYECTAR PAGOS EXISTENTES EN LAS FILAS DE MÓDULOS
+    // ============================================================
+    for (const l of filas) {
+      const period = l.mes || l.periodo || "";
+      if (!period) continue;
+
+      // --- pago particular ---
+      const pagoPart = movs.find(m =>
+        m.tipo === "PART" &&
+        m.period === period &&
+        String(m.moduloId || "") === String(l.moduloId || "")
+      );
+      if (pagoPart) {
+        l.pagPadres = Number(pagoPart.monto || 0);
+        l.detPadres = pagoPart.descripcion || pagoPart.observaciones || "";
+      }
+
+      // --- pago obra social ---
+      const pagoOS = movs.find(m =>
+        m.tipo === "OS" &&
+        m.period === period &&
+        String(m.moduloId || "") === String(l.moduloId || "")
+      );
+      if (pagoOS) {
+        l.pagOS = Number(pagoOS.monto || 0);
+        l.detOS = pagoOS.descripcion || pagoOS.observaciones || "";
+      }
+    }
+
+    // ============================================================
 
     res.json({
       paciente: {
@@ -204,14 +241,14 @@ const obtenerEstadoDeCuenta = async (req, res) => {
       filas,
       facturas,
       totales: {
-        aPagar: totalCargos, // 👈 ahora es la suma de CARGO
+        aPagar: totalCargos,
         pagadoOS,
         pagadoPART,
         cargos,
         ajustesMas,
         ajustesMenos,
         saldo,
-        estado
+        estado,
       },
       movimientos: movs,
     });
@@ -220,6 +257,7 @@ const obtenerEstadoDeCuenta = async (req, res) => {
     res.status(500).json({ error: "Error al obtener estado de cuenta" });
   }
 };
+
 
 // ----------------- PUT /api/estado-de-cuenta/:dni -----------------
 // Guarda líneas (CARGO) y facturas (FACT) que vienen del modal
