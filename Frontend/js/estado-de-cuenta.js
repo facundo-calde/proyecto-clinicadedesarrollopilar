@@ -601,14 +601,17 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
             : f.monto || 0
         );
 
-        // 🔴 ACÁ ESTABA EL PROBLEMA: había pocos alias, entonces al leer de nuevo
-        // no encontraba los campos y quedaban en 0/vacío.
+        // 👇 súper tolerante: toma valores de filas agregadas o movimientos crudos, viejos y nuevos
         const pagPadres = Number(
           f.pagPadres ??
           f.pagadoPadres ??
           f.pagadoPART ??
           f.pagoPadres ??
-          ((f.tipo === "PART" || f.tipo === "PADRES") ? f.monto : 0) ??
+          ((f.tipo === "PART" ||
+            f.tipo === "PADRES" ||
+            f.tipo === "PARTICULAR")
+            ? f.monto
+            : 0) ??
           0
         );
 
@@ -617,7 +620,9 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           f.pagadoOS ??
           f.pagoOS ??
           f.pagadoObraSocial ??
-          ((f.tipo === "OS" || f.tipo === "OBRA_SOCIAL") ? f.monto : 0) ??
+          ((f.tipo === "OS" || f.tipo === "OBRA_SOCIAL")
+            ? f.monto
+            : 0) ??
           0
         );
 
@@ -626,9 +631,8 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           f.detallePadres ??
           f.detallePART ??
           f.obsPadres ??
-          ((f.tipo === "PART" || f.tipo === "PADRES")
-            ? (f.descripcion ?? f.detalle ?? f.observaciones ?? "")
-            : "");
+          f.observaciones ??
+          "";
 
         const detOS =
           f.detOS ??
@@ -636,9 +640,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           f.detalleObraSocial ??
           f.obsOS ??
           f.observacionOS ??
-          ((f.tipo === "OS" || f.tipo === "OBRA_SOCIAL")
-            ? (f.descripcion ?? f.detalle ?? f.observaciones ?? "")
-            : "");
+          "";
 
         const profNombre =
           f.profesional ||
@@ -676,7 +678,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         };
       });
 
-    // Normalizar facturas
+    // ---------- Normalizar facturas ----------
     let facturas = facturasRaw.map((f) => {
       const mes =
         f.mes ||
@@ -711,7 +713,10 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         return l;
       });
 
-      const totalAPagar = lineas.reduce((acc, l) => acc + (Number(l.aPagar) || 0), 0);
+      const totalAPagar = lineas.reduce(
+        (acc, l) => acc + (Number(l.aPagar) || 0),
+        0
+      );
       const totalPagado = lineas.reduce(
         (acc, l) =>
           acc + (Number(l.pagPadres) || 0) + (Number(l.pagOS) || 0),
@@ -879,6 +884,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         const tituloEl = popup.querySelector("#edcTituloArea");
         const btnAddLinea = popup.querySelector("#edcBtnAddLinea");
 
+        // Fix inputs numéricos
         const safeNum = (v) => {
           if (v === "" || v === null || v === undefined) return 0;
           const n = Number(String(v).replace(",", "."));
@@ -1079,7 +1085,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         // Render inicial
         render();
 
-        // MANEJO DE CAMBIOS
+        // MANEJO DE CAMBIOS en inputs
         const handleChange = (e) => {
           const t = e.target;
           const idx = Number(t.dataset.idx);
@@ -1141,7 +1147,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         root.addEventListener("change", handleChange);
         root.addEventListener("blur", handleChange, true);
 
-        // Agregar línea arriba
+        // Agregar línea
         btnAddLinea.addEventListener("click", () => {
           lineas.unshift({
             mes: "",
