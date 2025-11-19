@@ -538,191 +538,161 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
 
     const filas = Array.isArray(data.filas) ? data.filas : [];
     const movimientos = Array.isArray(data.movimientos) ? data.movimientos : [];
+    const facturasRaw = Array.isArray(data.facturas) ? data.facturas : [];
 
-    // ---- facturas crudas (si vienen) ----
-    let facturasRaw = Array.isArray(data.facturas) ? data.facturas : [];
+    // ================== Mapear pagos PART / OS por mes + módulo ==================
+    const pagosMap = {};
+    movimientos.forEach((m) => {
+      const tipo = m.tipo;
+      if (tipo !== "PART" && tipo !== "OS") return;
 
-    // ---------- Normalizar líneas de módulos ----------
-    let lineas = (filas.length ? filas : movimientos)
-      // Evitar que pagos o movimientos sin módulo se conviertan en líneas basura
-      // Si tiene módulo → línea normal
-      // Si NO tiene módulo PERO es pago de padres / OS → igual los vamos a mezclar abajo.
-      .filter((f) =>
-        f.moduloId ||
-        f.moduloNombre ||
-        f.modulo ||
-        f.moduloNumero
-      )
-      .map((f) => {
-        const mes = f.mes || f.periodo || f.period || "";
-        const cantidad = f.cantidad ?? f.cant ?? 1;
+      const mes = m.period || m.periodo || m.mes || "";
+      const modId = m.moduloId ? String(m.moduloId) : "";
+      const clave = `${mes}|${modId}`;
 
-        const moduloNombre = f.moduloNombre || f.modulo || f.moduloNumero || "";
-        const moduloIdCrudo =
-          f.moduloId ||
-          f.moduloIdMongo ||
-          (typeof f.modulo === "string" &&
-          /^[0-9a-fA-F]{24}$/.test(f.modulo)
-            ? f.modulo
-            : null);
-
-        let moduloId = moduloIdCrudo || "";
-        let moduloRef = moduloId ? moduloMap[String(moduloId)] : null;
-
-        if (!moduloRef && moduloNombre) {
-          moduloRef = MODULOS.find(
-            (m) =>
-              (m.nombre || m.codigo || m.titulo || "").toLowerCase() ===
-              String(moduloNombre).toLowerCase()
-          );
-          if (moduloRef) moduloId = String(moduloRef._id);
-        }
-
-        const precioModulo =
-          (moduloRef &&
-            Number(
-              moduloRef.valorPadres ??
-                moduloRef.valorModulo ??
-                moduloRef.precioModulo ??
-                moduloRef.precio ??
-                0
-            )) ||
-          Number(
-            f.valorPadres || f.precioModulo || f.valorModulo || 0
-          );
-
-        const aPagar = Number(
-          f.aPagar != null
-            ? f.aPagar
-            : precioModulo
-            ? precioModulo * (Number(cantidad) || 0)
-            : f.monto || 0
-        );
-
-        const pagPadres =
-          f.tipo === "PART"
-            ? Number(f.monto || 0)
-            : Number(f.pagPadres || f.pagadoPadres || 0);
-
-        const pagOS =
-          f.tipo === "OS"
-            ? Number(f.monto || 0)
-            : Number(f.pagOS || f.pagadoOS || 0);
-
-        const detPadres =
-          f.tipo === "PART"
-            ? (f.descripcion || f.observaciones || "")
-            : (f.detPadres || f.observaciones || "");
-
-        const detOS =
-          f.tipo === "OS"
-            ? (f.descripcion || f.observaciones || "")
-            : (f.detOS || f.observacionOS || "");
-
-        const profNombre =
-          f.profesional ||
-          (f.profesionales &&
-            (f.profesionales.profesional?.[0] ||
-              f.profesionales.coordinador?.[0] ||
-              f.profesionales.pasante?.[0] ||
-              f.profesionales.directora?.[0])) ||
-          "";
-
-        let profId = f.profesionalId || "";
-
-        if (!profId && profNombre) {
-          const found = PROFESIONALES.find((p) => {
-            const nom =
-              p.nombreApellido || p.nombreCompleto || p.nombre || "";
-            return nom.toLowerCase() === profNombre.toLowerCase();
-          });
-          if (found) profId = String(found._id);
-        }
-
-        return {
-          mes,
-          cantidad: Number(cantidad) || 0,
-          moduloId,
-          moduloNombre,
-          profesionalId: profId,
-          profesionalNombre: profNombre,
-          precioModulo,
-          aPagar,
-          pagPadres: Number(pagPadres) || 0,
-          detPadres: detPadres || "",
-          pagOS: Number(pagOS) || 0,
-          detOS: detOS || "",
+      if (!pagosMap[clave]) {
+        pagosMap[clave] = {
+          padres: 0,
+          os: 0,
+          detPadres: "",
+          detOS: "",
         };
-      });
+      }
 
-    // ========= FUSIONAR PAGOS PART / OS DESDE movimientos =========
-    // Esto es el punto clave: si "filas" NO traen los pagos, los sumamos
-    // usando los movimientos crudos.
-    if (filas.length && movimientos.length) {
-      movimientos.forEach((m) => {
-        if (!m || (m.tipo !== "PART" && m.tipo !== "OS")) return;
+      const monto = Number(m.monto || 0) || 0;
+      const obs = m.descripcion || m.observaciones || "";
 
-        // Mes del movimiento
-        const mesMov =
-          m.mes ||
-          m.periodo ||
-          m.period ||
-          (m.fecha ? new Date(m.fecha).toISOString().slice(0, 7) : "");
-
-        const modIdMov = m.moduloId ||
-          (typeof m.modulo === "string" && /^[0-9a-fA-F]{24}$/.test(m.modulo)
-            ? m.modulo
-            : null);
-
-        const modNombreMov =
-          m.moduloNombre || m.modulo || m.moduloNumero || "";
-
-        const montoMov = Number(m.monto || 0) || 0;
-        const detalleMov = m.descripcion || m.observaciones || "";
-
-        // Buscamos la línea a la que corresponde el pago
-        const linea = lineas.find((l) => {
-          const mismoMes = (l.mes || "") === (mesMov || "");
-          if (!mismoMes) return false;
-
-          if (modIdMov && l.moduloId && String(l.moduloId) === String(modIdMov)) {
-            return true;
-          }
-          if (!modIdMov && modNombreMov && l.moduloNombre) {
-            return (
-              String(l.moduloNombre).toLowerCase() ===
-              String(modNombreMov).toLowerCase()
-            );
-          }
-          return false;
-        });
-
-        if (!linea) return;
-
-        if (m.tipo === "PART") {
-          linea.pagPadres = (Number(linea.pagPadres) || 0) + montoMov;
-          if (detalleMov) {
-            linea.detPadres = linea.detPadres
-              ? `${linea.detPadres} | ${detalleMov}`
-              : detalleMov;
-          }
-        } else if (m.tipo === "OS") {
-          linea.pagOS = (Number(linea.pagOS) || 0) + montoMov;
-          if (detalleMov) {
-            linea.detOS = linea.detOS
-              ? `${linea.detOS} | ${detalleMov}`
-              : detalleMov;
-          }
+      if (tipo === "PART") {
+        pagosMap[clave].padres += monto;
+        if (obs) {
+          pagosMap[clave].detPadres = pagosMap[clave].detPadres
+            ? `${pagosMap[clave].detPadres} | ${obs}`
+            : obs;
         }
-      });
-    }
+      } else if (tipo === "OS") {
+        pagosMap[clave].os += monto;
+        if (obs) {
+          pagosMap[clave].detOS = pagosMap[clave].detOS
+            ? `${pagosMap[clave].detOS} | ${obs}`
+            : obs;
+        }
+      }
+    });
 
-    // ========= FACTURAS: fallback desde movimientos FACT =========
-    if ((!facturasRaw || !facturasRaw.length) && movimientos.length) {
-      facturasRaw = movimientos.filter((m) => m.tipo === "FACT" || m.tipo === "F");
-    }
+    // ================== Normalizar líneas (solo CARGOS) ==================
+    const baseLineas = filas.length
+      ? filas
+      : movimientos.filter((m) => m.tipo === "CARGO");
 
-    // Normalizar facturas
+    let lineas = baseLineas.map((f) => {
+      const mes = f.mes || f.periodo || f.period || "";
+      const cantidad = f.cantidad ?? f.cant ?? 1;
+
+      const moduloNombre = f.moduloNombre || f.modulo || f.moduloNumero || "";
+      const moduloIdCrudo =
+        f.moduloId ||
+        f.moduloIdMongo ||
+        (typeof f.modulo === "string" &&
+        /^[0-9a-fA-F]{24}$/.test(f.modulo)
+          ? f.modulo
+          : null);
+
+      let moduloId = moduloIdCrudo || "";
+      let moduloRef = moduloId ? moduloMap[String(moduloId)] : null;
+
+      if (!moduloRef && moduloNombre) {
+        moduloRef = MODULOS.find(
+          (m) =>
+            (m.nombre || m.codigo || m.titulo || "").toLowerCase() ===
+            String(moduloNombre).toLowerCase()
+        );
+        if (moduloRef) moduloId = String(moduloRef._id);
+      }
+
+      const precioModulo =
+        (moduloRef &&
+          Number(
+            moduloRef.valorPadres ??
+              moduloRef.valorModulo ??
+              moduloRef.precioModulo ??
+              moduloRef.precio ??
+              0
+          )) ||
+        Number(f.valorPadres || f.precioModulo || f.valorModulo || 0);
+
+      const aPagar = Number(
+        f.aPagar != null
+          ? f.aPagar
+          : precioModulo
+          ? precioModulo * (Number(cantidad) || 0)
+          : f.monto || 0
+      );
+
+      const clavePagos = `${mes}|${moduloId || ""}`;
+      const pagos = pagosMap[clavePagos] || {};
+
+      // Si la fila ya trae los campos, usamos esos. Si no, usamos el map de pagos.
+      const pagPadres =
+        f.pagPadres != null || f.pagadoPadres != null
+          ? Number(f.pagPadres || f.pagadoPadres || 0)
+          : Number(pagos.padres || 0);
+
+      const pagOS =
+        f.pagOS != null || f.pagadoOS != null
+          ? Number(f.pagOS || f.pagadoOS || 0)
+          : Number(pagos.os || 0);
+
+      const detPadres =
+        f.detPadres ||
+        f.detallePadres ||
+        f.observaciones ||
+        pagos.detPadres ||
+        "";
+
+      const detOS =
+        f.detOS ||
+        f.detalleOS ||
+        f.observacionOS ||
+        pagos.detOS ||
+        "";
+
+      const profNombre =
+        f.profesional ||
+        (f.profesionales &&
+          (f.profesionales.profesional?.[0] ||
+            f.profesionales.coordinador?.[0] ||
+            f.profesionales.pasante?.[0] ||
+            f.profesionales.directora?.[0])) ||
+        "";
+
+      let profId = f.profesionalId || "";
+
+      if (!profId && profNombre) {
+        const found = PROFESIONALES.find((p) => {
+          const nom =
+            p.nombreApellido || p.nombreCompleto || p.nombre || "";
+          return nom.toLowerCase() === profNombre.toLowerCase();
+        });
+        if (found) profId = String(found._id);
+      }
+
+      return {
+        mes,
+        cantidad: Number(cantidad) || 0,
+        moduloId,
+        moduloNombre,
+        profesionalId: profId,
+        profesionalNombre: profNombre,
+        precioModulo,
+        aPagar,
+        pagPadres,
+        detPadres,
+        pagOS,
+        detOS,
+      };
+    });
+
+    // ================== Normalizar facturas ==================
     let facturas = facturasRaw.map((f) => {
       const mes =
         f.mes ||
@@ -731,9 +701,9 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
       const fecha = f.fecha
         ? new Date(f.fecha).toISOString().slice(0, 10)
         : "";
-      const nro = f.numero || f.nro || f.nFactura || f.nroRecibo || "";
+      const nro = f.numero || f.nro || f.nFactura || "";
       const monto = Number(f.monto || f.total || 0);
-      const detalle = f.detalle || f.descripcion || f.observacion || f.observaciones || "";
+      const detalle = f.detalle || f.descripcion || f.observacion || "";
 
       return { mes, nro, monto, detalle, fecha };
     });
@@ -757,7 +727,10 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         return l;
       });
 
-      const totalAPagar = lineas.reduce((acc, l) => acc + (Number(l.aPagar) || 0), 0);
+      const totalAPagar = lineas.reduce(
+        (acc, l) => acc + (Number(l.aPagar) || 0),
+        0
+      );
       const totalPagado = lineas.reduce(
         (acc, l) =>
           acc + (Number(l.pagPadres) || 0) + (Number(l.pagOS) || 0),
@@ -957,7 +930,8 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
               html += `<optgroup label="Módulos mensuales">`;
               html += normales
                 .map((m) => {
-                  const text = m.nombre || `${m.numero || ""} ${m.descripcion || ""}`.trim();
+                  const text =
+                    m.nombre || `${m.numero || ""} ${m.descripcion || ""}`.trim();
                   const id = String(m._id);
                   return `<option value="${id}" ${
                     selId === id ? "selected" : ""
@@ -971,7 +945,8 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
               html += `<optgroup label="Eventos especiales">`;
               html += especiales
                 .map((m) => {
-                  const text = m.nombre || `${m.numero || ""} ${m.descripcion || ""}`.trim();
+                  const text =
+                    m.nombre || `${m.numero || ""} ${m.descripcion || ""}`.trim();
                   const id = String(m._id);
                   return `<option value="${id}" ${
                     selId === id ? "selected" : ""
@@ -1007,7 +982,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
             `;
           }
 
-          // ----------- LÍNEAS -----------
+          // LÍNEAS
           tbodyLin.innerHTML = lineas
             .map((r, idx) => {
               const selMod = r.moduloId ? String(r.moduloId) : "";
@@ -1062,7 +1037,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
             })
             .join("");
 
-          // Foot líneas
+          // Totales líneas
           tfootLin.innerHTML = `
             <tr class="edc-total-row">
               <td colspan="4" style="text-align:left;">Total que debería haber pagado</td>
@@ -1076,7 +1051,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
             </tr>
           `;
 
-          // ----------- FACTURAS -----------
+          // FACTURAS
           tbodyFac.innerHTML = facturas
             .map(
               (f, idx) => `
@@ -1125,12 +1100,12 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         // Render inicial
         render();
 
+        // MANEJO DE CAMBIOS
         const handleChange = (e) => {
           const t = e.target;
           const idx = Number(t.dataset.idx);
           const field = t.dataset.field;
 
-          // Cambios en líneas
           if (t.classList.contains("edc-input-linea")) {
             if (field === "moduloId") {
               const id = t.value;
@@ -1173,7 +1148,6 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
             return;
           }
 
-          // Cambios en facturas
           if (t.classList.contains("edc-input-fact")) {
             if (field === "monto") {
               facturas[idx].monto = safeNum(t.value);
@@ -1188,7 +1162,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         root.addEventListener("change", handleChange);
         root.addEventListener("blur", handleChange, true);
 
-        // Agregar línea arriba
+        // Agregar línea
         btnAddLinea.addEventListener("click", () => {
           lineas.unshift({
             mes: "",
