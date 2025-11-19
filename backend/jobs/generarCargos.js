@@ -53,18 +53,78 @@ function mkAsigKey({ moduloId, cantidad, areaId, profesionalId }) {
   return [mid, cantidad, aid, pid].join("|");
 }
 
+/** Avanzar un mes: "2025-03" -> "2025-04" */
+function nextPeriod(period) {
+  if (!period || !/^\d{4}-\d{2}$/.test(period)) return period;
+  let y = parseInt(period.slice(0, 4), 10);
+  let m = parseInt(period.slice(5, 7), 10);
+  m += 1;
+  if (m > 12) {
+    m = 1;
+    y += 1;
+  }
+  return `${y}-${String(m).padStart(2, "0")}`;
+}
+
 /**
- * Precio del cargo:
- * 1) Si la asignación trae override (precio/valor/monto/arancel/importe/tarifa), usarlo.
- * 2) Si no, usar modulo.valorPadres.
+ * PRECIO DEL CARGO
+ * Prioridad:
+ * 1) Override desde la asignación
+ * 2) valorPadres del módulo (precio real en tu sistema)
  */
 function getPrecioDesdeValorPadres(modulo, { asig }) {
-  const override = [asig?.precio, asig?.valor, asig?.monto, asig?.arancel, asig?.importe, asig?.tarifa]
+
+  // Normalizar valorPadres si viene como string
+  if (typeof modulo?.valorPadres === "string") {
+    modulo.valorPadres = parseNumberLike(modulo.valorPadres);
+  }
+
+  // 1) Override desde asignación
+  const overrideCands = [
+    asig?.precio,
+    asig?.valor,
+    asig?.monto,
+    asig?.arancel,
+    asig?.importe,
+    asig?.tarifa,
+    asig?.valorPadres,
+    asig?.valorModulo
+  ];
+
+  const override = overrideCands
     .map(parseNumberLike)
     .find(n => n > 0);
+
   if (override) return override;
-  return parseNumberLike(modulo?.valorPadres) || 0;
+
+  // 2) Precios reales del módulo (tu esquema)
+  const moduloCands = [
+    modulo?.valorPadres,       // ✔ principal real en tu base
+
+    // futuros campos opcionales si algún día existen:
+    modulo?.valorParticular,
+    modulo?.valorObraSocial,
+    modulo?.valorCoordinador,
+    modulo?.valorProfesional,
+
+    // compatibilidad (no existen pero no molestan):
+    modulo?.valorModulo,
+    modulo?.precioModulo,
+    modulo?.precio,
+    modulo?.valor,
+    modulo?.monto,
+    modulo?.arancel,
+    modulo?.importe,
+    modulo?.tarifa,
+  ];
+
+  const base = moduloCands
+    .map(parseNumberLike)
+    .find(n => n > 0);
+
+  return base || 0;
 }
+
 
 function pickProfesionalNombre(asig, cacheUsuarios) {
   const arr = Array.isArray(asig?.profesionales) ? asig.profesionales : [];
@@ -75,10 +135,6 @@ function pickProfesionalNombre(asig, cacheUsuarios) {
 }
 
 /* =============== Core Upsert (reutilizable) =============== */
-/**
- * Upsert del cargo del período. Evita duplicados usando asigKey.
- * Acá sólo manejamos MÓDULOS MENSUALES (no eventos especiales).
- */
 async function upsertCargo({
   dni,
   pacienteId,
@@ -99,10 +155,10 @@ async function upsertCargo({
   const moduloNumero = modulo?.numero || "";
   const descripcion  = `Cargo ${period} — ${moduloNumero ? moduloNumero + ". " : ""}${moduloNombre || "Módulo"}`;
 
-  // asigKey: usar la que viene o construirla
   const p0 = Array.isArray(asignacion?.profesionales) ? asignacion.profesionales[0] || {} : {};
   const areaIdFromAsig = p0?.areaId || areaId;
   const profesionalId  = p0?.profesionalId || p0?._id || p0?.id || undefined;
+
   const asigKey = asignacion?.asigKey || mkAsigKey({
     moduloId,
     cantidad: cant,
@@ -110,8 +166,8 @@ async function upsertCargo({
     profesionalId
   });
 
-  // ------------------ 1) Intento moderno: por asigKey ------------------
   const filterByKey = { dni, period, tipo: "CARGO", asigKey };
+
   const update = {
     $set: {
       descripcion,
@@ -122,7 +178,6 @@ async function upsertCargo({
       areaNombre: areaNombre || undefined,
       areaId: areaIdFromAsig || areaId,
       moduloId: moduloId,
-      // explícitamente marcamos como NO evento especial
       esEventoEspecial: false,
       updatedAt: new Date()
     },
@@ -141,7 +196,6 @@ async function upsertCargo({
   let res = await Mov.updateOne(filterByKey, update, { upsert: true });
   if (res.matchedCount > 0 || res.upsertedCount > 0) return;
 
-  // ------------------ 2) Compatibilidad: “legacy” (sin asigKey) ------------------
   const legacyFilter = {
     dni,
     areaId: areaIdFromAsig || areaId,
@@ -166,15 +220,10 @@ async function upsertCargo({
 }
 
 /* =============== Cargos para TODO el mes (cron/masivo) =============== */
-/**
- * Genera cargos del MES indicado (period, ej "2025-03") para TODOS los pacientes en Alta.
- * Sólo genera para ese mes puntual (no hace histórico).
- */
 async function generarCargosDelMes(period = yyyymm()) {
   const pacientes = await Paciente.find({ estado: "Alta" }).lean();
   if (!pacientes.length) return { pacientes: 0, cargos: 0 };
 
-  // Precarga catálogos
   const modIds  = new Set();
   const areaIds = new Set();
   const userIds = new Set();
@@ -194,6 +243,7 @@ async function generarCargosDelMes(period = yyyymm()) {
     areaIds.size ? Area.find({ _id: { $in: [...areaIds] } }).lean() : [],
     userIds.size ? Usuario.find({ _id: { $in: [...userIds] } }).lean() : [],
   ]);
+
   const modById   = new Map(modulos.map(m => [String(m._id), m]));
   const userById  = new Map(usuarios.map(u => [String(u._id), u]));
   const areaById  = new Map(areas.map(a => [String(a._id), a]));
@@ -211,6 +261,7 @@ async function generarCargosDelMes(period = yyyymm()) {
 
       const areaId = asig.profesionales?.[0]?.areaId;
       if (!areaId) continue;
+
       const area   = areaById.get(String(areaId));
       const areaNombre = area?.nombre || area?.titulo || "";
 
@@ -219,7 +270,7 @@ async function generarCargosDelMes(period = yyyymm()) {
       const desdeMes      = asig.desdeMes || createdPeriod;
       const hastaMes      = asig.hastaMes || null;
 
-      if (!inRange(period, desdeMes, hastaMes || period)) continue;
+      if (!inRange(period, desdeMes, hastaMes)) continue;
 
       const profesionalNombre = pickProfesionalNombre(asig, userById);
       const cantidad = asig.cantidad;
@@ -243,28 +294,21 @@ async function generarCargosDelMes(period = yyyymm()) {
       }
     }
   }
+
   return { pacientes: pacientes.length, cargos: procesados };
 }
 
 /* =============== Cargos instantáneos para UN paciente (alta/asignación) =============== */
-/**
- * Genera cargos para UN paciente.
- *
- * 🔹 Versión simplificada:
- *   - Sólo genera EL CARGO del mes `period` (por defecto, el mes actual).
- *   - Si la asignación tiene desdeMes / hastaMes, se usa sólo para decidir
- *     si corresponde o no generar el cargo para ese mes.
- */
 async function generarCargosParaPaciente(dni, period = yyyymm()) {
   if (!dni) return { ok: false, reason: "dni requerido" };
 
   const p = await Paciente.findOne({ dni, estado: "Alta" }).lean();
   if (!p) return { ok: true, created: 0 };
 
-  // Precarga
   const modIds  = new Set();
   const userIds = new Set();
   const areaIds = new Set();
+
   for (const a of (p.modulosAsignados || [])) {
     if (a.moduloId) modIds.add(String(a.moduloId));
     for (const pr of (a.profesionales || [])) {
@@ -292,6 +336,7 @@ async function generarCargosParaPaciente(dni, period = yyyymm()) {
 
     const areaId = asig.profesionales?.[0]?.areaId;
     if (!areaId) continue;
+
     const area   = areaById.get(String(areaId));
     const areaNombre = area?.nombre || area?.titulo || "";
 
@@ -301,33 +346,33 @@ async function generarCargosParaPaciente(dni, period = yyyymm()) {
     let desdeMes = asig.desdeMes || createdPeriod;
     let hastaMes = asig.hastaMes || null;
 
-    // No generar cargos antes de que exista el paciente
     if (desdeMes < createdPeriod) desdeMes = createdPeriod;
 
-    const limiteSuperior = hastaMes || period;
+    let limiteSuperior = hastaMes || period;
 
-    // Si el mes actual (period) no está dentro del rango, no generamos nada
-    if (!inRange(period, desdeMes, limiteSuperior)) continue;
+    if (!inRange(limiteSuperior, desdeMes, limiteSuperior)) continue;
 
-    try {
-      const profesionalNombre = pickProfesionalNombre(asig, userById);
-      const cantidad = asig.cantidad;
+    for (let per = desdeMes; per <= limiteSuperior; per = nextPeriod(per)) {
+      try {
+        const profesionalNombre = pickProfesionalNombre(asig, userById);
+        const cantidad = asig.cantidad;
 
-      await upsertCargo({
-        dni,
-        pacienteId: p._id,
-        areaId,
-        areaNombre,
-        modulo,
-        moduloId,
-        period,          // 👈 SOLO el mes actual
-        cantidad,
-        profesionalNombre,
-        asignacion: asig,
-      });
-      creados++;
-    } catch (e) {
-      if (e?.code !== 11000) console.error("cargo upsert (paciente)", e);
+        await upsertCargo({
+          dni,
+          pacienteId: p._id,
+          areaId,
+          areaNombre,
+          modulo,
+          moduloId,
+          period: per,
+          cantidad,
+          profesionalNombre,
+          asignacion: asig,
+        });
+        creados++;
+      } catch (e) {
+        if (e?.code !== 11000) console.error("cargo upsert (paciente)", e);
+      }
     }
   }
 
@@ -341,7 +386,7 @@ function schedule() {
     "15 2 * * *",
     async () => {
       try {
-        await generarCargosDelMes(); // mes actual
+        await generarCargosDelMes();
       } catch (e) {
         console.error("❌ Error en generarCargosDelMes:", e);
       }
