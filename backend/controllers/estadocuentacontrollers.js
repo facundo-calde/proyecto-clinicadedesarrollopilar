@@ -1,11 +1,11 @@
 // controllers/estadocuentacontrollers.js
-const mongoose   = require("mongoose");
+const mongoose    = require("mongoose");
 const PDFDocument = require("pdfkit");
-const Paciente   = require("../models/pacientes");
-const Usuario    = require("../models/usuarios");
-const Modulo     = require("../models/modulos");
-const Area       = require("../models/area");
-const Movimiento = require("../models/estadoDeCuentaMovimiento");
+const Paciente    = require("../models/pacientes");
+const Usuario     = require("../models/usuarios");
+const Modulo      = require("../models/modulos");
+const Area        = require("../models/area");
+const Movimiento  = require("../models/estadoDeCuentaMovimiento");
 
 const toStr = (v) => (v ?? "").toString();
 
@@ -34,8 +34,19 @@ function parseNumberLike(v, def = 0) {
 function getPrecioModulo(mod) {
   if (!mod) return 0;
 
-  // 👈 ponemos valorPadres primero, que es lo que usa hoy el esquema de Módulo
-  const cands = ["valorPadres", "precio", "valor", "monto", "arancel", "importe", "tarifa"];
+  // usamos valorPadres primero (es el campo actual del esquema)
+   const cands = [
+    "valorPadres",
+    "valorModulo",    // <- agregado
+    "precioModulo",   // <- agregado
+    "precio",
+    "valor",
+    "monto",
+    "arancel",
+    "importe",
+    "tarifa",
+  ];
+
 
   for (const k of cands) {
     const v = mod[k];
@@ -140,7 +151,7 @@ const obtenerEstadoDeCuenta = async (req, res) => {
 
     const tieneOS = /obra social/i.test(paciente.condicionDePago || "");
 
-    // Filas base desde módulos asignados
+    // Filas base desde módulos asignados (solo para mostrar)
     const filas = await buildFilasArea(paciente, areaId);
 
     // Movimientos crudos
@@ -165,18 +176,19 @@ const obtenerEstadoDeCuenta = async (req, res) => {
 
     let pagadoOS = 0, pagadoPART = 0, cargos = 0, ajustesMas = 0, ajustesMenos = 0;
     for (const m of movs) {
-      if (m.tipo === "OS")        pagadoOS     += m.monto;
-      else if (m.tipo === "PART") pagadoPART   += m.monto;
-      else if (m.tipo === "CARGO") cargos      += m.monto;
+      if (m.tipo === "OS")         pagadoOS     += m.monto;
+      else if (m.tipo === "PART")  pagadoPART   += m.monto;
+      else if (m.tipo === "CARGO") cargos       += m.monto;
       else if (m.tipo === "AJUSTE+") ajustesMas   += m.monto;
       else if (m.tipo === "AJUSTE-") ajustesMenos += m.monto;
     }
 
     if (!tieneOS) pagadoOS = 0;
 
-    const totalAPagar = filas.reduce((s, f) => s + f.aPagar, 0);
+    // 🔴 Ahora el total a pagar viene SOLO de los CARGO acumulados
+    const totalCargos = cargos;
     const totalPagado = pagadoOS + pagadoPART + ajustesMas - ajustesMenos;
-    const saldo = Number((totalAPagar + cargos - totalPagado).toFixed(2));
+    const saldo = Number((totalCargos - totalPagado).toFixed(2));
     const estado = saldo <= 0 ? "PAGADO" : "PENDIENTE";
 
     res.json({
@@ -190,9 +202,9 @@ const obtenerEstadoDeCuenta = async (req, res) => {
       area: areaId ? await Area.findById(areaId).select("nombre").lean() : null,
       period: period || null,
       filas,
-      facturas,            // 👈 agregado para el modal
+      facturas,
       totales: {
-        aPagar: totalAPagar,
+        aPagar: totalCargos, // 👈 ahora es la suma de CARGO
         pagadoOS,
         pagadoPART,
         cargos,
@@ -326,7 +338,7 @@ const actualizarEstadoDeCuenta = async (req, res) => {
     for (const f of facturasArr) {
       const period = (f.mes || "").trim(); // YYYY-MM
       const monto  = parseNumberLike(f.monto, 0);
-      if (!monto) continue; // si no tiene monto, no tiene sentido
+      if (!monto) continue;
 
       const fecha =
         f.fecha && String(f.fecha).trim()
@@ -444,17 +456,17 @@ async function generarExtractoPDF(req, res) {
 
     let pagadoOS = 0, pagadoPART = 0, cargos = 0, ajustesMas = 0, ajustesMenos = 0;
     for (const m of movs) {
-      if (m.tipo === "OS")        pagadoOS     += m.monto;
-      else if (m.tipo === "PART") pagadoPART   += m.monto;
-      else if (m.tipo === "CARGO") cargos      += m.monto;
+      if (m.tipo === "OS")         pagadoOS     += m.monto;
+      else if (m.tipo === "PART")  pagadoPART   += m.monto;
+      else if (m.tipo === "CARGO") cargos       += m.monto;
       else if (m.tipo === "AJUSTE+") ajustesMas   += m.monto;
       else if (m.tipo === "AJUSTE-") ajustesMenos += m.monto;
     }
 
-    const totalAPagar = filas.reduce((s, f) => s + f.aPagar, 0);
-    const totalPagado = pagadoOS + pagadoPART + ajustesMas - ajustesMenos;
-    const saldo = Number((totalAPagar + cargos - totalPagado).toFixed(2));
-    const tieneOS = /obra social/i.test(paciente.condicionDePago || "");
+    const totalCargos   = cargos; // igual que en el GET
+    const totalPagado   = pagadoOS + pagadoPART + ajustesMas - ajustesMenos;
+    const saldo         = Number((totalCargos - totalPagado).toFixed(2));
+    const tieneOS       = /obra social/i.test(paciente.condicionDePago || "");
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
@@ -484,7 +496,7 @@ async function generarExtractoPDF(req, res) {
     doc.fontSize(12).fillColor("#000").text((area.nombre || "").toUpperCase(), { underline: true });
     doc.moveDown(0.3);
 
-    // Tabla simple
+    // Tabla simple (informativa, basada en módulos asignados)
     const colx = [40, 100, 160, 310, 430, 520]; // posiciones x
     const th = ["MES", "MÓDULO", "CANT.", "PROFESIONAL", "VALOR", "A PAGAR"];
     doc.fontSize(10).fillColor("#333");
@@ -518,9 +530,9 @@ async function generarExtractoPDF(req, res) {
     doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor("#ccc").stroke();
     doc.moveDown(0.4);
 
-    // Totales
+    // Totales (usando CARGO acumulado)
     doc.fontSize(11).fillColor("#000")
-      .text(`Total a pagar: $ ${totalAPagar.toLocaleString("es-AR")}`);
+      .text(`Total a pagar: $ ${totalCargos.toLocaleString("es-AR")}`);
     doc.text(`Cargos: $ ${cargos.toLocaleString("es-AR")}`);
     if (tieneOS) doc.text(`Pago Obra Social: $ ${pagadoOS.toLocaleString("es-AR")}`);
     doc.text(`Pago Particular: $ ${pagadoPART.toLocaleString("es-AR")}`);
@@ -545,12 +557,13 @@ async function generarExtractoPDF(req, res) {
 
 module.exports = {
   obtenerEstadoDeCuenta,
-  actualizarEstadoDeCuenta,  // 👈 nuevo
+  actualizarEstadoDeCuenta,
   crearMovimiento,
   eliminarMovimiento,
   generarExtractoPDF,
   getPorDni,
   __test__: { buildFilasArea, parseCantidad, getPrecioModulo }
 };
+
 
 
