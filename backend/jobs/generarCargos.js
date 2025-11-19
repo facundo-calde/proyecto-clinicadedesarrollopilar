@@ -53,63 +53,18 @@ function mkAsigKey({ moduloId, cantidad, areaId, profesionalId }) {
   return [mid, cantidad, aid, pid].join("|");
 }
 
-/** Avanzar un mes: "2025-03" -> "2025-04" */
-function nextPeriod(period) {
-  if (!period || !/^\d{4}-\d{2}$/.test(period)) return period;
-  let y = parseInt(period.slice(0, 4), 10);
-  let m = parseInt(period.slice(5, 7), 10);
-  m += 1;
-  if (m > 12) {
-    m = 1;
-    y += 1;
-  }
-  return `${y}-${String(m).padStart(2, "0")}`;
-}
-
 /**
  * Precio del cargo:
  * 1) Si la asignación trae override (precio/valor/monto/arancel/importe/tarifa), usarlo.
  * 2) Si no, usar modulo.valorPadres.
  */
 function getPrecioDesdeValorPadres(modulo, { asig }) {
-  // 1) Override desde la asignación (si viene algo ahí, manda eso)
-  const overrideCands = [
-    asig?.precio,
-    asig?.valor,
-    asig?.monto,
-    asig?.arancel,
-    asig?.importe,
-    asig?.tarifa,
-    asig?.valorPadres,
-    asig?.valorModulo,     // <- por si en la asignación vino con este nombre
-  ];
-
-  const override = overrideCands
+  const override = [asig?.precio, asig?.valor, asig?.monto, asig?.arancel, asig?.importe, asig?.tarifa]
     .map(parseNumberLike)
     .find(n => n > 0);
-
   if (override) return override;
-
-  // 2) Fallback: campos del MÓDULO
-  const moduloCands = [
-    modulo?.valorPadres,
-    modulo?.valorModulo,   // <- ACA agregamos esto
-    modulo?.precioModulo,
-    modulo?.precio,
-    modulo?.valor,
-    modulo?.monto,
-    modulo?.arancel,
-    modulo?.importe,
-    modulo?.tarifa,
-  ];
-
-  const base = moduloCands
-    .map(parseNumberLike)
-    .find(n => n > 0);
-
-  return base || 0;
+  return parseNumberLike(modulo?.valorPadres) || 0;
 }
-
 
 function pickProfesionalNombre(asig, cacheUsuarios) {
   const arr = Array.isArray(asig?.profesionales) ? asig.profesionales : [];
@@ -187,7 +142,6 @@ async function upsertCargo({
   if (res.matchedCount > 0 || res.upsertedCount > 0) return;
 
   // ------------------ 2) Compatibilidad: “legacy” (sin asigKey) ------------------
-  // Si había uno existente del mismo módulo/área/período, lo adoptamos y le seteamos asigKey.
   const legacyFilter = {
     dni,
     areaId: areaIdFromAsig || areaId,
@@ -209,7 +163,6 @@ async function upsertCargo({
     },
     { upsert: true }
   );
-  // con esto evitamos que, al re-ejecutar, se vuelvan a crear los anteriores
 }
 
 /* =============== Cargos para TODO el mes (cron/masivo) =============== */
@@ -266,8 +219,7 @@ async function generarCargosDelMes(period = yyyymm()) {
       const desdeMes      = asig.desdeMes || createdPeriod;
       const hastaMes      = asig.hastaMes || null;
 
-      // este job masivo sigue siendo "por mes": sólo actúa si ese period puntual está dentro del rango
-      if (!inRange(period, desdeMes, hastaMes)) continue;
+      if (!inRange(period, desdeMes, hastaMes || period)) continue;
 
       const profesionalNombre = pickProfesionalNombre(asig, userById);
       const cantidad = asig.cantidad;
@@ -298,10 +250,10 @@ async function generarCargosDelMes(period = yyyymm()) {
 /**
  * Genera cargos para UN paciente.
  *
- * 🔹 Acá es donde se respeta lo que pediste:
- *   - Si la asignación tiene un `desdeMes` anterior (ej. "2025-01") y hoy estamos en "2025-04",
- *     se generan cargos para TODOS los meses: 2025-01, 2025-02, 2025-03, 2025-04.
- *   - Los cargos se generan una vez por mes gracias al índice único (no duplica).
+ * 🔹 Versión simplificada:
+ *   - Sólo genera EL CARGO del mes `period` (por defecto, el mes actual).
+ *   - Si la asignación tiene desdeMes / hastaMes, se usa sólo para decidir
+ *     si corresponde o no generar el cargo para ese mes.
  */
 async function generarCargosParaPaciente(dni, period = yyyymm()) {
   if (!dni) return { ok: false, reason: "dni requerido" };
@@ -352,34 +304,30 @@ async function generarCargosParaPaciente(dni, period = yyyymm()) {
     // No generar cargos antes de que exista el paciente
     if (desdeMes < createdPeriod) desdeMes = createdPeriod;
 
-    // Límite superior: si hay hastaMes, respetarlo; si no, usamos el "period" que nos pasan (por defecto, mes actual)
-    let limiteSuperior = hastaMes || period;
+    const limiteSuperior = hastaMes || period;
 
-    // Si el rango no tiene sentido, lo salteamos
-    if (!inRange(limiteSuperior, desdeMes, limiteSuperior)) continue;
+    // Si el mes actual (period) no está dentro del rango, no generamos nada
+    if (!inRange(period, desdeMes, limiteSuperior)) continue;
 
-    // Generar cargos de TODOS los meses desde desdeMes hasta limiteSuperior (incluido)
-    for (let per = desdeMes; per <= limiteSuperior; per = nextPeriod(per)) {
-      try {
-        const profesionalNombre = pickProfesionalNombre(asig, userById);
-        const cantidad = asig.cantidad;
+    try {
+      const profesionalNombre = pickProfesionalNombre(asig, userById);
+      const cantidad = asig.cantidad;
 
-        await upsertCargo({
-          dni,
-          pacienteId: p._id,
-          areaId,
-          areaNombre,
-          modulo,
-          moduloId,
-          period: per,
-          cantidad,
-          profesionalNombre,
-          asignacion: asig,
-        });
-        creados++;
-      } catch (e) {
-        if (e?.code !== 11000) console.error("cargo upsert (paciente)", e);
-      }
+      await upsertCargo({
+        dni,
+        pacienteId: p._id,
+        areaId,
+        areaNombre,
+        modulo,
+        moduloId,
+        period,          // 👈 SOLO el mes actual
+        cantidad,
+        profesionalNombre,
+        asignacion: asig,
+      });
+      creados++;
+    } catch (e) {
+      if (e?.code !== 11000) console.error("cargo upsert (paciente)", e);
     }
   }
 
