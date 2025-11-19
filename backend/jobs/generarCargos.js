@@ -168,30 +168,30 @@ async function upsertCargo({
 
   const filterByKey = { dni, period, tipo: "CARGO", asigKey };
 
-  const update = {
-    $set: {
-      descripcion,
-      monto: total,
-      cantidad: Number(cant) || 1,
-      profesional: profesionalNombre || undefined,
-      moduloNombre: moduloNombre || undefined,
-      areaNombre: areaNombre || undefined,
-      areaId: areaIdFromAsig || areaId,
-      moduloId: moduloId,
-      esEventoEspecial: false,
-      updatedAt: new Date()
-    },
-    $setOnInsert: {
-      pacienteId,
-      fecha: new Date(),
-      estado: "PENDIENTE",
-      tipo: "CARGO",
-      dni,
-      period,
-      asigKey,
-      esEventoEspecial: false
-    }
-  };
+const update = {
+  $set: {
+    descripcion,
+    monto: total,
+    cantidad: Number(cant) || 1,
+    profesional: profesionalNombre || undefined,
+    moduloNombre: moduloNombre || undefined,
+    areaNombre: areaNombre || undefined,
+    areaId: areaIdFromAsig || areaId,
+    moduloId: moduloId,
+    updatedAt: new Date()
+  },
+  $setOnInsert: {
+    pacienteId,
+    fecha: new Date(),
+    estado: "PENDIENTE",
+    tipo: "CARGO",
+    dni,
+    period,
+    asigKey,
+    esEventoEspecial: false
+  }
+};
+
 
   let res = await Mov.updateOne(filterByKey, update, { upsert: true });
   if (res.matchedCount > 0 || res.upsertedCount > 0) return;
