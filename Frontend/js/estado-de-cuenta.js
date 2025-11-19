@@ -1144,7 +1144,7 @@ const detOS =
         };
 
         root.addEventListener("change", handleChange);
-root.addEventListener("blur", handleChange, true);
+
 
         // Agregar línea arriba
         btnAddLinea.addEventListener("click", () => {
