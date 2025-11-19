@@ -72,12 +72,44 @@ function nextPeriod(period) {
  * 2) Si no, usar modulo.valorPadres.
  */
 function getPrecioDesdeValorPadres(modulo, { asig }) {
-  const override = [asig?.precio, asig?.valor, asig?.monto, asig?.arancel, asig?.importe, asig?.tarifa]
+  // 1) Override desde la asignación (si viene algo ahí, manda eso)
+  const overrideCands = [
+    asig?.precio,
+    asig?.valor,
+    asig?.monto,
+    asig?.arancel,
+    asig?.importe,
+    asig?.tarifa,
+    asig?.valorPadres,
+    asig?.valorModulo,     // <- por si en la asignación vino con este nombre
+  ];
+
+  const override = overrideCands
     .map(parseNumberLike)
     .find(n => n > 0);
+
   if (override) return override;
-  return parseNumberLike(modulo?.valorPadres) || 0;
+
+  // 2) Fallback: campos del MÓDULO
+  const moduloCands = [
+    modulo?.valorPadres,
+    modulo?.valorModulo,   // <- ACA agregamos esto
+    modulo?.precioModulo,
+    modulo?.precio,
+    modulo?.valor,
+    modulo?.monto,
+    modulo?.arancel,
+    modulo?.importe,
+    modulo?.tarifa,
+  ];
+
+  const base = moduloCands
+    .map(parseNumberLike)
+    .find(n => n > 0);
+
+  return base || 0;
 }
+
 
 function pickProfesionalNombre(asig, cacheUsuarios) {
   const arr = Array.isArray(asig?.profesionales) ? asig.profesionales : [];
