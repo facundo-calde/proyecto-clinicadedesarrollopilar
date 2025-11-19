@@ -1,11 +1,11 @@
 // controllers/estadocuentacontrollers.js
-const mongoose    = require("mongoose");
+const mongoose = require("mongoose");
 const PDFDocument = require("pdfkit");
-const Paciente    = require("../models/pacientes");
-const Usuario     = require("../models/usuarios");
-const Modulo      = require("../models/modulos");
-const Area        = require("../models/area");
-const Movimiento  = require("../models/estadoDeCuentaMovimiento");
+const Paciente = require("../models/pacientes");
+const Usuario = require("../models/usuarios");
+const Modulo = require("../models/modulos");
+const Area = require("../models/area");
+const Movimiento = require("../models/estadoDeCuentaMovimiento");
 
 const toStr = (v) => (v ?? "").toString();
 
@@ -35,7 +35,7 @@ function getPrecioModulo(mod) {
   if (!mod) return 0;
 
   // usamos valorPadres primero (es el campo actual del esquema)
-   const cands = [
+  const cands = [
     "valorPadres",
     "valorModulo",    // <- agregado
     "precioModulo",   // <- agregado
@@ -87,8 +87,8 @@ async function buildFilasArea(paciente, areaId) {
   const profIds = [];
   for (const m of list) {
     const arr = Array.isArray(m.profesionales) ? m.profesionales
-              : Array.isArray(m.coordinadoresExternos) ? m.coordinadoresExternos
-              : [];
+      : Array.isArray(m.coordinadoresExternos) ? m.coordinadoresExternos
+        : [];
     for (const pr of arr) {
       const id = pr.profesionalId || pr.usuario || pr.usuarioId || pr._id;
       if (id) profIds.push(String(id));
@@ -97,7 +97,7 @@ async function buildFilasArea(paciente, areaId) {
 
   const [mods, usuarios] = await Promise.all([
     moduloIds.length ? Modulo.find({ _id: { $in: moduloIds } }).lean() : [],
-    profIds.length    ? Usuario.find({ _id: { $in: profIds } }).lean() : [],
+    profIds.length ? Usuario.find({ _id: { $in: profIds } }).lean() : [],
   ]);
 
   const modById = mapById(mods);
@@ -114,8 +114,8 @@ async function buildFilasArea(paciente, areaId) {
     const listaProf = Array.isArray(item.profesionales)
       ? item.profesionales
       : Array.isArray(item.coordinadoresExternos)
-      ? item.coordinadoresExternos
-      : [];
+        ? item.coordinadoresExternos
+        : [];
 
     for (const pr of listaProf) {
       const u = userById.get(String(pr.profesionalId || pr.usuario || pr.usuarioId || pr._id));
@@ -176,10 +176,10 @@ const obtenerEstadoDeCuenta = async (req, res) => {
 
     let pagadoOS = 0, pagadoPART = 0, cargos = 0, ajustesMas = 0, ajustesMenos = 0;
     for (const m of movs) {
-      if (m.tipo === "OS")         pagadoOS     += m.monto;
-      else if (m.tipo === "PART")  pagadoPART   += m.monto;
-      else if (m.tipo === "CARGO") cargos       += m.monto;
-      else if (m.tipo === "AJUSTE+") ajustesMas   += m.monto;
+      if (m.tipo === "OS") pagadoOS += m.monto;
+      else if (m.tipo === "PART") pagadoPART += m.monto;
+      else if (m.tipo === "CARGO") cargos += m.monto;
+      else if (m.tipo === "AJUSTE+") ajustesMas += m.monto;
       else if (m.tipo === "AJUSTE-") ajustesMenos += m.monto;
     }
 
@@ -234,7 +234,7 @@ const actualizarEstadoDeCuenta = async (req, res) => {
     const areaId = rawAreaId ? new mongoose.Types.ObjectId(rawAreaId) : null;
     const area = areaId ? await Area.findById(areaId).lean() : null;
 
-    const lineasArr   = Array.isArray(lineas) ? lineas : [];
+    const lineasArr = Array.isArray(lineas) ? lineas : [];
     const facturasArr = Array.isArray(facturas) ? facturas : [];
 
     // ---- catálogos para módulos y profesionales ----
@@ -254,7 +254,7 @@ const actualizarEstadoDeCuenta = async (req, res) => {
         : [],
     ]);
 
-    const modById  = mapById(modulos);
+    const modById = mapById(modulos);
     const profById = mapById(profesionales);
 
     // ---- limpiamos lo que vamos a regenerar (CARGO + FACT) ----
@@ -329,15 +329,23 @@ const actualizarEstadoDeCuenta = async (req, res) => {
         monto: montoCargo,
         cantidad: Number(cant) || 1,
         profesional: profesionalNombre,
+
+        // 🔥 NUEVO: pagos ingresados en el modal
+        pagPadres: parseNumberLike(l.pagPadres, 0),
+        detPadres: l.detPadres || "",
+        pagOS: parseNumberLike(l.pagOS, 0),
+        detOS: l.detOS || "",
+
         descripcion: `Cargo ${period} — ${moduloNombre || "Módulo"}`,
         estado: "PENDIENTE",
       });
+
     }
 
     // ---- reconstruir FACTURAS desde facturas ----
     for (const f of facturasArr) {
       const period = (f.mes || "").trim(); // YYYY-MM
-      const monto  = parseNumberLike(f.monto, 0);
+      const monto = parseNumberLike(f.monto, 0);
       if (!monto) continue;
 
       const fecha =
@@ -456,22 +464,22 @@ async function generarExtractoPDF(req, res) {
 
     let pagadoOS = 0, pagadoPART = 0, cargos = 0, ajustesMas = 0, ajustesMenos = 0;
     for (const m of movs) {
-      if (m.tipo === "OS")         pagadoOS     += m.monto;
-      else if (m.tipo === "PART")  pagadoPART   += m.monto;
-      else if (m.tipo === "CARGO") cargos       += m.monto;
-      else if (m.tipo === "AJUSTE+") ajustesMas   += m.monto;
+      if (m.tipo === "OS") pagadoOS += m.monto;
+      else if (m.tipo === "PART") pagadoPART += m.monto;
+      else if (m.tipo === "CARGO") cargos += m.monto;
+      else if (m.tipo === "AJUSTE+") ajustesMas += m.monto;
       else if (m.tipo === "AJUSTE-") ajustesMenos += m.monto;
     }
 
-    const totalCargos   = cargos; // igual que en el GET
-    const totalPagado   = pagadoOS + pagadoPART + ajustesMas - ajustesMenos;
-    const saldo         = Number((totalCargos - totalPagado).toFixed(2));
-    const tieneOS       = /obra social/i.test(paciente.condicionDePago || "");
+    const totalCargos = cargos; // igual que en el GET
+    const totalPagado = pagadoOS + pagadoPART + ajustesMas - ajustesMenos;
+    const saldo = Number((totalCargos - totalPagado).toFixed(2));
+    const tieneOS = /obra social/i.test(paciente.condicionDePago || "");
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
-      `inline; filename="Extracto_${dni}_${(area.nombre || "area").replace(/\s+/g,"_")}${period ? "_" + period : ""}.pdf"`
+      `inline; filename="Extracto_${dni}_${(area.nombre || "area").replace(/\s+/g, "_")}${period ? "_" + period : ""}.pdf"`
     );
 
     const doc = new PDFDocument({ margin: 40 });
@@ -485,10 +493,10 @@ async function generarExtractoPDF(req, res) {
 
     // Paciente
     doc.fillColor("#000").fontSize(13)
-      .text(`${paciente.nombre || "-" } - DNI ${paciente.dni || "-"}`);
+      .text(`${paciente.nombre || "-"} - DNI ${paciente.dni || "-"}`);
     doc.moveDown(0.2);
     doc.fontSize(11)
-      .text(`Abonado: ${paciente.condicionDePago || "-" }   |   Estado: ${paciente.estado || "-" }`);
+      .text(`Abonado: ${paciente.condicionDePago || "-"}   |   Estado: ${paciente.estado || "-"}`);
     if (period) doc.text(`Periodo: ${period}`);
     doc.moveDown(0.6);
 
@@ -508,10 +516,10 @@ async function generarExtractoPDF(req, res) {
     filas.forEach(f => {
       const profesional =
         (f.profesionales.profesional[0] ||
-         f.profesionales.coordinador[0] ||
-         f.profesionales.pasante[0] ||
-         f.profesionales.directora[0] ||
-         "-");
+          f.profesionales.coordinador[0] ||
+          f.profesionales.pasante[0] ||
+          f.profesionales.directora[0] ||
+          "-");
       const valor = `$ ${f.valorModulo.toLocaleString("es-AR")}`;
       const ap = `$ ${f.aPagar.toLocaleString("es-AR")}`;
       const row = [
