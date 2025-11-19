@@ -538,20 +538,20 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
 
     const filas = Array.isArray(data.filas) ? data.filas : [];
     const movimientos = Array.isArray(data.movimientos) ? data.movimientos : [];
-    const facturasRaw = Array.isArray(data.facturas) ? data.facturas : [];
+
+    // ---- facturas crudas (si vienen) ----
+    let facturasRaw = Array.isArray(data.facturas) ? data.facturas : [];
 
     // ---------- Normalizar líneas de módulos ----------
     let lineas = (filas.length ? filas : movimientos)
       // Evitar que pagos o movimientos sin módulo se conviertan en líneas basura
       // Si tiene módulo → línea normal
-      // Si NO tiene módulo PERO es pago de padres / OS → incluir igual
+      // Si NO tiene módulo PERO es pago de padres / OS → igual los vamos a mezclar abajo.
       .filter((f) =>
         f.moduloId ||
         f.moduloNombre ||
         f.modulo ||
-        f.moduloNumero ||
-        f.tipo === "PART" ||
-        f.tipo === "OS"
+        f.moduloNumero
       )
       .map((f) => {
         const mes = f.mes || f.periodo || f.period || "";
@@ -648,83 +648,78 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           profesionalNombre: profNombre,
           precioModulo,
           aPagar,
-          pagPadres,
-          detPadres,
-          pagOS,
-          detOS,
+          pagPadres: Number(pagPadres) || 0,
+          detPadres: detPadres || "",
+          pagOS: Number(pagOS) || 0,
+          detOS: detOS || "",
         };
       });
 
-    // 🔁 Reinyectar pagos desde movimientos crudos (PART / OS)
-    if (movimientos.length) {
-      const buildKey = (mes, moduloId, moduloNombre) =>
-        `${mes}::${moduloId || ""}::${(moduloNombre || "").toLowerCase()}`;
-
-      const mapaLineas = {};
-      lineas.forEach((l) => {
-        const key = buildKey(l.mes, l.moduloId, l.moduloNombre);
-        mapaLineas[key] = l;
-      });
-
+    // ========= FUSIONAR PAGOS PART / OS DESDE movimientos =========
+    // Esto es el punto clave: si "filas" NO traen los pagos, los sumamos
+    // usando los movimientos crudos.
+    if (filas.length && movimientos.length) {
       movimientos.forEach((m) => {
-        if (m.tipo !== "PART" && m.tipo !== "OS") return;
+        if (!m || (m.tipo !== "PART" && m.tipo !== "OS")) return;
 
-        const mes =
+        // Mes del movimiento
+        const mesMov =
           m.mes ||
           m.periodo ||
           m.period ||
           (m.fecha ? new Date(m.fecha).toISOString().slice(0, 7) : "");
 
-        const moduloNombre = m.moduloNombre || m.modulo || m.moduloNumero || "";
-        const moduloId =
-          m.moduloId ||
-          m.moduloIdMongo ||
-          (typeof m.modulo === "string" &&
-          /^[0-9a-fA-F]{24}$/.test(m.modulo)
+        const modIdMov = m.moduloId ||
+          (typeof m.modulo === "string" && /^[0-9a-fA-F]{24}$/.test(m.modulo)
             ? m.modulo
-            : "");
+            : null);
 
-        const key = buildKey(mes, moduloId, moduloNombre);
+        const modNombreMov =
+          m.moduloNombre || m.modulo || m.moduloNumero || "";
 
-        let linea = mapaLineas[key];
-        if (!linea) {
-          linea = {
-            mes,
-            cantidad: 1,
-            moduloId: moduloId || "",
-            moduloNombre,
-            profesionalId: "",
-            profesionalNombre: "",
-            precioModulo: 0,
-            aPagar: 0,
-            pagPadres: 0,
-            detPadres: "",
-            pagOS: 0,
-            detOS: "",
-          };
-          mapaLineas[key] = linea;
-          lineas.push(linea);
-        }
+        const montoMov = Number(m.monto || 0) || 0;
+        const detalleMov = m.descripcion || m.observaciones || "";
 
-        const monto = Number(m.monto || 0);
-        const detalle = m.descripcion || m.observaciones || "";
+        // Buscamos la línea a la que corresponde el pago
+        const linea = lineas.find((l) => {
+          const mismoMes = (l.mes || "") === (mesMov || "");
+          if (!mismoMes) return false;
+
+          if (modIdMov && l.moduloId && String(l.moduloId) === String(modIdMov)) {
+            return true;
+          }
+          if (!modIdMov && modNombreMov && l.moduloNombre) {
+            return (
+              String(l.moduloNombre).toLowerCase() ===
+              String(modNombreMov).toLowerCase()
+            );
+          }
+          return false;
+        });
+
+        if (!linea) return;
 
         if (m.tipo === "PART") {
-          linea.pagPadres += monto;
-          if (detalle) {
+          linea.pagPadres = (Number(linea.pagPadres) || 0) + montoMov;
+          if (detalleMov) {
             linea.detPadres = linea.detPadres
-              ? `${linea.detPadres} | ${detalle}`
-              : detalle;
+              ? `${linea.detPadres} | ${detalleMov}`
+              : detalleMov;
           }
         } else if (m.tipo === "OS") {
-          linea.pagOS += monto;
-          if (detalle) {
+          linea.pagOS = (Number(linea.pagOS) || 0) + montoMov;
+          if (detalleMov) {
             linea.detOS = linea.detOS
-              ? `${linea.detOS} | ${detalle}`
-              : detalle;
+              ? `${linea.detOS} | ${detalleMov}`
+              : detalleMov;
           }
         }
       });
+    }
+
+    // ========= FACTURAS: fallback desde movimientos FACT =========
+    if ((!facturasRaw || !facturasRaw.length) && movimientos.length) {
+      facturasRaw = movimientos.filter((m) => m.tipo === "FACT" || m.tipo === "F");
     }
 
     // Normalizar facturas
@@ -736,9 +731,9 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
       const fecha = f.fecha
         ? new Date(f.fecha).toISOString().slice(0, 10)
         : "";
-      const nro = f.numero || f.nro || f.nFactura || "";
+      const nro = f.numero || f.nro || f.nFactura || f.nroRecibo || "";
       const monto = Number(f.monto || f.total || 0);
-      const detalle = f.detalle || f.descripcion || f.observacion || "";
+      const detalle = f.detalle || f.descripcion || f.observacion || f.observaciones || "";
 
       return { mes, nro, monto, detalle, fecha };
     });
@@ -762,10 +757,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         return l;
       });
 
-      const totalAPagar = lineas.reduce(
-        (acc, l) => acc + (Number(l.aPagar) || 0),
-        0
-      );
+      const totalAPagar = lineas.reduce((acc, l) => acc + (Number(l.aPagar) || 0), 0);
       const totalPagado = lineas.reduce(
         (acc, l) =>
           acc + (Number(l.pagPadres) || 0) + (Number(l.pagOS) || 0),
@@ -922,7 +914,6 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
       grow: "fullscreen",
       width: "100%",
       padding: 0,
-
       didOpen: (popup) => {
         const root = popup.querySelector("#edcModalRoot");
         const tbodyLin = popup.querySelector("#edcBodyLineas");
@@ -933,7 +924,6 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         const tituloEl = popup.querySelector("#edcTituloArea");
         const btnAddLinea = popup.querySelector("#edcBtnAddLinea");
 
-        // Fix inputs numéricos
         const safeNum = (v) => {
           if (v === "" || v === null || v === undefined) return 0;
           const n = Number(String(v).replace(",", "."));
@@ -1010,7 +1000,6 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
               }),
             ].join("");
 
-          // Saldo arriba
           if (tituloEl) {
             tituloEl.innerHTML = `
               ${paciente.nombre} — ${areaNombreActual}
@@ -1136,7 +1125,6 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         // Render inicial
         render();
 
-        // MANEJO DE CAMBIOS en inputs
         const handleChange = (e) => {
           const t = e.target;
           const idx = Number(t.dataset.idx);
