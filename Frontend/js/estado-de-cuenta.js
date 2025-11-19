@@ -1122,8 +1122,8 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           }
         };
 
-        root.addEventListener("input", handleChange);
         root.addEventListener("change", handleChange);
+root.addEventListener("blur", handleChange, true);
 
         // Agregar línea arriba
         btnAddLinea.addEventListener("click", () => {
