@@ -597,8 +597,9 @@ let lineas = (filas.length ? filas : movimientos)
           : f.monto || 0
       );
 
-     const pagPadres = Number(
+const pagPadres = Number(
   f.pagPadres ??
+  f.pag_padres ??
   f.pagadoPadres ??
   f.pagadoPART ??
   f.pagoPadres ??
@@ -608,6 +609,7 @@ let lineas = (filas.length ? filas : movimientos)
 
 const pagOS = Number(
   f.pagOS ??
+  f.pag_os ??
   f.pagadoOS ??
   f.pagoOS ??
   f.pagadoObraSocial ??
@@ -617,6 +619,7 @@ const pagOS = Number(
 
 const detPadres =
   f.detPadres ||
+  f.det_padres ||
   f.detallePadres ||
   f.obsPadres ||
   f.detallePART ||
@@ -625,11 +628,13 @@ const detPadres =
 
 const detOS =
   f.detOS ||
+  f.det_os ||
   f.detalleOS ||
   f.detalleObraSocial ||
   f.obsOS ||
   f.observacionOS ||
   "";
+
 
 
       const profNombre =
@@ -1144,7 +1149,7 @@ const detOS =
         };
 
         root.addEventListener("change", handleChange);
-
+root.addEventListener("blur", handleChange, true);
 
         // Agregar línea arriba
         btnAddLinea.addEventListener("click", () => {
