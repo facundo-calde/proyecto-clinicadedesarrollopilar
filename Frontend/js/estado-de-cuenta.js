@@ -541,7 +541,17 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
     const facturasRaw = Array.isArray(data.facturas) ? data.facturas : [];
 
     // Normalizar líneas
-    let lineas = (filas.length ? filas : movimientos).map((f) => {
+    // ---------- Normalizar líneas de módulos ----------
+let lineas = (filas.length ? filas : movimientos)
+  // Evitar que pagos o movimientos sin módulo se conviertan en líneas basura
+  .filter(f =>
+    f.moduloId ||
+    f.moduloNombre ||
+    f.modulo ||
+    f.moduloNumero
+  )
+  .map((f) => {
+
       const mes = f.mes || f.periodo || f.period || "";
       const cantidad = f.cantidad ?? f.cant ?? 1;
 
