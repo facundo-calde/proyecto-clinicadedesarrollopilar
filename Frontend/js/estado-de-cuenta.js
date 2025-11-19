@@ -597,43 +597,25 @@ let lineas = (filas.length ? filas : movimientos)
           : f.monto || 0
       );
 
-const pagPadres = Number(
-  f.pagPadres ??
-  f.pag_padres ??
-  f.pagadoPadres ??
-  f.pagadoPART ??
-  f.pagoPadres ??
-  (f.tipo === "PADRES" ? f.monto : 0) ??
-  0
-);
+const pagPadres =
+  f.tipo === "PART"
+    ? Number(f.monto || 0)
+    : Number(f.pagPadres || f.pagadoPadres || 0);
 
-const pagOS = Number(
-  f.pagOS ??
-  f.pag_os ??
-  f.pagadoOS ??
-  f.pagoOS ??
-  f.pagadoObraSocial ??
-  (f.tipo === "OBRA_SOCIAL" ? f.monto : 0) ??
-  0
-);
+const pagOS =
+  f.tipo === "OS"
+    ? Number(f.monto || 0)
+    : Number(f.pagOS || f.pagadoOS || 0);
 
 const detPadres =
-  f.detPadres ||
-  f.det_padres ||
-  f.detallePadres ||
-  f.obsPadres ||
-  f.detallePART ||
-  f.observaciones ||
-  "";
+  f.tipo === "PART"
+    ? (f.descripcion || f.observaciones || "")
+    : (f.detPadres || f.observaciones || "");
 
 const detOS =
-  f.detOS ||
-  f.det_os ||
-  f.detalleOS ||
-  f.detalleObraSocial ||
-  f.obsOS ||
-  f.observacionOS ||
-  "";
+  f.tipo === "OS"
+    ? (f.descripcion || f.observaciones || "")
+    : (f.detOS || f.observacionOS || "");
 
 
 
