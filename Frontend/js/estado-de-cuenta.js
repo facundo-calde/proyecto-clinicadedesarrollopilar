@@ -540,7 +540,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
     const movimientos = Array.isArray(data.movimientos) ? data.movimientos : [];
     const facturasRaw = Array.isArray(data.facturas) ? data.facturas : [];
 
-    // ---------- Normalizar líneas de módulos / pagos ----------
+    // ---------- Normalizar líneas de módulos ----------
     let lineas = (filas.length ? filas : movimientos)
       // Evitar que pagos o movimientos sin módulo se conviertan en líneas basura
       // Si tiene módulo → línea normal
@@ -551,9 +551,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         f.modulo ||
         f.moduloNumero ||
         f.tipo === "PART" ||
-        f.tipo === "OS" ||
-        f.tipo === "PADRES" ||
-        f.tipo === "OBRA_SOCIAL"
+        f.tipo === "OS"
       )
       .map((f) => {
         const mes = f.mes || f.periodo || f.period || "";
@@ -601,46 +599,25 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
             : f.monto || 0
         );
 
-        // 👇 súper tolerante: toma valores de filas agregadas o movimientos crudos, viejos y nuevos
-        const pagPadres = Number(
-          f.pagPadres ??
-          f.pagadoPadres ??
-          f.pagadoPART ??
-          f.pagoPadres ??
-          ((f.tipo === "PART" ||
-            f.tipo === "PADRES" ||
-            f.tipo === "PARTICULAR")
-            ? f.monto
-            : 0) ??
-          0
-        );
+        const pagPadres =
+          f.tipo === "PART"
+            ? Number(f.monto || 0)
+            : Number(f.pagPadres || f.pagadoPadres || 0);
 
-        const pagOS = Number(
-          f.pagOS ??
-          f.pagadoOS ??
-          f.pagoOS ??
-          f.pagadoObraSocial ??
-          ((f.tipo === "OS" || f.tipo === "OBRA_SOCIAL")
-            ? f.monto
-            : 0) ??
-          0
-        );
+        const pagOS =
+          f.tipo === "OS"
+            ? Number(f.monto || 0)
+            : Number(f.pagOS || f.pagadoOS || 0);
 
         const detPadres =
-          f.detPadres ??
-          f.detallePadres ??
-          f.detallePART ??
-          f.obsPadres ??
-          f.observaciones ??
-          "";
+          f.tipo === "PART"
+            ? (f.descripcion || f.observaciones || "")
+            : (f.detPadres || f.observaciones || "");
 
         const detOS =
-          f.detOS ??
-          f.detalleOS ??
-          f.detalleObraSocial ??
-          f.obsOS ??
-          f.observacionOS ??
-          "";
+          f.tipo === "OS"
+            ? (f.descripcion || f.observaciones || "")
+            : (f.detOS || f.observacionOS || "");
 
         const profNombre =
           f.profesional ||
@@ -678,7 +655,79 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         };
       });
 
-    // ---------- Normalizar facturas ----------
+    // 🔁 Reinyectar pagos desde movimientos crudos (PART / OS)
+    if (movimientos.length) {
+      const buildKey = (mes, moduloId, moduloNombre) =>
+        `${mes}::${moduloId || ""}::${(moduloNombre || "").toLowerCase()}`;
+
+      const mapaLineas = {};
+      lineas.forEach((l) => {
+        const key = buildKey(l.mes, l.moduloId, l.moduloNombre);
+        mapaLineas[key] = l;
+      });
+
+      movimientos.forEach((m) => {
+        if (m.tipo !== "PART" && m.tipo !== "OS") return;
+
+        const mes =
+          m.mes ||
+          m.periodo ||
+          m.period ||
+          (m.fecha ? new Date(m.fecha).toISOString().slice(0, 7) : "");
+
+        const moduloNombre = m.moduloNombre || m.modulo || m.moduloNumero || "";
+        const moduloId =
+          m.moduloId ||
+          m.moduloIdMongo ||
+          (typeof m.modulo === "string" &&
+          /^[0-9a-fA-F]{24}$/.test(m.modulo)
+            ? m.modulo
+            : "");
+
+        const key = buildKey(mes, moduloId, moduloNombre);
+
+        let linea = mapaLineas[key];
+        if (!linea) {
+          linea = {
+            mes,
+            cantidad: 1,
+            moduloId: moduloId || "",
+            moduloNombre,
+            profesionalId: "",
+            profesionalNombre: "",
+            precioModulo: 0,
+            aPagar: 0,
+            pagPadres: 0,
+            detPadres: "",
+            pagOS: 0,
+            detOS: "",
+          };
+          mapaLineas[key] = linea;
+          lineas.push(linea);
+        }
+
+        const monto = Number(m.monto || 0);
+        const detalle = m.descripcion || m.observaciones || "";
+
+        if (m.tipo === "PART") {
+          linea.pagPadres += monto;
+          if (detalle) {
+            linea.detPadres = linea.detPadres
+              ? `${linea.detPadres} | ${detalle}`
+              : detalle;
+          }
+        } else if (m.tipo === "OS") {
+          linea.pagOS += monto;
+          if (detalle) {
+            linea.detOS = linea.detOS
+              ? `${linea.detOS} | ${detalle}`
+              : detalle;
+          }
+        }
+      });
+    }
+
+    // Normalizar facturas
     let facturas = facturasRaw.map((f) => {
       const mes =
         f.mes ||
@@ -961,6 +1010,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
               }),
             ].join("");
 
+          // Saldo arriba
           if (tituloEl) {
             tituloEl.innerHTML = `
               ${paciente.nombre} — ${areaNombreActual}
@@ -968,7 +1018,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
             `;
           }
 
-          // LÍNEAS
+          // ----------- LÍNEAS -----------
           tbodyLin.innerHTML = lineas
             .map((r, idx) => {
               const selMod = r.moduloId ? String(r.moduloId) : "";
@@ -1023,6 +1073,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
             })
             .join("");
 
+          // Foot líneas
           tfootLin.innerHTML = `
             <tr class="edc-total-row">
               <td colspan="4" style="text-align:left;">Total que debería haber pagado</td>
@@ -1036,7 +1087,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
             </tr>
           `;
 
-          // FACTURAS
+          // ----------- FACTURAS -----------
           tbodyFac.innerHTML = facturas
             .map(
               (f, idx) => `
@@ -1091,6 +1142,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
           const idx = Number(t.dataset.idx);
           const field = t.dataset.field;
 
+          // Cambios en líneas
           if (t.classList.contains("edc-input-linea")) {
             if (field === "moduloId") {
               const id = t.value;
@@ -1133,6 +1185,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
             return;
           }
 
+          // Cambios en facturas
           if (t.classList.contains("edc-input-fact")) {
             if (field === "monto") {
               facturas[idx].monto = safeNum(t.value);
@@ -1147,7 +1200,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         root.addEventListener("change", handleChange);
         root.addEventListener("blur", handleChange, true);
 
-        // Agregar línea
+        // Agregar línea arriba
         btnAddLinea.addEventListener("click", () => {
           lineas.unshift({
             mes: "",
