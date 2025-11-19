@@ -483,7 +483,6 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
       )
         return true;
 
-      // Módulos sin área: se muestran si no hay filtro de áreaNombre/id
       return !mAreaId && !mAreaNom;
     });
 
@@ -543,7 +542,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
 
     // ---------- Normalizar líneas de módulos / pagos ----------
     let lineas = (filas.length ? filas : movimientos)
-      // Evitar que movimientos totalmente "huérfanos" se conviertan en filas vacías.
+      // Evitar que pagos o movimientos sin módulo se conviertan en líneas basura
       // Si tiene módulo → línea normal
       // Si NO tiene módulo PERO es pago de padres / OS → incluir igual
       .filter((f) =>
@@ -552,7 +551,9 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         f.modulo ||
         f.moduloNumero ||
         f.tipo === "PART" ||
-        f.tipo === "OS"
+        f.tipo === "OS" ||
+        f.tipo === "PADRES" ||
+        f.tipo === "OBRA_SOCIAL"
       )
       .map((f) => {
         const mes = f.mes || f.periodo || f.period || "";
@@ -600,26 +601,44 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
             : f.monto || 0
         );
 
-        // Pagos y detalles: mapear bien según tipo
-        const pagPadres =
-          f.tipo === "PART"
-            ? Number(f.monto || 0)
-            : Number(f.pagPadres || f.pagadoPadres || 0);
+        // 🔴 ACÁ ESTABA EL PROBLEMA: había pocos alias, entonces al leer de nuevo
+        // no encontraba los campos y quedaban en 0/vacío.
+        const pagPadres = Number(
+          f.pagPadres ??
+          f.pagadoPadres ??
+          f.pagadoPART ??
+          f.pagoPadres ??
+          ((f.tipo === "PART" || f.tipo === "PADRES") ? f.monto : 0) ??
+          0
+        );
 
-        const pagOS =
-          f.tipo === "OS"
-            ? Number(f.monto || 0)
-            : Number(f.pagOS || f.pagadoOS || 0);
+        const pagOS = Number(
+          f.pagOS ??
+          f.pagadoOS ??
+          f.pagoOS ??
+          f.pagadoObraSocial ??
+          ((f.tipo === "OS" || f.tipo === "OBRA_SOCIAL") ? f.monto : 0) ??
+          0
+        );
 
         const detPadres =
-          f.tipo === "PART"
-            ? (f.descripcion || f.observaciones || "")
-            : (f.detPadres || f.observaciones || "");
+          f.detPadres ??
+          f.detallePadres ??
+          f.detallePART ??
+          f.obsPadres ??
+          ((f.tipo === "PART" || f.tipo === "PADRES")
+            ? (f.descripcion ?? f.detalle ?? f.observaciones ?? "")
+            : "");
 
         const detOS =
-          f.tipo === "OS"
-            ? (f.descripcion || f.observaciones || "")
-            : (f.detOS || f.observacionOS || "");
+          f.detOS ??
+          f.detalleOS ??
+          f.detalleObraSocial ??
+          f.obsOS ??
+          f.observacionOS ??
+          ((f.tipo === "OS" || f.tipo === "OBRA_SOCIAL")
+            ? (f.descripcion ?? f.detalle ?? f.observaciones ?? "")
+            : "");
 
         const profNombre =
           f.profesional ||
@@ -692,10 +711,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         return l;
       });
 
-      const totalAPagar = lineas.reduce(
-        (acc, l) => acc + (Number(l.aPagar) || 0),
-        0
-      );
+      const totalAPagar = lineas.reduce((acc, l) => acc + (Number(l.aPagar) || 0), 0);
       const totalPagado = lineas.reduce(
         (acc, l) =>
           acc + (Number(l.pagPadres) || 0) + (Number(l.pagOS) || 0),
@@ -863,14 +879,12 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         const tituloEl = popup.querySelector("#edcTituloArea");
         const btnAddLinea = popup.querySelector("#edcBtnAddLinea");
 
-        // Fix definitivo inputs numéricos
         const safeNum = (v) => {
           if (v === "" || v === null || v === undefined) return 0;
           const n = Number(String(v).replace(",", "."));
           return isNaN(n) ? 0 : n;
         };
 
-        // Helper evento especial
         const esEventoEspecial = (m) => {
           if (!m || typeof m !== "object") return false;
           if (m.esEspecial || m.esEventoEspecial || m.eventoEspecial) return true;
@@ -885,13 +899,8 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         };
 
         const render = () => {
-          const {
-            totalAPagar,
-            totalPagado,
-            totalFacturado,
-            difFactPag,
-            saldoRestante,
-          } = calcTotales();
+          const { totalAPagar, totalPagado, totalFacturado, difFactPag, saldoRestante } =
+            calcTotales();
 
           const buildModuloOptions = (selId) => {
             const normales = MODULOS.filter((m) => !esEventoEspecial(m));
@@ -903,8 +912,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
               html += `<optgroup label="Módulos mensuales">`;
               html += normales
                 .map((m) => {
-                  const text =
-                    m.nombre || `${m.numero || ""} ${m.descripcion || ""}`.trim();
+                  const text = m.nombre || `${m.numero || ""} ${m.descripcion || ""}`.trim();
                   const id = String(m._id);
                   return `<option value="${id}" ${
                     selId === id ? "selected" : ""
@@ -918,8 +926,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
               html += `<optgroup label="Eventos especiales">`;
               html += especiales
                 .map((m) => {
-                  const text =
-                    m.nombre || `${m.numero || ""} ${m.descripcion || ""}`.trim();
+                  const text = m.nombre || `${m.numero || ""} ${m.descripcion || ""}`.trim();
                   const id = String(m._id);
                   return `<option value="${id}" ${
                     selId === id ? "selected" : ""
@@ -948,17 +955,14 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
               }),
             ].join("");
 
-          // Saldo arriba
           if (tituloEl) {
             tituloEl.innerHTML = `
               ${paciente.nombre} — ${areaNombreActual}
-              <span style="float:right;font-weight:600;">Saldo: ${fmtARS(
-                saldoRestante
-              )}</span>
+              <span style="float:right;font-weight:600;">Saldo: ${fmtARS(saldoRestante)}</span>
             `;
           }
 
-          // ----------- LÍNEAS -----------
+          // LÍNEAS
           tbodyLin.innerHTML = lineas
             .map((r, idx) => {
               const selMod = r.moduloId ? String(r.moduloId) : "";
@@ -969,22 +973,14 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
                 <tr>
                   <td class="edc-col-mes">
                     <input type="month" data-idx="${idx}" data-field="mes"
-                      class="edc-input-linea" style="width:110px;" value="${
-                        r.mes || ""
-                      }">
+                      class="edc-input-linea" style="width:110px;" value="${r.mes || ""}">
                   </td>
                   <td class="edc-col-cant">
                     <select data-idx="${idx}" data-field="cantidad" class="edc-input-linea" style="width:80px;">
                       <option value="1" ${vCant === 1 ? "selected" : ""}>1</option>
-                      <option value="0.3333" ${
-                        vCant === 0.3333 ? "selected" : ""
-                      }>1/3</option>
-                      <option value="0.5" ${
-                        vCant === 0.5 ? "selected" : ""
-                      }>1/2</option>
-                      <option value="0.25" ${
-                        vCant === 0.25 ? "selected" : ""
-                      }>1/4</option>
+                      <option value="0.3333" ${vCant === 0.3333 ? "selected" : ""}>1/3</option>
+                      <option value="0.5" ${vCant === 0.5 ? "selected" : ""}>1/2</option>
+                      <option value="0.25" ${vCant === 0.25 ? "selected" : ""}>1/4</option>
                     </select>
                   </td>
                   <td class="edc-col-mod">
@@ -1005,9 +1001,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
                   </td>
                   <td class="edc-col-obs">
                     <input data-idx="${idx}" data-field="detPadres"
-                      class="edc-input-linea" style="width:100%;" value="${
-                        r.detPadres || ""
-                      }">
+                      class="edc-input-linea" style="width:100%;" value="${r.detPadres || ""}">
                   </td>
                   <td class="edc-col-pag">
                     <input data-idx="${idx}" data-field="pagOS"
@@ -1016,16 +1010,13 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
                   </td>
                   <td class="edc-col-obs">
                     <input data-idx="${idx}" data-field="detOS"
-                      class="edc-input-linea" style="width:100%;" value="${
-                        r.detOS || ""
-                      }">
+                      class="edc-input-linea" style="width:100%;" value="${r.detOS || ""}">
                   </td>
                 </tr>
               `;
             })
             .join("");
 
-          // Foot líneas
           tfootLin.innerHTML = `
             <tr class="edc-total-row">
               <td colspan="4" style="text-align:left;">Total que debería haber pagado</td>
@@ -1039,22 +1030,18 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
             </tr>
           `;
 
-          // ----------- FACTURAS -----------
+          // FACTURAS
           tbodyFac.innerHTML = facturas
             .map(
               (f, idx) => `
                 <tr>
                   <td class="edc-col-mes">
                     <input type="month" data-idx="${idx}" data-field="mes"
-                      class="edc-input-fact" style="width:110px;" value="${
-                        f.mes || ""
-                      }">
+                      class="edc-input-fact" style="width:110px;" value="${f.mes || ""}">
                   </td>
                   <td style="text-align:center;min-width:70px;">
                     <input data-idx="${idx}" data-field="nro"
-                      class="edc-input-fact" style="width:70px;" value="${
-                        f.nro || ""
-                      }">
+                      class="edc-input-fact" style="width:70px;" value="${f.nro || ""}">
                   </td>
                   <td class="edc-col-apag">
                     <input data-idx="${idx}" data-field="monto"
@@ -1063,15 +1050,11 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
                   </td>
                   <td class="edc-col-obs">
                     <input data-idx="${idx}" data-field="detalle"
-                      class="edc-input-fact" style="width:100%;" value="${
-                        f.detalle || ""
-                      }">
+                      class="edc-input-fact" style="width:100%;" value="${f.detalle || ""}">
                   </td>
                   <td class="edc-col-mes">
                     <input type="date" data-idx="${idx}" data-field="fecha"
-                      class="edc-input-fact" style="width:130px;" value="${
-                        f.fecha || ""
-                      }">
+                      class="edc-input-fact" style="width:130px;" value="${f.fecha || ""}">
                   </td>
                 </tr>
               `
@@ -1096,15 +1079,12 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         // Render inicial
         render();
 
-        // -----------------------------------
-        // MANEJO DE CAMBIOS en inputs
-        // -----------------------------------
+        // MANEJO DE CAMBIOS
         const handleChange = (e) => {
           const t = e.target;
           const idx = Number(t.dataset.idx);
           const field = t.dataset.field;
 
-          // Cambios en líneas
           if (t.classList.contains("edc-input-linea")) {
             if (field === "moduloId") {
               const id = t.value;
@@ -1147,7 +1127,6 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
             return;
           }
 
-          // Cambios en facturas
           if (t.classList.contains("edc-input-fact")) {
             if (field === "monto") {
               facturas[idx].monto = safeNum(t.value);
