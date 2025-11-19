@@ -597,29 +597,40 @@ let lineas = (filas.length ? filas : movimientos)
           : f.monto || 0
       );
 
-      const pagPadres = Number(
-        f.pagadoPadres ??
-          f.pagadoPART ??
-          f.pagoPadres ??
-          (f.tipo === "PADRES" ? f.monto : 0) ??
-          0
-      );
-      const pagOS = Number(
-        f.pagadoOS ??
-          f.pagoOS ??
-          f.pagadoObraSocial ??
-          (f.tipo === "OBRA_SOCIAL" ? f.monto : 0) ??
-          0
-      );
+     const pagPadres = Number(
+  f.pagPadres ??
+  f.pagadoPadres ??
+  f.pagadoPART ??
+  f.pagoPadres ??
+  (f.tipo === "PADRES" ? f.monto : 0) ??
+  0
+);
 
-      const detPadres =
-        f.detallePadres || f.obsPadres || f.detallePART || f.observaciones || "";
-      const detOS =
-        f.detalleOS ||
-        f.detalleObraSocial ||
-        f.obsOS ||
-        f.observacionOS ||
-        "";
+const pagOS = Number(
+  f.pagOS ??
+  f.pagadoOS ??
+  f.pagoOS ??
+  f.pagadoObraSocial ??
+  (f.tipo === "OBRA_SOCIAL" ? f.monto : 0) ??
+  0
+);
+
+const detPadres =
+  f.detPadres ||
+  f.detallePadres ||
+  f.obsPadres ||
+  f.detallePART ||
+  f.observaciones ||
+  "";
+
+const detOS =
+  f.detOS ||
+  f.detalleOS ||
+  f.detalleObraSocial ||
+  f.obsOS ||
+  f.observacionOS ||
+  "";
+
 
       const profNombre =
         f.profesional ||
