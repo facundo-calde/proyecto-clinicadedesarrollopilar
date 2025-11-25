@@ -255,22 +255,20 @@ const obtenerEstadoDeCuenta = async (req, res) => {
 
 
 // ----------------- PUT /api/estado-de-cuenta/:dni -----------------
-// Guarda líneas (CARGO) + pagos (PART / OS) + facturas (FACT)
+// Guarda líneas (CARGO) y facturas (FACT) que vienen del modal
 const actualizarEstadoDeCuenta = async (req, res) => {
   try {
     const dni = toStr(req.params.dni).trim();
     const { areaId: rawAreaId, lineas, facturas } = req.body || {};
 
     const paciente = await Paciente.findOne({ dni }).lean();
-    if (!paciente) {
-      return res.status(404).json({ error: "Paciente no encontrado" });
-    }
+    if (!paciente) return res.status(404).json({ error: "Paciente no encontrado" });
 
     const areaId = rawAreaId ? new mongoose.Types.ObjectId(rawAreaId) : null;
     const area   = areaId ? await Area.findById(areaId).lean() : null;
 
-    const lineasArr    = Array.isArray(lineas)    ? lineas    : [];
-    const facturasArr  = Array.isArray(facturas)  ? facturas  : [];
+    const lineasArr    = Array.isArray(lineas) ? lineas : [];
+    const facturasArr  = Array.isArray(facturas) ? facturas : [];
 
     // ---- catálogos para módulos y profesionales ----
     const moduloIds = [
@@ -281,55 +279,50 @@ const actualizarEstadoDeCuenta = async (req, res) => {
     ];
 
     const [modulos, profesionales] = await Promise.all([
-      moduloIds.length
-        ? Modulo.find({ _id: { $in: moduloIds } }).lean()
-        : [],
-      profesionalIds.length
-        ? Usuario.find({ _id: { $in: profesionalIds } }).lean()
-        : [],
+      moduloIds.length ? Modulo.find({ _id: { $in: moduloIds } }).lean() : [],
+      profesionalIds.length ? Usuario.find({ _id: { $in: profesionalIds } }).lean() : [],
     ]);
 
     const modById  = mapById(modulos);
     const profById = mapById(profesionales);
 
-    // ---- limpiamos lo que vamos a regenerar ----
+    // ---- limpiamos lo que vamos a regenerar (CARGO + FACT) ----
     const baseFilter = { dni };
     if (areaId) baseFilter.areaId = areaId;
 
-    const periods = [
-      ...new Set(lineasArr.map(l => (l.mes || l.period || "").trim()).filter(Boolean)),
+    // sólo meses válidos (mes tiene que venir con value del input month)
+    const lineasValidas = lineasArr
+      .map(l => ({
+        ...l,
+        mes: (l.mes || l.period || "").trim(),
+      }))
+      .filter(l => l.mes && l.moduloId); // sin mes o sin módulo no se guarda nada
+
+    const periodsCargos = [
+      ...new Set(lineasValidas.map(l => l.mes).filter(Boolean)),
     ];
 
     const deleteFilterCargos = {
       ...baseFilter,
       tipo: "CARGO",
-      ...(periods.length ? { period: { $in: periods } } : {}),
-    };
-
-    const deleteFilterPagos = {
-      ...baseFilter,
-      tipo: { $in: ["OS", "PART"] },
-      ...(periods.length ? { period: { $in: periods } } : {}),
+      ...(periodsCargos.length ? { period: { $in: periodsCargos } } : {}),
     };
 
     const deleteFilterFacts = {
       ...baseFilter,
       tipo: "FACT",
-      // si querés limitar por meses podés agregar period:{ $in: periods }
     };
 
     await Promise.all([
       Movimiento.deleteMany(deleteFilterCargos),
-      Movimiento.deleteMany(deleteFilterPagos),
       Movimiento.deleteMany(deleteFilterFacts),
     ]);
 
     const docsToInsert = [];
 
-    // ---- reconstruir CARGOS + pagos OS / PART desde lineas ----
-    for (const l of lineasArr) {
-      const period = (l.mes || l.period || "").trim(); // YYYY-MM
-      if (!period) continue;
+    // ---- reconstruir CARGOS desde líneas ----
+    lineasValidas.forEach((l, idx) => {
+      const period = l.mes; // YYYY-MM seguro
 
       const moduloIdStr = l.moduloId ? String(l.moduloId) : null;
       const modDoc      = moduloIdStr ? modById.get(moduloIdStr) : null;
@@ -344,9 +337,7 @@ const actualizarEstadoDeCuenta = async (req, res) => {
       const profesionalIdStr = l.profesionalId ? String(l.profesionalId) : null;
       const profDoc          = profesionalIdStr ? profById.get(profesionalIdStr) : null;
       const profesionalNombre =
-        l.profesionalNombre ||
-        labelUsuario(profDoc) ||
-        undefined;
+        l.profesionalNombre || labelUsuario(profDoc) || undefined;
 
       const moduloNombre =
         l.moduloNombre ||
@@ -355,9 +346,11 @@ const actualizarEstadoDeCuenta = async (req, res) => {
         modDoc?.numero ||
         "";
 
-      const fechaBase = new Date(`${period}-01T00:00:00.000Z`);
+      const fechaCargo = new Date(`${period}-01T00:00:00.000Z`);
 
-      // CARGO (abono del módulo)
+      // 🔑 clave única por línea para respetar el índice {dni,areaId,moduloId,period,tipo,asigKey}
+      const asigKey = `${dni}-${areaId || "sinArea"}-${period}-${moduloIdStr || "sinModulo"}-${idx}`;
+
       docsToInsert.push({
         pacienteId: paciente._id,
         dni,
@@ -368,8 +361,9 @@ const actualizarEstadoDeCuenta = async (req, res) => {
         moduloNombre: moduloNombre || undefined,
 
         period,
+        asigKey,
         tipo: "CARGO",
-        fecha: fechaBase,
+        fecha: fechaCargo,
         monto: montoCargo,
         cantidad: Number(cant) || 1,
         profesional: profesionalNombre,
@@ -377,55 +371,7 @@ const actualizarEstadoDeCuenta = async (req, res) => {
         descripcion: `Cargo ${period} — ${moduloNombre || "Módulo"}`,
         estado: "PENDIENTE",
       });
-
-      // Pago particular (PADRES)
-      const pagoPadres = parseNumberLike(l.pagPadres, 0);
-      if (pagoPadres) {
-        const det = l.detPadres || "";
-        docsToInsert.push({
-          pacienteId: paciente._id,
-          dni,
-          areaId: areaId || undefined,
-          areaNombre: area?.nombre || l.areaNombre || undefined,
-
-          moduloId: modDoc?._id || moduloIdStr || undefined,
-          moduloNombre: moduloNombre || undefined,
-
-          period,
-          tipo: "PART",
-          fecha: fechaBase,
-          monto: pagoPadres,
-
-          descripcion: det || `Pago padres ${period} — ${moduloNombre || "Módulo"}`,
-          observaciones: det || undefined,
-          estado: "PAGADO",
-        });
-      }
-
-      // Pago obra social (OS)
-      const pagoOS = parseNumberLike(l.pagOS, 0);
-      if (pagoOS) {
-        const det = l.detOS || "";
-        docsToInsert.push({
-          pacienteId: paciente._id,
-          dni,
-          areaId: areaId || undefined,
-          areaNombre: area?.nombre || l.areaNombre || undefined,
-
-          moduloId: modDoc?._id || moduloIdStr || undefined,
-          moduloNombre: moduloNombre || undefined,
-
-          period,
-          tipo: "OS",
-          fecha: fechaBase,
-          monto: pagoOS,
-
-          descripcion: det || `Pago OS ${period} — ${moduloNombre || "Módulo"}`,
-          observaciones: det || undefined,
-          estado: "PAGADO",
-        });
-      }
-    }
+    });
 
     // ---- reconstruir FACTURAS desde facturas ----
     for (const f of facturasArr) {
@@ -457,7 +403,7 @@ const actualizarEstadoDeCuenta = async (req, res) => {
     }
 
     if (docsToInsert.length) {
-      await Movimiento.insertMany(docsToInsert, { ordered: true });
+      await Movimiento.insertMany(docsToInsert);
     }
 
     return res.json({
@@ -466,16 +412,10 @@ const actualizarEstadoDeCuenta = async (req, res) => {
     });
   } catch (err) {
     console.error("estado-de-cuenta PUT:", err);
-    const detalle =
-      err && err.code === 11000
-        ? "Movimiento duplicado: mismo mes, módulo y área. Revisá que no tengas dos líneas iguales."
-        : err.message;
-    res.status(500).json({
-      error: "No se pudo actualizar el estado de cuenta",
-      detail: detalle,
-    });
+    res.status(500).json({ error: "No se pudo actualizar el estado de cuenta" });
   }
 };
+
 
 
 // ----------------- POST /api/estado-de-cuenta/:dni/movimientos -----------------
