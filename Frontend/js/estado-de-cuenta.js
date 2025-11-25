@@ -1251,40 +1251,42 @@
           }
 
           // Guardar
-          const btnGuardar = popup.querySelector("#edcBtnGuardar");
-          if (btnGuardar) {
-            btnGuardar.addEventListener("click", async () => {
-              try {
-                const payload = {
-                  dni: paciente.dni,
-                  areaId: areaSel?.id || null,
-                  lineas,
-                  facturas,
-                };
+       // Guardar
+const btnGuardar = popup.querySelector("#edcBtnGuardar");
+if (btnGuardar) {
+  btnGuardar.addEventListener("click", async () => {
+    try {
+      const payload = {
+        dni: paciente.dni,
+        areaId: areaSel?.id || null,
+        lineas,
+        facturas,
+      };
 
-                await edcApiJson(
-                  `/estado-de-cuenta/${encodeURIComponent(paciente.dni)}`,
-                  {
-                    method: "PUT",
-                    body: JSON.stringify(payload),
-                  }
-                );
+      await edcApiJson(
+        `/estado-de-cuenta/${encodeURIComponent(paciente.dni)}`,
+        {
+          method: "PUT",
+          body: JSON.stringify(payload),
+        }
+      );
 
-                await Swal.fire({
-                  icon: "success",
-                  title: "Guardado",
-                  text: "Estado de cuenta actualizado.",
-                });
-              } catch (err) {
-                console.error(err);
-                await Swal.fire({
-                  icon: "error",
-                  title: "Error",
-                  text: "No se pudieron guardar los cambios.",
-                });
-              }
-            });
-          }
+      await Swal.fire({
+        icon: "success",
+        title: "Guardado",
+        text: "Estado de cuenta actualizado.",
+      });
+    } catch (err) {
+      console.error(err);
+      await Swal.fire({
+        icon: "error",
+        title: "Error",
+        text: "No se pudieron guardar los cambios.",
+      });
+    }
+  });
+}
+
 
           // PDF
           const btnPDF = popup.querySelector("#edcBtnDescargarPDF");
