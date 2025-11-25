@@ -266,9 +266,6 @@
     return [...modulos, ...eventosMarcados];
   }
 
-
-
-
   async function edcFetchUsuarios() {
     try {
       const data = await edcApiJson('/usuarios');
@@ -316,7 +313,7 @@
         const totalPagado = Number(
           (tot.pagadoOS || 0) +
           (tot.pagadoPART || 0) +
-          (tot.ajustesMas || 0) -
+          (tot.ajustesMas || 0) - 
           (tot.ajustesMenos || 0)
         );
         const saldo = Number(
@@ -451,860 +448,868 @@
   }
 
   // ==============================
-// Modal de detalle por área (Excel + editable + selects)
-// ==============================
-async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
-  try {
-    // Catálogos
-    const [AREAS, MODULOS_ALL, USUARIOS_ALL] = await Promise.all([
-      edcFetchAreas(),
-      edcFetchModulos(),
-      edcFetchUsuarios(),
-    ]);
+  // Modal de detalle por área (Excel + editable + selects)
+  // ==============================
+  async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
+    try {
+      // Catálogos
+      const [AREAS, MODULOS_ALL, USUARIOS_ALL] = await Promise.all([
+        edcFetchAreas(),
+        edcFetchModulos(),
+        edcFetchUsuarios(),
+      ]);
 
-    const areaId = areaSel && areaSel.id ? String(areaSel.id) : null;
-    const areaNombre = areaSel && areaSel.nombre ? String(areaSel.nombre) : null;
+      const areaId = areaSel && areaSel.id ? String(areaSel.id) : null;
+      const areaNombre = areaSel && areaSel.nombre ? String(areaSel.nombre) : null;
 
-    // Módulos filtrados por área (si se puede)
-    const MODULOS = MODULOS_ALL.filter((m) => {
-      if (!areaId && !areaNombre) return true;
+      // Módulos filtrados por área (si se puede)
+      const MODULOS = MODULOS_ALL.filter((m) => {
+        if (!areaId && !areaNombre) return true;
 
-      const mAreaId = m.areaId || (m.area && m.area._id) || m.area || null;
-      const mAreaNom =
-        m.areaNombre ||
-        (typeof m.area === "string" ? m.area : m.area && m.area.nombre) ||
-        "";
+        const mAreaId = m.areaId || (m.area && m.area._id) || m.area || null;
+        const mAreaNom =
+          m.areaNombre ||
+          (typeof m.area === "string" ? m.area : m.area && m.area.nombre) ||
+          "";
 
-      if (areaId && mAreaId && String(mAreaId) === areaId) return true;
-      if (
-        areaNombre &&
-        mAreaNom &&
-        mAreaNom.toLowerCase() === areaNombre.toLowerCase()
-      )
-        return true;
+        if (areaId && mAreaId && String(mAreaId) === areaId) return true;
+        if (
+          areaNombre &&
+          mAreaNom &&
+          mAreaNom.toLowerCase() === areaNombre.toLowerCase()
+        )
+          return true;
 
-      return !mAreaId && !mAreaNom;
-    });
+        return !mAreaId && !mAreaNom;
+      });
 
-    const moduloMap = {};
-    MODULOS.forEach((m) => (moduloMap[String(m._id)] = m));
+      const moduloMap = {};
+      MODULOS.forEach((m) => (moduloMap[String(m._id)] = m));
 
       // Profesionales por rol (Directoras, Coordinadores, Profesionales, Pasantes)
-    const PROFESIONALES = USUARIOS_ALL.filter((u) => {
-      const rol = (u.rol || "").trim();
+      const PROFESIONALES = USUARIOS_ALL.filter((u) => {
+        const rol = (u.rol || "").trim();
 
-      const esProfesional = rol === "Profesional" || rol === "Coordinador y profesional";
-      const esCoordinador = rol === "Coordinador de área" || rol === "Coordinador y profesional";
-      const esPasante     = rol === "Pasante";
-      const esDirectora   = rol === "Directoras";
+        const esProfesional = rol === "Profesional" || rol === "Coordinador y profesional";
+        const esCoordinador = rol === "Coordinador de área" || rol === "Coordinador y profesional";
+        const esPasante     = rol === "Pasante";
+        const esDirectora   = rol === "Directoras";
 
-      // Solo estos roles entran al select
-      if (!esProfesional && !esCoordinador && !esPasante && !esDirectora) return false;
+        // Solo estos roles entran al select
+        if (!esProfesional && !esCoordinador && !esPasante && !esDirectora) return false;
 
-      // Si no hay área seleccionada, mostramos todos estos roles
-      if (!areaId && !areaNombre) return true;
+        // Si no hay área seleccionada, mostramos todos estos roles
+        if (!areaId && !areaNombre) return true;
 
-      // Directora: siempre aparece en el select, sin filtrar por área
-      if (esDirectora) return true;
+        // Directora: siempre aparece en el select, sin filtrar por área
+        if (esDirectora) return true;
 
-      const wantedId   = areaId ? String(areaId) : null;
-      const wantedName = areaNombre
-        ? areaNombre
+        const wantedId   = areaId ? String(areaId) : null;
+        const wantedName = areaNombre
+          ? areaNombre
+              .toLowerCase()
+              .normalize("NFD")
+              .replace(/[\u0300-\u036f]/g, "")
+          : null;
+
+        const norm = (s) =>
+          String(s || "")
             .toLowerCase()
             .normalize("NFD")
-            .replace(/[\u0300-\u036f]/g, "")
-        : null;
+            .replace(/[\u0300-\u036f]/g, "");
 
-      const norm = (s) =>
-        String(s || "")
-          .toLowerCase()
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "");
+        let ok = false;
 
-      let ok = false;
+        // Profesionales: áreasProfesional
+        if (esProfesional && Array.isArray(u.areasProfesional)) {
+          u.areasProfesional.forEach((a) => {
+            if (!a) return;
+            if (wantedId && a.areaId && String(a.areaId) === wantedId) ok = true;
+            if (wantedName && a.areaNombre && norm(a.areaNombre) === wantedName) ok = true;
+          });
+        }
 
-      // Profesionales: áreasProfesional
-      if (esProfesional && Array.isArray(u.areasProfesional)) {
-        u.areasProfesional.forEach((a) => {
-          if (!a) return;
+        // Coordinadores: áreasCoordinadas
+        if (esCoordinador && Array.isArray(u.areasCoordinadas)) {
+          u.areasCoordinadas.forEach((a) => {
+            if (!a) return;
+            if (wantedId && a.areaId && String(a.areaId) === wantedId) ok = true;
+            if (wantedName && a.areaNombre && norm(a.areaNombre) === wantedName) ok = true;
+          });
+        }
+
+        // Pasante: pasanteArea
+        if (esPasante && u.pasanteArea) {
+          const a = u.pasanteArea;
           if (wantedId && a.areaId && String(a.areaId) === wantedId) ok = true;
           if (wantedName && a.areaNombre && norm(a.areaNombre) === wantedName) ok = true;
-        });
-      }
-
-      // Coordinadores: áreasCoordinadas
-      if (esCoordinador && Array.isArray(u.areasCoordinadas)) {
-        u.areasCoordinadas.forEach((a) => {
-          if (!a) return;
-          if (wantedId && a.areaId && String(a.areaId) === wantedId) ok = true;
-          if (wantedName && a.areaNombre && norm(a.areaNombre) === wantedName) ok = true;
-        });
-      }
-
-      // Pasante: pasanteArea
-      if (esPasante && u.pasanteArea) {
-        const a = u.pasanteArea;
-        if (wantedId && a.areaId && String(a.areaId) === wantedId) ok = true;
-        if (wantedName && a.areaNombre && norm(a.areaNombre) === wantedName) ok = true;
-      }
-
-      return ok;
-    });
-
-    const profMap = {};
-    PROFESIONALES.forEach((p) => (profMap[String(p._id)] = p));
-
-
-    // ================== Datos de estado de cuenta ==================
-    let path = `/estado-de-cuenta/${paciente.dni}`;
-    const qs = [];
-    if (areaSel && areaSel.id) qs.push(`areaId=${encodeURIComponent(areaSel.id)}`);
-    if (areaSel && areaSel.nombre)
-      qs.push(`areaNombre=${encodeURIComponent(areaSel.nombre)}`);
-    if (qs.length) path += `?${qs.join("&")}`;
-
-    const data = await edcApiJson(path);
-
-    const filas = Array.isArray(data.filas) ? data.filas : [];
-    const movimientos = Array.isArray(data.movimientos) ? data.movimientos : [];
-    const facturasRaw = Array.isArray(data.facturas) ? data.facturas : [];
-
-    // ================== Mapear pagos PART / OS por mes + módulo ==================
-    const pagosMap = {};
-    movimientos.forEach((m) => {
-      const tipo = m.tipo;
-      if (tipo !== "PART" && tipo !== "OS") return;
-
-      const mes = m.period || m.periodo || m.mes || "";
-      const modId = m.moduloId ? String(m.moduloId) : "";
-      const clave = `${mes}|${modId}`;
-
-      if (!pagosMap[clave]) {
-        pagosMap[clave] = {
-          padres: 0,
-          os: 0,
-          detPadres: "",
-          detOS: "",
-        };
-      }
-
-      const monto = Number(m.monto || 0) || 0;
-      const obs = m.descripcion || m.observaciones || "";
-
-      if (tipo === "PART") {
-        pagosMap[clave].padres += monto;
-        if (obs) {
-          pagosMap[clave].detPadres = pagosMap[clave].detPadres
-            ? `${pagosMap[clave].detPadres} | ${obs}`
-            : obs;
         }
-      } else if (tipo === "OS") {
-        pagosMap[clave].os += monto;
-        if (obs) {
-          pagosMap[clave].detOS = pagosMap[clave].detOS
-            ? `${pagosMap[clave].detOS} | ${obs}`
-            : obs;
+
+        return ok;
+      });
+
+      const profMap = {};
+      PROFESIONALES.forEach((p) => (profMap[String(p._id)] = p));
+
+      // ================== Datos de estado de cuenta ==================
+      let path = `/estado-de-cuenta/${paciente.dni}`;
+      const qs = [];
+      if (areaSel && areaSel.id) qs.push(`areaId=${encodeURIComponent(areaSel.id)}`);
+      if (areaSel && areaSel.nombre)
+        qs.push(`areaNombre=${encodeURIComponent(areaSel.nombre)}`);
+      if (qs.length) path += `?${qs.join("&")}`;
+
+      const data = await edcApiJson(path);
+
+      const filas = Array.isArray(data.filas) ? data.filas : [];
+      const movimientos = Array.isArray(data.movimientos) ? data.movimientos : [];
+      const facturasRaw = Array.isArray(data.facturas) ? data.facturas : [];
+
+      // ================== Mapear pagos PART / OS por mes + módulo ==================
+      const pagosMap = {};
+      movimientos.forEach((m) => {
+        const tipo = m.tipo;
+        if (tipo !== "PART" && tipo !== "OS") return;
+
+        const mes = m.period || m.periodo || m.mes || "";
+        const modId = m.moduloId ? String(m.moduloId) : "";
+        const clave = `${mes}|${modId}`;
+
+        if (!pagosMap[clave]) {
+          pagosMap[clave] = {
+            padres: 0,
+            os: 0,
+            detPadres: "",
+            detOS: "",
+          };
         }
-      }
-    });
 
-    // ================== Normalizar líneas (solo CARGOS) ==================
-    const baseLineas = filas.length
-      ? filas
-      : movimientos.filter((m) => m.tipo === "CARGO");
+        const monto = Number(m.monto || 0) || 0;
+        const obs = m.descripcion || m.observaciones || "";
 
-    let lineas = baseLineas.map((f) => {
-      const mes = f.mes || f.periodo || f.period || "";
-      const cantidad = f.cantidad ?? f.cant ?? 1;
+        if (tipo === "PART") {
+          pagosMap[clave].padres += monto;
+          if (obs) {
+            pagosMap[clave].detPadres = pagosMap[clave].detPadres
+              ? `${pagosMap[clave].detPadres} | ${obs}`
+              : obs;
+          }
+        } else if (tipo === "OS") {
+          pagosMap[clave].os += monto;
+          if (obs) {
+            pagosMap[clave].detOS = pagosMap[clave].detOS
+              ? `${pagosMap[clave].detOS} | ${obs}`
+              : obs;
+          }
+        }
+      });
 
-      const moduloNombre = f.moduloNombre || f.modulo || f.moduloNumero || "";
-      const moduloIdCrudo =
-        f.moduloId ||
-        f.moduloIdMongo ||
-        (typeof f.modulo === "string" &&
-        /^[0-9a-fA-F]{24}$/.test(f.modulo)
-          ? f.modulo
-          : null);
+      // ================== Normalizar líneas (solo CARGOS) ==================
+      const baseLineas = filas.length
+        ? filas
+        : movimientos.filter((m) => m.tipo === "CARGO");
 
-      let moduloId = moduloIdCrudo || "";
-      let moduloRef = moduloId ? moduloMap[String(moduloId)] : null;
+      let lineas = baseLineas.map((f) => {
+        const mes = f.mes || f.periodo || f.period || "";
+        const cantidad = f.cantidad ?? f.cant ?? 1;
 
-      if (!moduloRef && moduloNombre) {
-        moduloRef = MODULOS.find(
-          (m) =>
-            (m.nombre || m.codigo || m.titulo || "").toLowerCase() ===
-            String(moduloNombre).toLowerCase()
+        const moduloNombre = f.moduloNombre || f.modulo || f.moduloNumero || "";
+        const moduloIdCrudo =
+          f.moduloId ||
+          f.moduloIdMongo ||
+          (typeof f.modulo === "string" &&
+          /^[0-9a-fA-F]{24}$/.test(f.modulo)
+            ? f.modulo
+            : null);
+
+        let moduloId = moduloIdCrudo || "";
+        let moduloRef = moduloId ? moduloMap[String(moduloId)] : null;
+
+        if (!moduloRef && moduloNombre) {
+          moduloRef = MODULOS.find(
+            (m) =>
+              (m.nombre || m.codigo || m.titulo || "").toLowerCase() ===
+              String(moduloNombre).toLowerCase()
+          );
+          if (moduloRef) moduloId = String(moduloRef._id);
+        }
+
+        const precioModulo =
+          (moduloRef &&
+            Number(
+              moduloRef.valorPadres ??
+                moduloRef.valorModulo ??
+                moduloRef.precioModulo ??
+                moduloRef.precio ??
+                0
+            )) ||
+          Number(f.valorPadres || f.precioModulo || f.valorModulo || 0);
+
+        const aPagar = Number(
+          f.aPagar != null
+            ? f.aPagar
+            : precioModulo
+            ? precioModulo * (Number(cantidad) || 0)
+            : f.monto || 0
         );
-        if (moduloRef) moduloId = String(moduloRef._id);
-      }
 
-      const precioModulo =
-        (moduloRef &&
-          Number(
-            moduloRef.valorPadres ??
-              moduloRef.valorModulo ??
-              moduloRef.precioModulo ??
-              moduloRef.precio ??
-              0
-          )) ||
-        Number(f.valorPadres || f.precioModulo || f.valorModulo || 0);
+        const clavePagos = `${mes}|${moduloId || ""}`;
+        const pagos = pagosMap[clavePagos] || {};
 
-      const aPagar = Number(
-        f.aPagar != null
-          ? f.aPagar
-          : precioModulo
-          ? precioModulo * (Number(cantidad) || 0)
-          : f.monto || 0
-      );
+        // Si la fila ya trae los campos, usamos esos. Si no, usamos el map de pagos.
+        const pagPadres =
+          f.pagPadres != null || f.pagadoPadres != null
+            ? Number(f.pagPadres || f.pagadoPadres || 0)
+            : Number(pagos.padres || 0);
 
-      const clavePagos = `${mes}|${moduloId || ""}`;
-      const pagos = pagosMap[clavePagos] || {};
+        const pagOS =
+          f.pagOS != null || f.pagadoOS != null
+            ? Number(f.pagOS || f.pagadoOS || 0)
+            : Number(pagos.os || 0);
 
-      // Si la fila ya trae los campos, usamos esos. Si no, usamos el map de pagos.
-      const pagPadres =
-        f.pagPadres != null || f.pagadoPadres != null
-          ? Number(f.pagPadres || f.pagadoPadres || 0)
-          : Number(pagos.padres || 0);
+        const detPadres =
+          f.detPadres ||
+          f.detallePadres ||
+          f.observaciones ||
+          pagos.detPadres ||
+          "";
 
-      const pagOS =
-        f.pagOS != null || f.pagadoOS != null
-          ? Number(f.pagOS || f.pagadoOS || 0)
-          : Number(pagos.os || 0);
+        const detOS =
+          f.detOS ||
+          f.detalleOS ||
+          f.observacionOS ||
+          pagos.detOS ||
+          "";
 
-      const detPadres =
-        f.detPadres ||
-        f.detallePadres ||
-        f.observaciones ||
-        pagos.detPadres ||
-        "";
+        const profNombre =
+          f.profesional ||
+          (f.profesionales &&
+            (f.profesionales.profesional?.[0] ||
+              f.profesionales.coordinador?.[0] ||
+              f.profesionales.pasante?.[0] ||
+              f.profesionales.directora?.[0])) ||
+          "";
 
-      const detOS =
-        f.detOS ||
-        f.detalleOS ||
-        f.observacionOS ||
-        pagos.detOS ||
-        "";
+        let profId = f.profesionalId || "";
 
-      const profNombre =
-        f.profesional ||
-        (f.profesionales &&
-          (f.profesionales.profesional?.[0] ||
-            f.profesionales.coordinador?.[0] ||
-            f.profesionales.pasante?.[0] ||
-            f.profesionales.directora?.[0])) ||
-        "";
-
-      let profId = f.profesionalId || "";
-
-      if (!profId && profNombre) {
-        const found = PROFESIONALES.find((p) => {
-          const nom =
-            p.nombreApellido || p.nombreCompleto || p.nombre || "";
-          return nom.toLowerCase() === profNombre.toLowerCase();
-        });
-        if (found) profId = String(found._id);
-      }
-
-      return {
-        mes,
-        cantidad: Number(cantidad) || 0,
-        moduloId,
-        moduloNombre,
-        profesionalId: profId,
-        profesionalNombre: profNombre,
-        precioModulo,
-        aPagar,
-        pagPadres,
-        detPadres,
-        pagOS,
-        detOS,
-      };
-    });
-
-    // ================== Normalizar facturas ==================
-    let facturas = facturasRaw.map((f) => {
-      const mes =
-        f.mes ||
-        f.periodo ||
-        (f.fecha ? new Date(f.fecha).toISOString().slice(0, 7) : "");
-      const fecha = f.fecha
-        ? new Date(f.fecha).toISOString().slice(0, 10)
-        : "";
-      const nro = f.numero || f.nro || f.nFactura || "";
-      const monto = Number(f.monto || f.total || 0);
-      const detalle = f.detalle || f.descripcion || f.observacion || "";
-
-      return { mes, nro, monto, detalle, fecha };
-    });
-
-    if (!facturas.length) {
-      facturas.push({
-        mes: "",
-        nro: "",
-        monto: 0,
-        detalle: "",
-        fecha: "",
-      });
-    }
-
-    const calcTotales = () => {
-      lineas = lineas.map((l) => {
-        if (l.precioModulo && !isNaN(l.precioModulo)) {
-          const cant = Number(l.cantidad) || 0;
-          l.aPagar = l.precioModulo * cant;
+        if (!profId && profNombre) {
+          const found = PROFESIONALES.find((p) => {
+            const nom =
+              p.nombreApellido || p.nombreCompleto || p.nombre || "";
+            return nom.toLowerCase() === profNombre.toLowerCase();
+          });
+          if (found) profId = String(found._id);
         }
-        return l;
+
+        return {
+          mes,
+          cantidad: Number(cantidad) || 0,
+          moduloId,
+          moduloNombre,
+          profesionalId: profId,
+          profesionalNombre: profNombre,
+          precioModulo,
+          aPagar,
+          pagPadres,
+          detPadres,
+          pagOS,
+          detOS,
+        };
       });
 
-      const totalAPagar = lineas.reduce(
-        (acc, l) => acc + (Number(l.aPagar) || 0),
-        0
-      );
-      const totalPagado = lineas.reduce(
-        (acc, l) =>
-          acc + (Number(l.pagPadres) || 0) + (Number(l.pagOS) || 0),
-        0
-      );
-      const totalFacturado = facturas.reduce(
-        (acc, f) => acc + (Number(f.monto) || 0),
-        0
-      );
+      // ================== Normalizar facturas ==================
+      let facturas = facturasRaw.map((f) => {
+        const mes =
+          f.mes ||
+          f.periodo ||
+          (f.fecha ? new Date(f.fecha).toISOString().slice(0, 7) : "");
+        const fecha = f.fecha
+          ? new Date(f.fecha).toISOString().slice(0, 10)
+          : "";
+        const nro = f.numero || f.nro || f.nFactura || "";
+        const monto = Number(f.monto || f.total || 0);
+        const detalle = f.detalle || f.descripcion || f.observacion || "";
 
-      const difFactPag = totalFacturado - totalPagado;
-      const saldoRestante = totalAPagar - totalPagado;
+        return { mes, nro, monto, detalle, fecha };
+      });
 
-      return { totalAPagar, totalPagado, totalFacturado, difFactPag, saldoRestante };
-    };
+      if (!facturas.length) {
+        facturas.push({
+          mes: "",
+          nro: "",
+          monto: 0,
+          detalle: "",
+          fecha: "",
+        });
+      }
 
-    const areaNombreActual =
-      (areaSel && areaSel.nombre) || "Todas las áreas";
+      const calcTotales = () => {
+        lineas = lineas.map((l) => {
+          if (l.precioModulo && !isNaN(l.precioModulo)) {
+            const cant = Number(l.cantidad) || 0;
+            l.aPagar = l.precioModulo * cant;
+          }
+          return l;
+        });
 
-    const areaColor = (() => {
-      const n = (areaNombreActual || "").toLowerCase();
-      const nNorm = n.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      if (nNorm.includes("psicoped")) return "#8b3ffc";
-      if (nNorm.includes("fono")) return "#7fbf32";
-      if (nNorm.includes("terapia ocup")) return "#ff3b30";
-      if (nNorm.includes("atencion temprana")) return "#00c9d6";
-      if (nNorm.includes("abordaje integral") || nNorm.includes("discapacidad"))
-        return "#2457ff";
-      if (nNorm.includes("habilidades sociales")) return "#ffd800";
-      return "#7fbf32";
-    })();
+        const totalAPagar = lineas.reduce(
+          (acc, l) => acc + (Number(l.aPagar) || 0),
+          0
+        );
+        const totalPagado = lineas.reduce(
+          (acc, l) =>
+            acc + (Number(l.pagPadres) || 0) + (Number(l.pagOS) || 0),
+          0
+        );
+        const totalFacturado = facturas.reduce(
+          (acc, f) => acc + (Number(f.monto) || 0),
+          0
+        );
 
-    const areaOptionsHtml = [
-      `<option value="">(Todas las áreas)</option>`,
-      ...AREAS.map(
-        (a) =>
-          `<option value="${a._id}" ${
-            areaSel && String(areaSel.id) === String(a._id) ? "selected" : ""
-          }>${a.nombre}</option>`
-      ),
-    ].join("");
+        const difFactPag = totalFacturado - totalPagado;
+        const saldoRestante = totalAPagar - totalPagado;
 
-    const html = `
-      <div id="edcModalRoot" style="text-align:left;font-family:'Segoe UI',sans-serif;">
-        <div style="margin-bottom:8px; display:flex; align-items:center; gap:8px;">
-          <strong>Área:</strong>
-          <select id="edcAreaSelectModal" style="padding:4px 6px; border-radius:6px; border:1px solid #bbb; min-width:220px;">
-            ${areaOptionsHtml}
-          </select>
-        </div>
+        return { totalAPagar, totalPagado, totalFacturado, difFactPag, saldoRestante };
+      };
 
-        <h3 id="edcTituloArea" style="margin:0 0 6px 0; color:${areaColor};">
-          ${paciente.nombre} — ${areaNombreActual}
-        </h3>
+      const areaNombreActual =
+        (areaSel && areaSel.nombre) || "Todas las áreas";
 
-        <div style="
-          background:${areaColor};
-          color:#fff;
-          padding:4px 10px;
-          font-weight:600;
-          border-radius:6px 6px 0 0;
-        ">
-          AREA: ${areaNombreActual.toUpperCase()}
-        </div>
+      const areaColor = (() => {
+        const n = (areaNombreActual || "").toLowerCase();
+        const nNorm = n.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        if (nNorm.includes("psicoped")) return "#8b3ffc";
+        if (nNorm.includes("fono")) return "#7fbf32";
+        if (nNorm.includes("terapia ocup")) return "#ff3b30";
+        if (nNorm.includes("atencion temprana")) return "#00c9d6";
+        if (nNorm.includes("abordaje integral") || nNorm.includes("discapacidad"))
+          return "#2457ff";
+        if (nNorm.includes("habilidades sociales")) return "#ffd800";
+        return "#7fbf32";
+      })();
 
-        <div style="
-          border:1px solid ${areaColor};
-          border-top:none;
-          border-radius:0 0 6px 6px;
-          padding:8px;
-          background:#f8fff4;
-          overflow-x:auto;
-        ">
+      const areaOptionsHtml = [
+        `<option value="">(Todas las áreas)</option>`,
+        ...AREAS.map(
+          (a) =>
+            `<option value="${a._id}" ${
+              areaSel && String(areaSel.id) === String(a._id) ? "selected" : ""
+            }>${a.nombre}</option>`
+        ),
+      ].join("");
+
+      const html = `
+        <div id="edcModalRoot" style="text-align:left;font-family:'Segoe UI',sans-serif;">
+          <div style="margin-bottom:8px; display:flex; align-items:center; gap:8px;">
+            <strong>Área:</strong>
+            <select id="edcAreaSelectModal" style="padding:4px 6px; border-radius:6px; border:1px solid #bbb; min-width:220px;">
+              ${areaOptionsHtml}
+            </select>
+          </div>
+
+          <h3 id="edcTituloArea" style="margin:0 0 6px 0; color:${areaColor};">
+            ${paciente.nombre} — ${areaNombreActual}
+          </h3>
+
           <div style="
-            display:flex;
-            flex-direction:row;
-            flex-wrap:nowrap;
-            gap:10px;
-            width:max-content;
+            background:${areaColor};
+            color:#fff;
+            padding:4px 10px;
+            font-weight:600;
+            border-radius:6px 6px 0 0;
           ">
+            AREA: ${areaNombreActual.toUpperCase()}
+          </div>
 
-            <div style="flex:0 0 auto; min-width:900px;">
-              <table class="edc-table">
-                <thead>
-                  <tr class="edc-th">
-                    <th class="edc-col-mes">MES</th>
-                    <th class="edc-col-cant">CANT</th>
-                    <th class="edc-col-mod">CÓDIGO / MÓDULO</th>
-                    <th class="edc-col-prof">PROFESIONAL</th>
-                    <th class="edc-col-apag">A PAGAR</th>
-                    <th class="edc-col-pag">PAGADO POR PADRES</th>
-                    <th class="edc-col-obs">DETALLE</th>
-                    <th class="edc-col-pag">PAGADO POR O.S</th>
-                    <th class="edc-col-obs">DETALLE</th>
-                  </tr>
-                </thead>
-                <tbody id="edcBodyLineas"></tbody>
-                <tfoot id="edcFootLineas"></tfoot>
-              </table>
-              <button id="edcBtnAddLinea" class="swal2-confirm swal2-styled" style="margin-top:6px;background:#6c5ce7;">
-                + Agregar línea
-              </button>
-            </div>
+          <div style="
+            border:1px solid ${areaColor};
+            border-top:none;
+            border-radius:0 0 6px 6px;
+            padding:8px;
+            background:#f8fff4;
+            overflow-x:auto;
+          ">
+            <div style="
+              display:flex;
+              flex-direction:row;
+              flex-wrap:nowrap;
+              gap:10px;
+              width:max-content;
+            ">
 
-            <div style="flex:0 0 auto; min-width:520px;">
-              <div style="background:${areaColor};color:#fff;padding:4px 6px;font-weight:600;margin-bottom:4px;">
-                FACTURAS
+              <div style="flex:0 0 auto; min-width:900px;">
+                <table class="edc-table">
+                  <thead>
+                    <tr class="edc-th">
+                      <th class="edc-col-mes">MES</th>
+                      <th class="edc-col-cant">CANT</th>
+                      <th class="edc-col-mod">CÓDIGO / MÓDULO</th>
+                      <th class="edc-col-prof">PROFESIONAL</th>
+                      <th class="edc-col-apag">A PAGAR</th>
+                      <th class="edc-col-pag">PAGADO POR PADRES</th>
+                      <th class="edc-col-obs">DETALLE</th>
+                      <th class="edc-col-pag">PAGADO POR O.S</th>
+                      <th class="edc-col-obs">DETALLE</th>
+                    </tr>
+                  </thead>
+                  <tbody id="edcBodyLineas"></tbody>
+                  <tfoot id="edcFootLineas"></tfoot>
+                </table>
+                <button id="edcBtnAddLinea" class="swal2-confirm swal2-styled" style="margin-top:6px;background:#6c5ce7;">
+                  + Agregar línea
+                </button>
               </div>
-              <table class="edc-table">
-                <thead>
-                  <tr class="edc-th">
-                    <th class="edc-col-mes">MES</th>
-                    <th style="min-width:70px;">N° FACT.</th>
-                    <th class="edc-col-apag">MONTO</th>
-                    <th class="edc-col-obs">DETALLE</th>
-                    <th class="edc-col-mes">FECHA PAGO</th>
-                  </tr>
-                </thead>
-                <tbody id="edcBodyFacturas"></tbody>
-                <tfoot id="edcFootFacturas"></tfoot>
-              </table>
-              <button id="edcBtnAddFactura" class="swal2-confirm swal2-styled" style="margin-top:6px;background:#6c5ce7;">
-                + Agregar factura
-              </button>
-            </div>
 
+              <div style="flex:0 0 auto; min-width:520px;">
+                <div style="background:${areaColor};color:#fff;padding:4px 6px;font-weight:600;margin-bottom:4px;">
+                  FACTURAS
+                </div>
+                <table class="edc-table">
+                  <thead>
+                    <tr class="edc-th">
+                      <th class="edc-col-mes">MES</th>
+                      <th style="min-width:70px;">N° FACT.</th>
+                      <th class="edc-col-apag">MONTO</th>
+                      <th class="edc-col-obs">DETALLE</th>
+                      <th class="edc-col-mes">FECHA PAGO</th>
+                    </tr>
+                  </thead>
+                  <tbody id="edcBodyFacturas"></tbody>
+                  <tfoot id="edcFootFacturas"></tfoot>
+                </table>
+                <button id="edcBtnAddFactura" class="swal2-confirm swal2-styled" style="margin-top:6px;background:#6c5ce7;">
+                  + Agregar factura
+                </button>
+              </div>
+
+            </div>
+          </div>
+
+          <div id="edcResumenDif" style="margin-top:8px;padding:6px 8px;border-radius:6px;background:#fffbea;border:1px solid #f0c36d;">
+          </div>
+
+          <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:10px;">
+            <button id="edcBtnGuardar"
+                    class="swal2-confirm swal2-styled"
+                    style="background:#00a86b;">
+              Guardar cambios
+            </button>
+            <button id="edcBtnDescargarPDF"
+                    class="swal2-confirm swal2-styled"
+                    style="background:#6c5ce7;">
+              Descargar PDF
+            </button>
           </div>
         </div>
+      `;
 
-        <div id="edcResumenDif" style="margin-top:8px;padding:6px 8px;border-radius:6px;background:#fffbea;border:1px solid #f0c36d;">
-        </div>
+      // ================== Mostrar modal ==================
+      await Swal.fire({
+        title: "Estado de cuenta",
+        html,
+        showCloseButton: true,
+        confirmButtonText: "Cerrar",
+        grow: "fullscreen",
+        width: "100%",
+        padding: 0,
+        didOpen: (popup) => {
+          const root = popup.querySelector("#edcModalRoot");
+          const tbodyLin = popup.querySelector("#edcBodyLineas");
+          const tfootLin = popup.querySelector("#edcFootLineas");
+          const tbodyFac = popup.querySelector("#edcBodyFacturas");
+          const tfootFac = popup.querySelector("#edcFootFacturas");
+          const resumenDif = popup.querySelector("#edcResumenDif");
+          const tituloEl = popup.querySelector("#edcTituloArea");
+          const btnAddLinea = popup.querySelector("#edcBtnAddLinea");
 
-        <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:10px;">
-          <button id="edcBtnGuardar"
-                  class="swal2-confirm swal2-styled"
-                  style="background:#00a86b;">
-            Guardar cambios
-          </button>
-          <button id="edcBtnDescargarPDF"
-                  class="swal2-confirm swal2-styled"
-                  style="background:#6c5ce7;">
-            Descargar PDF
-          </button>
-        </div>
-      </div>
-    `;
-
-    // ================== Mostrar modal ==================
-    await Swal.fire({
-      title: "Estado de cuenta",
-      html,
-      showCloseButton: true,
-      confirmButtonText: "Cerrar",
-      grow: "fullscreen",
-      width: "100%",
-      padding: 0,
-      didOpen: (popup) => {
-        const root = popup.querySelector("#edcModalRoot");
-        const tbodyLin = popup.querySelector("#edcBodyLineas");
-        const tfootLin = popup.querySelector("#edcFootLineas");
-        const tbodyFac = popup.querySelector("#edcBodyFacturas");
-        const tfootFac = popup.querySelector("#edcFootFacturas");
-        const resumenDif = popup.querySelector("#edcResumenDif");
-        const tituloEl = popup.querySelector("#edcTituloArea");
-        const btnAddLinea = popup.querySelector("#edcBtnAddLinea");
-
-        const safeNum = (v) => {
-          if (v === "" || v === null || v === undefined) return 0;
-          const n = Number(String(v).replace(",", "."));
-          return isNaN(n) ? 0 : n;
-        };
-
-        const esEventoEspecial = (m) => {
-          if (!m || typeof m !== "object") return false;
-          if (m.esEspecial || m.esEventoEspecial || m.eventoEspecial) return true;
-          const tipo = (m.tipo || "").toLowerCase();
-          const cat = (m.categoria || m.clase || "").toLowerCase();
-          const nom = (m.nombre || "").toLowerCase();
-          return (
-            tipo.includes("evento") ||
-            cat.includes("evento") ||
-            nom.includes("evento")
-          );
-        };
-
-        const render = () => {
-          const { totalAPagar, totalPagado, totalFacturado, difFactPag, saldoRestante } =
-            calcTotales();
-
-          const buildModuloOptions = (selId) => {
-            const normales = MODULOS.filter((m) => !esEventoEspecial(m));
-            const especiales = MODULOS.filter(esEventoEspecial);
-
-            let html = `<option value="">(Elegir módulo / evento)</option>`;
-
-            if (normales.length) {
-              html += `<optgroup label="Módulos mensuales">`;
-              html += normales
-                .map((m) => {
-                  const text =
-                    m.nombre || `${m.numero || ""} ${m.descripcion || ""}`.trim();
-                  const id = String(m._id);
-                  return `<option value="${id}" ${
-                    selId === id ? "selected" : ""
-                  }>${text}</option>`;
-                })
-                .join("");
-              html += `</optgroup>`;
-            }
-
-            if (especiales.length) {
-              html += `<optgroup label="Eventos especiales">`;
-              html += especiales
-                .map((m) => {
-                  const text =
-                    m.nombre || `${m.numero || ""} ${m.descripcion || ""}`.trim();
-                  const id = String(m._id);
-                  return `<option value="${id}" ${
-                    selId === id ? "selected" : ""
-                  }>${text}</option>`;
-                })
-                .join("");
-              html += `</optgroup>`;
-            }
-
-            return html;
+          const safeNum = (v) => {
+            if (v === "" || v === null || v === undefined) return 0;
+            const n = Number(String(v).replace(",", "."));
+            return isNaN(n) ? 0 : n;
           };
 
-          const buildProfOptions = (selId) =>
-            [
-              `<option value="">(Elegir profesional)</option>`,
-              ...PROFESIONALES.map((p) => {
-                const txt =
-                  p.nombreApellido ||
-                  p.nombreCompleto ||
-                  p.nombre ||
-                  "";
-                const id = String(p._id);
-                return `<option value="${id}" ${
-                  selId === id ? "selected" : ""
-                }>${txt}</option>`;
-              }),
-            ].join("");
+          const esEventoEspecial = (m) => {
+            if (!m || typeof m !== "object") return false;
+            if (m.esEspecial || m.esEventoEspecial || m.eventoEspecial) return true;
+            const tipo = (m.tipo || "").toLowerCase();
+            const cat = (m.categoria || m.clase || "").toLowerCase();
+            const nom = (m.nombre || "").toLowerCase();
+            return (
+              tipo.includes("evento") ||
+              cat.includes("evento") ||
+              nom.includes("evento")
+            );
+          };
 
-          if (tituloEl) {
-            tituloEl.innerHTML = `
-              ${paciente.nombre} — ${areaNombreActual}
-              <span style="float:right;font-weight:600;">Saldo: ${fmtARS(saldoRestante)}</span>
-            `;
-          }
+          const render = () => {
+            const { totalAPagar, totalPagado, totalFacturado, difFactPag, saldoRestante } =
+              calcTotales();
 
-          // LÍNEAS
-          tbodyLin.innerHTML = lineas
-            .map((r, idx) => {
-              const selMod = r.moduloId ? String(r.moduloId) : "";
-              const selProf = r.profesionalId ? String(r.profesionalId) : "";
-              const vCant = Number(r.cantidad) || 0;
+            const buildModuloOptions = (selId) => {
+              const normales = MODULOS.filter((m) => !esEventoEspecial(m));
+              const especiales = MODULOS.filter(esEventoEspecial);
 
-              return `
-                <tr>
-                  <td class="edc-col-mes">
-                    <input type="month" data-idx="${idx}" data-field="mes"
-                      class="edc-input-linea" style="width:110px;" value="${r.mes || ""}">
-                  </td>
-                  <td class="edc-col-cant">
-                    <select data-idx="${idx}" data-field="cantidad" class="edc-input-linea" style="width:80px;">
-                      <option value="1" ${vCant === 1 ? "selected" : ""}>1</option>
-                      <option value="0.3333" ${vCant === 0.3333 ? "selected" : ""}>1/3</option>
-                      <option value="0.5" ${vCant === 0.5 ? "selected" : ""}>1/2</option>
-                      <option value="0.25" ${vCant === 0.25 ? "selected" : ""}>1/4</option>
-                    </select>
-                  </td>
-                  <td class="edc-col-mod">
-                    <select data-idx="${idx}" data-field="moduloId" class="edc-input-linea">
-                      ${buildModuloOptions(selMod)}
-                    </select>
-                  </td>
-                  <td class="edc-col-prof">
-                    <select data-idx="${idx}" data-field="profesionalId" class="edc-input-linea">
-                      ${buildProfOptions(selProf)}
-                    </select>
-                  </td>
-                  <td class="edc-col-apag">${fmtARS(r.aPagar)}</td>
-                  <td class="edc-col-pag">
-                    <input data-idx="${idx}" data-field="pagPadres"
-                      class="edc-input-linea" style="width:100px;text-align:right;"
-                      value="${r.pagPadres}">
-                  </td>
-                  <td class="edc-col-obs">
-                    <input data-idx="${idx}" data-field="detPadres"
-                      class="edc-input-linea" style="width:100%;" value="${r.detPadres || ""}">
-                  </td>
-                  <td class="edc-col-pag">
-                    <input data-idx="${idx}" data-field="pagOS"
-                      class="edc-input-linea" style="width:100px;text-align:right;"
-                      value="${r.pagOS}">
-                  </td>
-                  <td class="edc-col-obs">
-                    <input data-idx="${idx}" data-field="detOS"
-                      class="edc-input-linea" style="width:100%;" value="${r.detOS || ""}">
-                  </td>
-                </tr>
+              let html = `<option value="">(Elegir módulo / evento)</option>`;
+
+              if (normales.length) {
+                html += `<optgroup label="Módulos mensuales">`;
+                html += normales
+                  .map((m) => {
+                    const text =
+                      m.nombre || `${m.numero || ""} ${m.descripcion || ""}`.trim();
+                    const id = String(m._id);
+                    return `<option value="${id}" ${
+                      selId === id ? "selected" : ""
+                    }>${text}</option>`;
+                  })
+                  .join("");
+                html += `</optgroup>`;
+              }
+
+              if (especiales.length) {
+                html += `<optgroup label="Eventos especiales">`;
+                html += especiales
+                  .map((m) => {
+                    const text =
+                      m.nombre || `${m.numero || ""} ${m.descripcion || ""}`.trim();
+                    const id = String(m._id);
+                    return `<option value="${id}" ${
+                      selId === id ? "selected" : ""
+                    }>${text}</option>`;
+                  })
+                  .join("");
+                html += `</optgroup>`;
+              }
+
+              return html;
+            };
+
+            // 👇 mantiene el profesional ya asignado aunque no entre en el filtro por área
+            const buildProfOptions = (selId, selNombre) => {
+              const selKey = selId ? String(selId) : "";
+              const base = [...PROFESIONALES];
+
+              // Si la línea ya tiene un profesional que no está en la lista filtrada,
+              // lo agregamos como opción extra para no perderlo.
+              if (selKey && !profMap[selKey]) {
+                base.unshift({
+                  _id: selKey,
+                  nombreApellido: selNombre || "(Profesional asignado)",
+                  _esExtra: true,
+                });
+              }
+
+              return [
+                `<option value="">(Elegir profesional)</option>`,
+                ...base.map((p) => {
+                  const txt =
+                    p.nombreApellido ||
+                    p.nombreCompleto ||
+                    p.nombre ||
+                    "";
+                  const id = String(p._id);
+                  return `<option value="${id}" ${
+                    selKey === id ? "selected" : ""
+                  }>${txt}</option>`;
+                }),
+              ].join("");
+            };
+
+            if (tituloEl) {
+              tituloEl.innerHTML = `
+                ${paciente.nombre} — ${areaNombreActual}
+                <span style="float:right;font-weight:600;">Saldo: ${fmtARS(saldoRestante)}</span>
               `;
-            })
-            .join("");
+            }
 
-          // Totales líneas
-          tfootLin.innerHTML = `
-            <tr class="edc-total-row">
-              <td colspan="4" style="text-align:left;">Total que debería haber pagado</td>
-              <td class="edc-col-apag">${fmtARS(totalAPagar)}</td>
-              <td colspan="4"></td>
-            </tr>
-            <tr class="edc-total-row">
-              <td colspan="4" style="text-align:left;">Total que pagó (OS + Padres + ajustes)</td>
-              <td class="edc-col-apag">${fmtARS(totalPagado)}</td>
-              <td colspan="4"></td>
-            </tr>
-          `;
+            // LÍNEAS
+            tbodyLin.innerHTML = lineas
+              .map((r, idx) => {
+                const selMod = r.moduloId ? String(r.moduloId) : "";
+                const selProf = r.profesionalId ? String(r.profesionalId) : "";
+                const vCant = Number(r.cantidad) || 0;
 
-          // FACTURAS
-          tbodyFac.innerHTML = facturas
-            .map(
-              (f, idx) => `
-                <tr>
-                  <td class="edc-col-mes">
-                    <input type="month" data-idx="${idx}" data-field="mes"
-                      class="edc-input-fact" style="width:110px;" value="${f.mes || ""}">
-                  </td>
-                  <td style="text-align:center;min-width:70px;">
-                    <input data-idx="${idx}" data-field="nro"
-                      class="edc-input-fact" style="width:70px;" value="${f.nro || ""}">
-                  </td>
-                  <td class="edc-col-apag">
-                    <input data-idx="${idx}" data-field="monto"
-                      class="edc-input-fact" style="width:100px;text-align:right;"
-                      value="${f.monto}">
-                  </td>
-                  <td class="edc-col-obs">
-                    <input data-idx="${idx}" data-field="detalle"
-                      class="edc-input-fact" style="width:100%;" value="${f.detalle || ""}">
-                  </td>
-                  <td class="edc-col-mes">
-                    <input type="date" data-idx="${idx}" data-field="fecha"
-                      class="edc-input-fact" style="width:130px;" value="${f.fecha || ""}">
-                  </td>
-                </tr>
-              `
-            )
-            .join("");
+                return `
+                  <tr>
+                    <td class="edc-col-mes">
+                      <input type="month" data-idx="${idx}" data-field="mes"
+                        class="edc-input-linea" style="width:110px;" value="${r.mes || ""}">
+                    </td>
+                    <td class="edc-col-cant">
+                      <select data-idx="${idx}" data-field="cantidad" class="edc-input-linea" style="width:80px;">
+                        <option value="1" ${vCant === 1 ? "selected" : ""}>1</option>
+                        <option value="0.3333" ${vCant === 0.3333 ? "selected" : ""}>1/3</option>
+                        <option value="0.5" ${vCant === 0.5 ? "selected" : ""}>1/2</option>
+                        <option value="0.25" ${vCant === 0.25 ? "selected" : ""}>1/4</option>
+                      </select>
+                    </td>
+                    <td class="edc-col-mod">
+                      <select data-idx="${idx}" data-field="moduloId" class="edc-input-linea">
+                        ${buildModuloOptions(selMod)}
+                      </select>
+                    </td>
+                    <td class="edc-col-prof">
+                      <select data-idx="${idx}" data-field="profesionalId" class="edc-input-linea">
+                        ${buildProfOptions(selProf, r.profesionalNombre)}
+                      </select>
+                    </td>
+                    <td class="edc-col-apag">${fmtARS(r.aPagar)}</td>
+                    <td class="edc-col-pag">
+                      <input data-idx="${idx}" data-field="pagPadres"
+                        class="edc-input-linea" style="width:100px;text-align:right;"
+                        value="${r.pagPadres}">
+                    </td>
+                    <td class="edc-col-obs">
+                      <input data-idx="${idx}" data-field="detPadres"
+                        class="edc-input-linea" style="width:100%;" value="${r.detPadres || ""}">
+                    </td>
+                    <td class="edc-col-pag">
+                      <input data-idx="${idx}" data-field="pagOS"
+                        class="edc-input-linea" style="width:100px;text-align:right;"
+                        value="${r.pagOS}">
+                    </td>
+                    <td class="edc-col-obs">
+                      <input data-idx="${idx}" data-field="detOS"
+                        class="edc-input-linea" style="width:100%;" value="${r.detOS || ""}">
+                    </td>
+                  </tr>
+                `;
+              })
+              .join("");
 
-          tfootFac.innerHTML = `
-            <tr class="edc-total-row">
-              <td colspan="2" style="text-align:left;">Total que se le facturó</td>
-              <td class="edc-col-apag">${fmtARS(totalFacturado)}</td>
-              <td colspan="2"></td>
-            </tr>
-          `;
+            // Totales líneas
+            tfootLin.innerHTML = `
+              <tr class="edc-total-row">
+                <td colspan="4" style="text-align:left;">Total que debería haber pagado</td>
+                <td class="edc-col-apag">${fmtARS(totalAPagar)}</td>
+                <td colspan="4"></td>
+              </tr>
+              <tr class="edc-total-row">
+                <td colspan="4" style="text-align:left;">Total que pagó (OS + Padres + ajustes)</td>
+                <td class="edc-col-apag">${fmtARS(totalPagado)}</td>
+                <td colspan="4"></td>
+              </tr>
+            `;
 
-          resumenDif.innerHTML = `
-            <div><strong>Diferencia entre facturado y pagado:</strong>
-              <span style="margin-left:6px;">${fmtARS(difFactPag)}</span>
-            </div>
-          `;
-        };
+            // FACTURAS
+            tbodyFac.innerHTML = facturas
+              .map(
+                (f, idx) => `
+                  <tr>
+                    <td class="edc-col-mes">
+                      <input type="month" data-idx="${idx}" data-field="mes"
+                        class="edc-input-fact" style="width:110px;" value="${f.mes || ""}">
+                    </td>
+                    <td style="text-align:center;min-width:70px;">
+                      <input data-idx="${idx}" data-field="nro"
+                        class="edc-input-fact" style="width:70px;" value="${f.nro || ""}">
+                    </td>
+                    <td class="edc-col-apag">
+                      <input data-idx="${idx}" data-field="monto"
+                        class="edc-input-fact" style="width:100px;text-align:right;"
+                        value="${f.monto}">
+                    </td>
+                    <td class="edc-col-obs">
+                      <input data-idx="${idx}" data-field="detalle"
+                        class="edc-input-fact" style="width:100%;" value="${f.detalle || ""}">
+                    </td>
+                    <td class="edc-col-mes">
+                      <input type="date" data-idx="${idx}" data-field="fecha"
+                        class="edc-input-fact" style="width:130px;" value="${f.fecha || ""}">
+                    </td>
+                  </tr>
+                `
+              )
+              .join("");
 
-        // Render inicial
-        render();
+            tfootFac.innerHTML = `
+              <tr class="edc-total-row">
+                <td colspan="2" style="text-align:left;">Total que se le facturó</td>
+                <td class="edc-col-apag">${fmtARS(totalFacturado)}</td>
+                <td colspan="2"></td>
+              </tr>
+            `;
 
-        // MANEJO DE CAMBIOS
-        const handleChange = (e) => {
-          const t = e.target;
-          const idx = Number(t.dataset.idx);
-          const field = t.dataset.field;
+            resumenDif.innerHTML = `
+              <div><strong>Diferencia entre facturado y pagado:</strong>
+                <span style="margin-left:6px;">${fmtARS(difFactPag)}</span>
+              </div>
+            `;
+          };
 
-          if (t.classList.contains("edc-input-linea")) {
-            if (field === "moduloId") {
-              const id = t.value;
-              lineas[idx].moduloId = id;
-              const m = id ? moduloMap[String(id)] : null;
-              if (m) {
-                lineas[idx].moduloNombre = m.nombre || "";
-                lineas[idx].precioModulo = Number(
-                  m.valorPadres ??
-                    m.valorModulo ??
-                    m.precioModulo ??
-                    m.precio ??
-                    0
-                );
+          // Render inicial
+          render();
+
+          // MANEJO DE CAMBIOS
+          const handleChange = (e) => {
+            const t = e.target;
+            const idx = Number(t.dataset.idx);
+            const field = t.dataset.field;
+
+            if (t.classList.contains("edc-input-linea")) {
+              if (field === "moduloId") {
+                const id = t.value;
+                lineas[idx].moduloId = id;
+                const m = id ? moduloMap[String(id)] : null;
+                if (m) {
+                  lineas[idx].moduloNombre = m.nombre || "";
+                  lineas[idx].precioModulo = Number(
+                    m.valorPadres ??
+                      m.valorModulo ??
+                      m.precioModulo ??
+                      m.precio ??
+                      0
+                  );
+                }
+                render();
+                return;
+              }
+
+              if (field === "profesionalId") {
+                const id = t.value;
+                lineas[idx].profesionalId = id;
+                const p = id ? profMap[String(id)] : null;
+                lineas[idx].profesionalNombre =
+                  p?.nombreApellido || p?.nombreCompleto || p?.nombre || "";
+                render();
+                return;
+              }
+
+              if (
+                field === "cantidad" ||
+                field === "pagPadres" ||
+                field === "pagOS"
+              ) {
+                lineas[idx][field] = safeNum(t.value);
+              } else {
+                lineas[idx][field] = t.value;
               }
               render();
               return;
             }
 
-            if (field === "profesionalId") {
-              const id = t.value;
-              lineas[idx].profesionalId = id;
-              const p = id ? profMap[String(id)] : null;
-              lineas[idx].profesionalNombre =
-                p?.nombreApellido || p?.nombreCompleto || p?.nombre || "";
+            if (t.classList.contains("edc-input-fact")) {
+              if (field === "monto") {
+                facturas[idx].monto = safeNum(t.value);
+              } else {
+                facturas[idx][field] = t.value;
+              }
               render();
               return;
             }
+          };
 
-            if (
-              field === "cantidad" ||
-              field === "pagPadres" ||
-              field === "pagOS"
-            ) {
-              lineas[idx][field] = safeNum(t.value);
-            } else {
-              lineas[idx][field] = t.value;
-            }
-            render();
-            return;
-          }
+          root.addEventListener("change", handleChange);
+          root.addEventListener("blur", handleChange, true);
 
-          if (t.classList.contains("edc-input-fact")) {
-            if (field === "monto") {
-              facturas[idx].monto = safeNum(t.value);
-            } else {
-              facturas[idx][field] = t.value;
-            }
-            render();
-            return;
-          }
-        };
-
-        root.addEventListener("change", handleChange);
-        root.addEventListener("blur", handleChange, true);
-
-        // Agregar línea
-        btnAddLinea.addEventListener("click", () => {
-          lineas.unshift({
-            mes: "",
-            cantidad: 1,
-            moduloId: "",
-            moduloNombre: "",
-            profesionalId: "",
-            profesionalNombre: "",
-            precioModulo: 0,
-            aPagar: 0,
-            pagPadres: 0,
-            detPadres: "",
-            pagOS: 0,
-            detOS: "",
-          });
-          render();
-        });
-
-        // Agregar factura
-        const btnAddFactura = popup.querySelector("#edcBtnAddFactura");
-        if (btnAddFactura) {
-          btnAddFactura.addEventListener("click", () => {
-            facturas.push({
+          // Agregar línea
+          btnAddLinea.addEventListener("click", () => {
+            lineas.unshift({
               mes: "",
-              nro: "",
-              monto: 0,
-              detalle: "",
-              fecha: "",
+              cantidad: 1,
+              moduloId: "",
+              moduloNombre: "",
+              profesionalId: "",
+              profesionalNombre: "",
+              precioModulo: 0,
+              aPagar: 0,
+              pagPadres: 0,
+              detPadres: "",
+              pagOS: 0,
+              detOS: "",
             });
             render();
           });
-        }
 
-        // Cambio de área
-        const selAreaModal = popup.querySelector("#edcAreaSelectModal");
-        if (selAreaModal) {
-          selAreaModal.addEventListener("change", () => {
-            const selId = selAreaModal.value;
-            const found = AREAS.find((a) => String(a._id) === String(selId));
-            const nuevaArea = selId
-              ? { id: selId, nombre: found?.nombre || null }
-              : null;
-            Swal.close();
-            edcMostrarEstadoCuentaAreaModal(paciente, nuevaArea);
-          });
-        }
-
-        // Guardar
-        const btnGuardar = popup.querySelector("#edcBtnGuardar");
-        if (btnGuardar) {
-          btnGuardar.addEventListener("click", async () => {
-            try {
-              const payload = {
-                dni: paciente.dni,
-                areaId: areaSel?.id || null,
-                lineas,
-                facturas,
-              };
-
-              await edcApiJson(
-                `/estado-de-cuenta/${encodeURIComponent(paciente.dni)}`,
-                {
-                  method: "PUT",
-                  body: JSON.stringify(payload),
-                }
-              );
-
-              await Swal.fire({
-                icon: "success",
-                title: "Guardado",
-                text: "Estado de cuenta actualizado.",
+          // Agregar factura
+          const btnAddFactura = popup.querySelector("#edcBtnAddFactura");
+          if (btnAddFactura) {
+            btnAddFactura.addEventListener("click", () => {
+              facturas.push({
+                mes: "",
+                nro: "",
+                monto: 0,
+                detalle: "",
+                fecha: "",
               });
-            } catch (err) {
-              console.error(err);
-              await Swal.fire({
-                icon: "error",
-                title: "Error",
-                text: "No se pudieron guardar los cambios.",
-              });
-            }
-          });
-        }
+              render();
+            });
+          }
 
-        // PDF
-        const btnPDF = popup.querySelector("#edcBtnDescargarPDF");
-        if (btnPDF) {
-          btnPDF.addEventListener("click", () => {
-            let url = `/api/estado-de-cuenta/${encodeURIComponent(
-              paciente.dni
-            )}/extracto`;
-            const qs2 = [];
-            if (areaSel?.id) qs2.push(`areaId=${encodeURIComponent(areaSel.id)}`);
-            if (qs2.length) url += `?${qs2.join("&")}`;
-            window.open(url, "_blank");
-          });
-        }
-      },
-    });
-  } catch (e) {
-    console.error("Error al abrir modal de estado de cuenta:", e);
-    await Swal.fire({
-      icon: "error",
-      title: "Error",
-      text: "No se pudo cargar el estado de cuenta del área seleccionada.",
-    });
+          // Cambio de área
+          const selAreaModal = popup.querySelector("#edcAreaSelectModal");
+          if (selAreaModal) {
+            selAreaModal.addEventListener("change", () => {
+              const selId = selAreaModal.value;
+              const found = AREAS.find((a) => String(a._id) === String(selId));
+              const nuevaArea = selId
+                ? { id: selId, nombre: found?.nombre || null }
+                : null;
+              Swal.close();
+              edcMostrarEstadoCuentaAreaModal(paciente, nuevaArea);
+            });
+          }
+
+          // Guardar
+          const btnGuardar = popup.querySelector("#edcBtnGuardar");
+          if (btnGuardar) {
+            btnGuardar.addEventListener("click", async () => {
+              try {
+                const payload = {
+                  dni: paciente.dni,
+                  areaId: areaSel?.id || null,
+                  lineas,
+                  facturas,
+                };
+
+                await edcApiJson(
+                  `/estado-de-cuenta/${encodeURIComponent(paciente.dni)}`,
+                  {
+                    method: "PUT",
+                    body: JSON.stringify(payload),
+                  }
+                );
+
+                await Swal.fire({
+                  icon: "success",
+                  title: "Guardado",
+                  text: "Estado de cuenta actualizado.",
+                });
+              } catch (err) {
+                console.error(err);
+                await Swal.fire({
+                  icon: "error",
+                  title: "Error",
+                  text: "No se pudieron guardar los cambios.",
+                });
+              }
+            });
+          }
+
+          // PDF
+          const btnPDF = popup.querySelector("#edcBtnDescargarPDF");
+          if (btnPDF) {
+            btnPDF.addEventListener("click", () => {
+              let url = `/api/estado-de-cuenta/${encodeURIComponent(
+                paciente.dni
+              )}/extracto`;
+              const qs2 = [];
+              if (areaSel?.id) qs2.push(`areaId=${encodeURIComponent(areaSel.id)}`);
+              if (qs2.length) url += `?${qs2.join("&")}`;
+              window.open(url, "_blank");
+            });
+          }
+        },
+      });
+    } catch (e) {
+      console.error("Error al abrir modal de estado de cuenta:", e);
+      await Swal.fire({
+        icon: "error",
+        title: "Error",
+        text: "No se pudo cargar el estado de cuenta del área seleccionada.",
+      });
+    }
   }
-}
-
-
-
-
-
-
 
   // ==============================
   // Modal ficha de paciente + selector de área
@@ -1443,6 +1448,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
 
   // window.edcMostrarFichaPaciente = edcMostrarFichaPaciente;
 })();
+
 
 
 
