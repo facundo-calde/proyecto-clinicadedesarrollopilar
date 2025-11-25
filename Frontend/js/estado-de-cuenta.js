@@ -313,7 +313,7 @@
         const totalPagado = Number(
           (tot.pagadoOS || 0) +
           (tot.pagadoPART || 0) +
-          (tot.ajustesMas || 0) - 
+          (tot.ajustesMas || 0) -
           (tot.ajustesMenos || 0)
         );
         const saldo = Number(
@@ -492,8 +492,8 @@
 
         const esProfesional = rol === "Profesional" || rol === "Coordinador y profesional";
         const esCoordinador = rol === "Coordinador de área" || rol === "Coordinador y profesional";
-        const esPasante     = rol === "Pasante";
-        const esDirectora   = rol === "Directoras";
+        const esPasante = rol === "Pasante";
+        const esDirectora = rol === "Directoras";
 
         // Solo estos roles entran al select
         if (!esProfesional && !esCoordinador && !esPasante && !esDirectora) return false;
@@ -504,12 +504,12 @@
         // Directora: siempre aparece en el select, sin filtrar por área
         if (esDirectora) return true;
 
-        const wantedId   = areaId ? String(areaId) : null;
+        const wantedId = areaId ? String(areaId) : null;
         const wantedName = areaNombre
           ? areaNombre
-              .toLowerCase()
-              .normalize("NFD")
-              .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
           : null;
 
         const norm = (s) =>
@@ -618,7 +618,7 @@
           f.moduloId ||
           f.moduloIdMongo ||
           (typeof f.modulo === "string" &&
-          /^[0-9a-fA-F]{24}$/.test(f.modulo)
+            /^[0-9a-fA-F]{24}$/.test(f.modulo)
             ? f.modulo
             : null);
 
@@ -638,10 +638,10 @@
           (moduloRef &&
             Number(
               moduloRef.valorPadres ??
-                moduloRef.valorModulo ??
-                moduloRef.precioModulo ??
-                moduloRef.precio ??
-                0
+              moduloRef.valorModulo ??
+              moduloRef.precioModulo ??
+              moduloRef.precio ??
+              0
             )) ||
           Number(f.valorPadres || f.precioModulo || f.valorModulo || 0);
 
@@ -649,8 +649,8 @@
           f.aPagar != null
             ? f.aPagar
             : precioModulo
-            ? precioModulo * (Number(cantidad) || 0)
-            : f.monto || 0
+              ? precioModulo * (Number(cantidad) || 0)
+              : f.monto || 0
         );
 
         const clavePagos = `${mes}|${moduloId || ""}`;
@@ -792,8 +792,7 @@
         `<option value="">(Todas las áreas)</option>`,
         ...AREAS.map(
           (a) =>
-            `<option value="${a._id}" ${
-              areaSel && String(areaSel.id) === String(a._id) ? "selected" : ""
+            `<option value="${a._id}" ${areaSel && String(areaSel.id) === String(a._id) ? "selected" : ""
             }>${a.nombre}</option>`
         ),
       ].join("");
@@ -958,9 +957,8 @@
                     const text =
                       m.nombre || `${m.numero || ""} ${m.descripcion || ""}`.trim();
                     const id = String(m._id);
-                    return `<option value="${id}" ${
-                      selId === id ? "selected" : ""
-                    }>${text}</option>`;
+                    return `<option value="${id}" ${selId === id ? "selected" : ""
+                      }>${text}</option>`;
                   })
                   .join("");
                 html += `</optgroup>`;
@@ -973,9 +971,8 @@
                     const text =
                       m.nombre || `${m.numero || ""} ${m.descripcion || ""}`.trim();
                     const id = String(m._id);
-                    return `<option value="${id}" ${
-                      selId === id ? "selected" : ""
-                    }>${text}</option>`;
+                    return `<option value="${id}" ${selId === id ? "selected" : ""
+                      }>${text}</option>`;
                   })
                   .join("");
                 html += `</optgroup>`;
@@ -1008,9 +1005,8 @@
                     p.nombre ||
                     "";
                   const id = String(p._id);
-                  return `<option value="${id}" ${
-                    selKey === id ? "selected" : ""
-                  }>${txt}</option>`;
+                  return `<option value="${id}" ${selKey === id ? "selected" : ""
+                    }>${txt}</option>`;
                 }),
               ].join("");
             };
@@ -1084,11 +1080,6 @@
                 <td class="edc-col-apag">${fmtARS(totalAPagar)}</td>
                 <td colspan="4"></td>
               </tr>
-              <tr class="edc-total-row">
-                <td colspan="4" style="text-align:left;">Total que pagó (OS + Padres + ajustes)</td>
-                <td class="edc-col-apag">${fmtARS(totalPagado)}</td>
-                <td colspan="4"></td>
-              </tr>
             `;
 
             // FACTURAS
@@ -1131,10 +1122,16 @@
             `;
 
             resumenDif.innerHTML = `
-              <div><strong>Diferencia entre facturado y pagado:</strong>
-                <span style="margin-left:6px;">${fmtARS(difFactPag)}</span>
-              </div>
-            `;
+  <div>
+    <strong>Total que pagó (OS + Padres + ajustes):</strong>
+    <span style="margin-left:6px;">${fmtARS(totalPagado)}</span>
+  </div>
+  <div style="margin-top:4px;">
+    <strong>Diferencia entre facturado y pagado:</strong>
+    <span style="margin-left:6px;">${fmtARS(difFactPag)}</span>
+  </div>
+`;
+
           };
 
           // Render inicial
@@ -1155,10 +1152,10 @@
                   lineas[idx].moduloNombre = m.nombre || "";
                   lineas[idx].precioModulo = Number(
                     m.valorPadres ??
-                      m.valorModulo ??
-                      m.precioModulo ??
-                      m.precio ??
-                      0
+                    m.valorModulo ??
+                    m.precioModulo ??
+                    m.precio ??
+                    0
                   );
                 }
                 render();
@@ -1251,52 +1248,52 @@
           }
 
           // Guardar
-       // Guardar
-// Guardar
-const btnGuardar = popup.querySelector("#edcBtnGuardar");
-if (btnGuardar) {
-  btnGuardar.addEventListener("click", async () => {
-    try {
-      // 👇 Blindaje: sin área NO guardamos
-      if (!areaSel || !areaSel.id) {
-        await Swal.fire({
-          icon: "warning",
-          title: "Falta área",
-          text: "Tenés que seleccionar un área para poder guardar el estado de cuenta.",
-        });
-        return;
-      }
+          // Guardar
+          // Guardar
+          const btnGuardar = popup.querySelector("#edcBtnGuardar");
+          if (btnGuardar) {
+            btnGuardar.addEventListener("click", async () => {
+              try {
+                // 👇 Blindaje: sin área NO guardamos
+                if (!areaSel || !areaSel.id) {
+                  await Swal.fire({
+                    icon: "warning",
+                    title: "Falta área",
+                    text: "Tenés que seleccionar un área para poder guardar el estado de cuenta.",
+                  });
+                  return;
+                }
 
-      const payload = {
-        dni: paciente.dni,
-        areaId: areaSel.id,   // 👈 ahora SIEMPRE va un id real
-        lineas,
-        facturas,
-      };
+                const payload = {
+                  dni: paciente.dni,
+                  areaId: areaSel.id,   // 👈 ahora SIEMPRE va un id real
+                  lineas,
+                  facturas,
+                };
 
-      await edcApiJson(
-        `/estado-de-cuenta/${encodeURIComponent(paciente.dni)}`,
-        {
-          method: "PUT",
-          body: JSON.stringify(payload),
-        }
-      );
+                await edcApiJson(
+                  `/estado-de-cuenta/${encodeURIComponent(paciente.dni)}`,
+                  {
+                    method: "PUT",
+                    body: JSON.stringify(payload),
+                  }
+                );
 
-      await Swal.fire({
-        icon: "success",
-        title: "Guardado",
-        text: "Estado de cuenta actualizado.",
-      });
-    } catch (err) {
-      console.error(err);
-      await Swal.fire({
-        icon: "error",
-        title: "Error",
-        text: "No se pudieron guardar los cambios.",
-      });
-    }
-  });
-}
+                await Swal.fire({
+                  icon: "success",
+                  title: "Guardado",
+                  text: "Estado de cuenta actualizado.",
+                });
+              } catch (err) {
+                console.error(err);
+                await Swal.fire({
+                  icon: "error",
+                  title: "Error",
+                  text: "No se pudieron guardar los cambios.",
+                });
+              }
+            });
+          }
 
 
 
