@@ -1,25 +1,6 @@
 const mongoose = require("mongoose");
 const { Schema } = mongoose;
 
-/**
- * Movimiento del estado de cuenta por paciente/área y mes.
- * tipo:
- *  - 'CARGO'     = cargo mensual del abono (módulos y, si querés, también eventos)
- *  - 'OS'        = pago obra social
- *  - 'PART'      = pago particular
- *  - 'FACT'      = factura/recibo emitido
- *  - 'AJUSTE+'   = ajuste a favor (suma)
- *  - 'AJUSTE-'   = ajuste en contra (resta)
- *
- * 🔹 Módulos mensuales:
- *   - normalmente: tipo = 'CARGO'
- *   - usan: moduloId, moduloNombre, cantidad, period (YYYY-MM), monto
- *
- * 🔹 Eventos especiales (pago único):
- *   - esEventoEspecial = true
- *   - opcional: moduloEventoEspecialId / moduloEventoEspecialNombre
- *   - el job de cargos NO debería replicarlos mes a mes (eso se maneja en la lógica, no acá)
- */
 const MovimientoSchema = new Schema(
   {
     // Identificación
@@ -27,78 +8,77 @@ const MovimientoSchema = new Schema(
     dni:        { type: String, index: true, required: true },
 
     // Dimensión contable
-    areaId:     { type: Schema.Types.ObjectId, ref: "Area", index: true, required: true },
-    moduloId:   { type: Schema.Types.ObjectId, ref: "Modulo", index: true },
+    areaId:   { type: Schema.Types.ObjectId, ref: "Area", index: true, required: true },
+    moduloId: { type: Schema.Types.ObjectId, ref: "Modulo", index: true },
 
-    // ✅ Denormalizados para mostrar en frontend
+    // Denormalizados para mostrar en frontend
     areaNombre:   { type: String },
     moduloNombre: { type: String },
 
-    /**
-     * Eventos especiales (pago único)
-     *  - En lugar de usar moduloId, podés usar estos campos.
-     *  - esEventoEspecial = true marca claramente que este movimiento NO es un módulo mensual.
-     */
+    // Eventos especiales (pago único)
     esEventoEspecial:           { type: Boolean, default: false, index: true },
     moduloEventoEspecialId:     { type: Schema.Types.ObjectId, ref: "ModuloEventoEspecial", index: true },
     moduloEventoEspecialNombre: { type: String },
 
-    // Clave de mes (YYYY-MM) para agrupar / liquidar
-    period:     { type: String, index: true },
+    // Clave de mes (YYYY-MM)
+    period: { type: String, index: true },
 
     // Clave de asignación (distingue movimientos del mismo módulo en el mismo mes)
-    asigKey:    { type: String, index: true }, // ej: subdoc _id de modulosAsignados
+    asigKey: { type: String, index: true },
 
     tipo: {
       type: String,
       enum: ["CARGO", "OS", "PART", "FACT", "AJUSTE+", "AJUSTE-"],
       required: true,
-      index: true
+      index: true,
     },
 
-    fecha:  { type: Date, default: Date.now },
-    monto:  { type: Number, required: true, default: 0 },
+    fecha: { type: Date, default: Date.now },
+    monto: { type: Number, required: true, default: 0 },
 
-    // Snapshot de asignación
-    cantidad:   { type: Number }, // para módulos mensuales se usa para multiplicar
-    profesional:{ type: String },
-    coordinador:{ type: String },
-    pasante:    { type: String },
-    directoras: [{ type: String }],
+    // Snapshot de asignación (para cargos mensuales)
+    cantidad:    { type: Number },
+    profesional: { type: String },
+    coordinador: { type: String },
+    pasante:     { type: String },
+    directoras:  [{ type: String }],
+
+    // Pagos asociados al cargo (lo que usa el modal)
+    pagPadres: { type: Number, default: 0 },
+    detPadres: { type: String },
+    pagOS:     { type: Number, default: 0 },
+    detOS:     { type: String },
 
     // Datos complementarios (FACT, OS, PART, etc.)
-    nroRecibo:    { type: String },
-    tipoFactura:  { type: String },
-    formato:      { type: String },
-    archivoURL:   { type: String },
-    descripcion:  { type: String },
-    observaciones:{ type: String },
+    nroRecibo:     { type: String },
+    tipoFactura:   { type: String },
+    formato:       { type: String },
+    archivoURL:    { type: String },
+    descripcion:   { type: String },
+    observaciones: { type: String },
 
     estado: {
       type: String,
       enum: ["PENDIENTE", "PAGADO"],
       default: "PENDIENTE",
-      index: true
+      index: true,
     },
 
-    // Espacio libre para metadata adicional sin romper estructura
+    // Metadata libre
     meta: { type: Object },
   },
   { timestamps: true }
 );
 
-// 🔒 Un CARGO por (dni, areaId, moduloId, period, asigKey)
-//    Esto está pensado para módulos mensuales.
-//    Para eventos especiales podés:
-//      - usar moduloId = null y moduloEventoEspecialId distinto
-//      - o dejar asigKey distinto si hicieras más de un cargo especial.
+// Índice único para CARGO (un cargo por paciente/área/módulo/mes/asigKey)
 MovimientoSchema.index(
   { dni: 1, areaId: 1, moduloId: 1, period: 1, tipo: 1, asigKey: 1 },
   { unique: true, partialFilterExpression: { tipo: "CARGO" } }
 );
 
-// ✅ Evitar OverwriteModelError en hot-reload / tests
 module.exports =
-  mongoose.models.EstadoDeCuentaMovimiento
-  || mongoose.model("EstadoDeCuentaMovimiento", MovimientoSchema);
+  mongoose.models.EstadoDeCuentaMovimiento ||
+  mongoose.model("EstadoDeCuentaMovimiento", MovimientoSchema);
+
+
 

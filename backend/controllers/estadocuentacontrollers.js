@@ -72,20 +72,24 @@ function mapById(arr) {
 
 // ----------------- ARMAR FILAS (por área) -----------------
 async function buildFilasArea(paciente, areaId) {
-  const modAsig = Array.isArray(paciente.modulosAsignados) ? paciente.modulosAsignados : [];
-  const list = modAsig.filter(m => {
+  const modAsig = Array.isArray(paciente.modulosAsignados)
+    ? paciente.modulosAsignados
+    : [];
+  const list = modAsig.filter((m) => {
     const a = m.areaId || m.area;
     if (!areaId) return true;
     if (!a) return false;
     return String(a) === String(areaId) || String(a?._id) === String(areaId);
   });
 
-  const moduloIds = list.map(m => String(m.moduloId)).filter(Boolean);
+  const moduloIds = list.map((m) => String(m.moduloId)).filter(Boolean);
   const profIds = [];
   for (const m of list) {
-    const arr = Array.isArray(m.profesionales) ? m.profesionales
-      : Array.isArray(m.coordinadoresExternos) ? m.coordinadoresExternos
-        : [];
+    const arr = Array.isArray(m.profesionales)
+      ? m.profesionales
+      : Array.isArray(m.coordinadoresExternos)
+      ? m.coordinadoresExternos
+      : [];
     for (const pr of arr) {
       const id = pr.profesionalId || pr.usuario || pr.usuarioId || pr._id;
       if (id) profIds.push(String(id));
@@ -100,22 +104,29 @@ async function buildFilasArea(paciente, areaId) {
   const modById = mapById(mods);
   const userById = mapById(usuarios);
 
-  return list.map(item => {
+  return list.map((item) => {
     const modDoc = modById.get(String(item.moduloId)) || {};
     const numero = modDoc.numero ?? modDoc.codigo ?? modDoc.nombre ?? "—";
     const valorModulo = getPrecioModulo(modDoc);
     const cant = parseCantidad(item.cantidad ?? 1);
     const aPagar = Number((valorModulo * cant).toFixed(2));
 
-    const roles = { profesional: [], coordinador: [], pasante: [], directora: [] };
+    const roles = {
+      profesional: [],
+      coordinador: [],
+      pasante: [],
+      directora: [],
+    };
     const listaProf = Array.isArray(item.profesionales)
       ? item.profesionales
       : Array.isArray(item.coordinadoresExternos)
-        ? item.coordinadoresExternos
-        : [];
+      ? item.coordinadoresExternos
+      : [];
 
     for (const pr of listaProf) {
-      const u = userById.get(String(pr.profesionalId || pr.usuario || pr.usuarioId || pr._id));
+      const u = userById.get(
+        String(pr.profesionalId || pr.usuario || pr.usuarioId || pr._id)
+      );
       const nom = labelUsuario(u) || "Profesional";
       const rol = (pr.rol || "").toLowerCase();
       if (/coordin/i.test(rol)) roles.coordinador.push(nom);
@@ -144,7 +155,8 @@ const obtenerEstadoDeCuenta = async (req, res) => {
     const period = req.query.period ? toStr(req.query.period) : null; // opcional YYYY-MM
 
     const paciente = await Paciente.findOne({ dni }).lean();
-    if (!paciente) return res.status(404).json({ error: "Paciente no encontrado" });
+    if (!paciente)
+      return res.status(404).json({ error: "Paciente no encontrado" });
 
     const tieneOS = /obra social/i.test(paciente.condicionDePago || "");
 
@@ -161,8 +173,8 @@ const obtenerEstadoDeCuenta = async (req, res) => {
 
     // Facturas (tipo FACT)
     const facturas = movs
-      .filter(m => m.tipo === "FACT")
-      .map(m => ({
+      .filter((m) => m.tipo === "FACT")
+      .map((m) => ({
         _id: m._id,
         mes: m.period || (m.fecha ? m.fecha.toISOString().slice(0, 7) : ""),
         nro: m.nroRecibo || m.tipoFactura || "",
@@ -171,19 +183,73 @@ const obtenerEstadoDeCuenta = async (req, res) => {
         fecha: m.fecha ? m.fecha.toISOString().slice(0, 10) : "",
       }));
 
-    // Totales
+    // Totales y mapa de pagos por (periodo + módulo)
     let pagadoOS = 0,
       pagadoPART = 0,
       cargos = 0,
       ajustesMas = 0,
       ajustesMenos = 0;
 
+    const pagosMap = {}; // clave: `${period}|${moduloId}`
+
+    const addPagoToMap = (m, tipoPago) => {
+      const mesMov =
+        m.period || (m.fecha ? m.fecha.toISOString().slice(0, 7) : "") || "";
+      const modKey = m.moduloId ? String(m.moduloId) : "";
+      const key = `${mesMov}|${modKey}`;
+      if (!pagosMap[key]) {
+        pagosMap[key] = {
+          pagPadres: 0,
+          detPadres: "",
+          pagOS: 0,
+          detOS: "",
+        };
+      }
+
+      if (tipoPago === "PART") {
+        const monto = parseNumberLike(m.monto ?? m.pagPadres, 0);
+        pagosMap[key].pagPadres += monto;
+        const obs =
+          m.detPadres || m.descripcion || m.observaciones || "" || "";
+        if (obs) {
+          pagosMap[key].detPadres = pagosMap[key].detPadres
+            ? `${pagosMap[key].detPadres} | ${obs}`
+            : obs;
+        }
+      } else if (tipoPago === "OS") {
+        const monto = parseNumberLike(m.monto ?? m.pagOS, 0);
+        pagosMap[key].pagOS += monto;
+        const obs = m.detOS || m.descripcion || m.observaciones || "" || "";
+        if (obs) {
+          pagosMap[key].detOS = pagosMap[key].detOS
+            ? `${pagosMap[key].detOS} | ${obs}`
+            : obs;
+        }
+      }
+    };
+
     for (const m of movs) {
-      if (m.tipo === "OS") pagadoOS += m.monto;
-      else if (m.tipo === "PART") pagadoPART += m.monto;
-      else if (m.tipo === "CARGO") cargos += m.monto;
-      else if (m.tipo === "AJUSTE+") ajustesMas += m.monto;
-      else if (m.tipo === "AJUSTE-") ajustesMenos += m.monto;
+      const monto = Number(m.monto || 0);
+
+      if (m.tipo === "CARGO") {
+        cargos += monto;
+
+        // pagos anidados en el CARGO
+        const pp = parseNumberLike(m.pagPadres, 0);
+        const po = parseNumberLike(m.pagOS, 0);
+        pagadoPART += pp;
+        pagadoOS += po;
+
+        if (pp) addPagoToMap(m, "PART");
+        if (po) addPagoToMap(m, "OS");
+      } else if (m.tipo === "OS") {
+        pagadoOS += monto;
+        addPagoToMap(m, "OS");
+      } else if (m.tipo === "PART") {
+        pagadoPART += monto;
+        addPagoToMap(m, "PART");
+      } else if (m.tipo === "AJUSTE+") ajustesMas += monto;
+      else if (m.tipo === "AJUSTE-") ajustesMenos += monto;
     }
 
     if (!tieneOS) pagadoOS = 0;
@@ -197,30 +263,18 @@ const obtenerEstadoDeCuenta = async (req, res) => {
     //   INYECTAR PAGOS EXISTENTES EN LAS FILAS DE MÓDULOS
     // ============================================================
     for (const l of filas) {
-      const period = l.mes || l.periodo || "";
-      if (!period) continue;
+      const periodLinea = l.mes || l.periodo || "";
+      if (!periodLinea) continue;
 
-      // pago particular
-      const pagoPart = movs.find(m =>
-        m.tipo === "PART" &&
-        m.period === period &&
-        String(m.moduloId || "") === String(l.moduloId || "")
-      );
-      if (pagoPart) {
-        l.pagPadres = Number(pagoPart.monto || 0);
-        l.detPadres = pagoPart.descripcion || pagoPart.observaciones || "";
-      }
+      const modKey = l.moduloId ? String(l.moduloId) : "";
+      const key = `${periodLinea}|${modKey}`;
+      const pagos = pagosMap[key];
+      if (!pagos) continue;
 
-      // pago obra social
-      const pagoOS = movs.find(m =>
-        m.tipo === "OS" &&
-        m.period === period &&
-        String(m.moduloId || "") === String(l.moduloId || "")
-      );
-      if (pagoOS) {
-        l.pagOS = Number(pagoOS.monto || 0);
-        l.detOS = pagoOS.descripcion || pagoOS.observaciones || "";
-      }
+      l.pagPadres = pagos.pagPadres;
+      l.detPadres = pagos.detPadres;
+      l.pagOS = pagos.pagOS;
+      l.detOS = pagos.detOS;
     }
 
     res.json({
@@ -253,7 +307,6 @@ const obtenerEstadoDeCuenta = async (req, res) => {
   }
 };
 
-
 // ----------------- PUT /api/estado-de-cuenta/:dni -----------------
 // Guarda líneas (CARGO) y facturas (FACT) que vienen del modal
 const actualizarEstadoDeCuenta = async (req, res) => {
@@ -262,44 +315,49 @@ const actualizarEstadoDeCuenta = async (req, res) => {
     const { areaId: rawAreaId, lineas, facturas } = req.body || {};
 
     const paciente = await Paciente.findOne({ dni }).lean();
-    if (!paciente) return res.status(404).json({ error: "Paciente no encontrado" });
+    if (!paciente)
+      return res.status(404).json({ error: "Paciente no encontrado" });
 
     const areaId = rawAreaId ? new mongoose.Types.ObjectId(rawAreaId) : null;
-    const area   = areaId ? await Area.findById(areaId).lean() : null;
+    const area = areaId ? await Area.findById(areaId).lean() : null;
 
-    const lineasArr   = Array.isArray(lineas) ? lineas : [];
+    const lineasArr = Array.isArray(lineas) ? lineas : [];
     const facturasArr = Array.isArray(facturas) ? facturas : [];
 
     // ---- catálogos para módulos y profesionales ----
     const moduloIds = [
-      ...new Set(lineasArr.map(l => l.moduloId).filter(Boolean).map(String)),
+      ...new Set(lineasArr.map((l) => l.moduloId).filter(Boolean).map(String)),
     ];
     const profesionalIds = [
-      ...new Set(lineasArr.map(l => l.profesionalId).filter(Boolean).map(String)),
+      ...new Set(
+        lineasArr.map((l) => l.profesionalId).filter(Boolean).map(String)
+      ),
     ];
 
     const [modulos, profesionales] = await Promise.all([
       moduloIds.length ? Modulo.find({ _id: { $in: moduloIds } }).lean() : [],
-      profesionalIds.length ? Usuario.find({ _id: { $in: profesionalIds } }).lean() : [],
+      profesionalIds.length
+        ? Usuario.find({ _id: { $in: profesionalIds } }).lean()
+        : [],
     ]);
 
-    const modById  = mapById(modulos);
+    const modById = mapById(modulos);
     const profById = mapById(profesionales);
 
     // ---- normalizar líneas: solo las que tienen mes y módulo ----
     const lineasValidas = lineasArr
-      .map(l => ({
+      .map((l) => ({
         ...l,
-        mes: (l.mes || l.period || "").trim(),    // YYYY-MM
+        mes: (l.mes || l.period || "").trim(), // YYYY-MM
       }))
-      .filter(l => l.mes && l.moduloId);          // sin mes o sin módulo no se guarda
+      .filter((l) => l.mes && l.moduloId); // sin mes o sin módulo no se guarda
 
     // ---- limpiamos lo que vamos a regenerar (CARGO + FACT) ----
     const baseFilter = { dni };
     if (areaId) baseFilter.areaId = areaId;
 
     const periodsCargos = [
-      ...new Set(lineasValidas.map(l => l.mes).filter(Boolean)),
+      ...new Set(lineasValidas.map((l) => l.mes).filter(Boolean)),
     ];
 
     const deleteFilterCargos = {
@@ -325,7 +383,7 @@ const actualizarEstadoDeCuenta = async (req, res) => {
       const period = l.mes; // YYYY-MM seguro
 
       const moduloIdStr = l.moduloId ? String(l.moduloId) : null;
-      const modDoc      = moduloIdStr ? modById.get(moduloIdStr) : null;
+      const modDoc = moduloIdStr ? modById.get(moduloIdStr) : null;
 
       const cant = parseCantidad(l.cantidad ?? 1);
       const precioLinea =
@@ -335,7 +393,7 @@ const actualizarEstadoDeCuenta = async (req, res) => {
       const montoCargo = +(precioLinea * (Number(cant) || 0)).toFixed(2);
 
       const profesionalIdStr = l.profesionalId ? String(l.profesionalId) : null;
-      const profDoc          = profesionalIdStr ? profById.get(profesionalIdStr) : null;
+      const profDoc = profesionalIdStr ? profById.get(profesionalIdStr) : null;
       const profesionalNombre =
         l.profesionalNombre || labelUsuario(profDoc) || undefined;
 
@@ -349,7 +407,9 @@ const actualizarEstadoDeCuenta = async (req, res) => {
       const fechaCargo = new Date(`${period}-01T00:00:00.000Z`);
 
       // 🔑 clave única por línea para respetar el índice {dni,areaId,moduloId,period,tipo,asigKey}
-      const asigKey = `${dni}-${areaId || "sinArea"}-${period}-${moduloIdStr || "sinModulo"}-${idx}`;
+      const asigKey = `${dni}-${areaId || "sinArea"}-${period}-${
+        moduloIdStr || "sinModulo"
+      }-${idx}`;
 
       docsToInsert.push({
         pacienteId: paciente._id,
@@ -368,11 +428,11 @@ const actualizarEstadoDeCuenta = async (req, res) => {
         cantidad: Number(cant) || 1,
         profesional: profesionalNombre,
 
-        // ✅ pagos que vienen del modal (se guardan en el CARGO)
+        // pagos que vienen del modal (se guardan en el CARGO)
         pagPadres: parseNumberLike(l.pagPadres, 0),
         detPadres: l.detPadres || "",
-        pagOS:     parseNumberLike(l.pagOS, 0),
-        detOS:     l.detOS || "",
+        pagOS: parseNumberLike(l.pagOS, 0),
+        detOS: l.detOS || "",
 
         descripcion: `Cargo ${period} — ${moduloNombre || "Módulo"}`,
         estado: "PENDIENTE",
@@ -382,7 +442,7 @@ const actualizarEstadoDeCuenta = async (req, res) => {
     // ---- reconstruir FACTURAS desde facturas ----
     for (const f of facturasArr) {
       const period = (f.mes || "").trim(); // YYYY-MM
-      const monto  = parseNumberLike(f.monto, 0);
+      const monto = parseNumberLike(f.monto, 0);
       if (!monto) continue;
 
       const fecha =
@@ -401,8 +461,8 @@ const actualizarEstadoDeCuenta = async (req, res) => {
         fecha,
         monto,
 
-        nroRecibo:     f.nro || undefined,
-        descripcion:   f.detalle || undefined,
+        nroRecibo: f.nro || undefined,
+        descripcion: f.detalle || undefined,
         observaciones: f.detalle || undefined,
         estado: "PENDIENTE",
       });
@@ -418,27 +478,37 @@ const actualizarEstadoDeCuenta = async (req, res) => {
     });
   } catch (err) {
     console.error("estado-de-cuenta PUT:", err);
-    res.status(500).json({ error: "No se pudo actualizar el estado de cuenta" });
+    res
+      .status(500)
+      .json({ error: "No se pudo actualizar el estado de cuenta" });
   }
 };
-
-
 
 // ----------------- POST /api/estado-de-cuenta/:dni/movimientos -----------------
 const crearMovimiento = async (req, res) => {
   try {
     const dni = toStr(req.params.dni).trim();
-    const paciente = await Paciente.findOne({ dni }).select("_id dni condicionDePago").lean();
-    if (!paciente) return res.status(404).json({ error: "Paciente no encontrado" });
+    const paciente = await Paciente.findOne({ dni })
+      .select("_id dni condicionDePago")
+      .lean();
+    if (!paciente)
+      return res.status(404).json({ error: "Paciente no encontrado" });
 
     const tieneOS = /obra social/i.test(paciente.condicionDePago || "");
     const { tipo, areaId, monto } = req.body || {};
 
-    if (!areaId) return res.status(400).json({ error: "areaId es obligatorio" });
-    if (typeof monto !== "number") return res.status(400).json({ error: "monto numérico es obligatorio" });
+    if (!areaId)
+      return res.status(400).json({ error: "areaId es obligatorio" });
+    if (typeof monto !== "number")
+      return res
+        .status(400)
+        .json({ error: "monto numérico es obligatorio" });
 
     if (tipo === "OS" && !tieneOS)
-      return res.status(400).json({ error: "El paciente no tiene obra social. No se puede registrar pago OS." });
+      return res.status(400).json({
+        error:
+          "El paciente no tiene obra social. No se puede registrar pago OS.",
+      });
 
     const mov = await Movimiento.create({
       ...req.body,
@@ -488,26 +558,46 @@ async function generarExtractoPDF(req, res) {
     const dni = toStr(req.params.dni).trim();
     const areaId = toStr(req.query.areaId || "");
     const period = req.query.period ? toStr(req.query.period) : null;
-    if (!areaId) return res.status(400).json({ error: "areaId es obligatorio" });
+    if (!areaId)
+      return res.status(400).json({ error: "areaId es obligatorio" });
 
     const paciente = await Paciente.findOne({ dni }).lean();
-    if (!paciente) return res.status(404).json({ error: "Paciente no encontrado" });
+    if (!paciente)
+      return res.status(404).json({ error: "Paciente no encontrado" });
     const area = await Area.findById(areaId).lean();
     if (!area) return res.status(404).json({ error: "Área no encontrada" });
 
     const filas = await buildFilasArea(paciente, areaId);
     const movs = await Movimiento.find({
-      dni, areaId,
-      ...(period ? { period } : {})
-    }).sort({ fecha: 1 }).lean();
+      dni,
+      areaId,
+      ...(period ? { period } : {}),
+    })
+      .sort({ fecha: 1 })
+      .lean();
 
-    let pagadoOS = 0, pagadoPART = 0, cargos = 0, ajustesMas = 0, ajustesMenos = 0;
+    let pagadoOS = 0,
+      pagadoPART = 0,
+      cargos = 0,
+      ajustesMas = 0,
+      ajustesMenos = 0;
+
     for (const m of movs) {
-      if (m.tipo === "OS") pagadoOS += m.monto;
-      else if (m.tipo === "PART") pagadoPART += m.monto;
-      else if (m.tipo === "CARGO") cargos += m.monto;
-      else if (m.tipo === "AJUSTE+") ajustesMas += m.monto;
-      else if (m.tipo === "AJUSTE-") ajustesMenos += m.monto;
+      const monto = Number(m.monto || 0);
+
+      if (m.tipo === "CARGO") {
+        cargos += monto;
+
+        const pp = parseNumberLike(m.pagPadres, 0);
+        const po = parseNumberLike(m.pagOS, 0);
+        pagadoPART += pp;
+        pagadoOS += po;
+      } else if (m.tipo === "OS") {
+        pagadoOS += monto;
+      } else if (m.tipo === "PART") {
+        pagadoPART += monto;
+      } else if (m.tipo === "AJUSTE+") ajustesMas += monto;
+      else if (m.tipo === "AJUSTE-") ajustesMenos += monto;
     }
 
     const totalCargos = cargos; // igual que en el GET
@@ -518,7 +608,9 @@ async function generarExtractoPDF(req, res) {
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
-      `inline; filename="Extracto_${dni}_${(area.nombre || "area").replace(/\s+/g, "_")}${period ? "_" + period : ""}.pdf"`
+      `inline; filename="Extracto_${dni}_${(
+        area.nombre || "area"
+      ).replace(/\s+/g, "_")}${period ? "_" + period : ""}.pdf"`
     );
 
     const doc = new PDFDocument({ margin: 40 });
@@ -527,38 +619,51 @@ async function generarExtractoPDF(req, res) {
     // Header
     doc.fontSize(16).text("Clínica de Desarrollo Pilar", { align: "left" });
     doc.moveDown(0.2);
-    doc.fontSize(12).fillColor("#666").text("Informe de estado de cuenta", { align: "left" });
+    doc.fontSize(12).fillColor("#666").text("Informe de estado de cuenta", {
+      align: "left",
+    });
     doc.moveDown();
 
     // Paciente
-    doc.fillColor("#000").fontSize(13)
+    doc.fillColor("#000")
+      .fontSize(13)
       .text(`${paciente.nombre || "-"} - DNI ${paciente.dni || "-"}`);
     doc.moveDown(0.2);
-    doc.fontSize(11)
-      .text(`Abonado: ${paciente.condicionDePago || "-"}   |   Estado: ${paciente.estado || "-"}`);
+    doc
+      .fontSize(11)
+      .text(
+        `Abonado: ${paciente.condicionDePago || "-"}   |   Estado: ${
+          paciente.estado || "-"
+        }`
+      );
     if (period) doc.text(`Periodo: ${period}`);
     doc.moveDown(0.6);
 
     // Área
-    doc.fontSize(12).fillColor("#000").text((area.nombre || "").toUpperCase(), { underline: true });
+    doc
+      .fontSize(12)
+      .fillColor("#000")
+      .text((area.nombre || "").toUpperCase(), { underline: true });
     doc.moveDown(0.3);
 
     // Tabla simple (informativa, basada en módulos asignados)
     const colx = [40, 100, 160, 310, 430, 520]; // posiciones x
     const th = ["MES", "MÓDULO", "CANT.", "PROFESIONAL", "VALOR", "A PAGAR"];
     doc.fontSize(10).fillColor("#333");
-    th.forEach((t, i) => doc.text(t, colx[i], doc.y, { continued: i < th.length - 1 }));
+    th.forEach((t, i) =>
+      doc.text(t, colx[i], doc.y, { continued: i < th.length - 1 })
+    );
     doc.moveDown(0.2);
     doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor("#ccc").stroke();
     doc.moveDown(0.2);
 
-    filas.forEach(f => {
+    filas.forEach((f) => {
       const profesional =
-        (f.profesionales.profesional[0] ||
-          f.profesionales.coordinador[0] ||
-          f.profesionales.pasante[0] ||
-          f.profesionales.directora[0] ||
-          "-");
+        f.profesionales.profesional[0] ||
+        f.profesionales.coordinador[0] ||
+        f.profesionales.pasante[0] ||
+        f.profesionales.directora[0] ||
+        "-";
       const valor = `$ ${f.valorModulo.toLocaleString("es-AR")}`;
       const ap = `$ ${f.aPagar.toLocaleString("es-AR")}`;
       const row = [
@@ -567,9 +672,11 @@ async function generarExtractoPDF(req, res) {
         String(f.cant),
         profesional,
         valor,
-        ap
+        ap,
       ];
-      row.forEach((t, i) => doc.text(t, colx[i], doc.y, { continued: i < row.length - 1 }));
+      row.forEach((t, i) =>
+        doc.text(t, colx[i], doc.y, { continued: i < row.length - 1 })
+      );
       doc.moveDown(0.15);
     });
 
@@ -578,20 +685,32 @@ async function generarExtractoPDF(req, res) {
     doc.moveDown(0.4);
 
     // Totales (usando CARGO acumulado)
-    doc.fontSize(11).fillColor("#000")
+    doc
+      .fontSize(11)
+      .fillColor("#000")
       .text(`Total a pagar: $ ${totalCargos.toLocaleString("es-AR")}`);
     doc.text(`Cargos: $ ${cargos.toLocaleString("es-AR")}`);
-    if (tieneOS) doc.text(`Pago Obra Social: $ ${pagadoOS.toLocaleString("es-AR")}`);
+    if (tieneOS)
+      doc.text(`Pago Obra Social: $ ${pagadoOS.toLocaleString("es-AR")}`);
     doc.text(`Pago Particular: $ ${pagadoPART.toLocaleString("es-AR")}`);
     if (ajustesMas || ajustesMenos)
-      doc.text(`Ajustes: +$${ajustesMas.toLocaleString("es-AR")} / -$${ajustesMenos.toLocaleString("es-AR")}`);
+      doc.text(
+        `Ajustes: +$${ajustesMas.toLocaleString(
+          "es-AR"
+        )} / -$${ajustesMenos.toLocaleString("es-AR")}`
+      );
     doc.text(`Saldo: $ ${saldo.toLocaleString("es-AR")}`);
 
     doc.moveDown(1);
-    const leyendaOK = saldo <= 0
-      ? `Informamos que, al día de la fecha, la cuenta del área de ${area.nombre} no registra deuda pendiente.`
-      : `Informamos que, al día de la fecha, la cuenta del área de ${area.nombre} registra un saldo pendiente de $ ${saldo.toLocaleString("es-AR")}.`;
-    doc.fontSize(9).fillColor("#666").text("OBSERVACIONES:", { underline: true });
+    const leyendaOK =
+      saldo <= 0
+        ? `Informamos que, al día de la fecha, la cuenta del área de ${area.nombre} no registra deuda pendiente.`
+        : `Informamos que, al día de la fecha, la cuenta del área de ${area.nombre} registra un saldo pendiente de $ ${saldo.toLocaleString(
+            "es-AR"
+          )}.`;
+    doc.fontSize(9).fillColor("#666").text("OBSERVACIONES:", {
+      underline: true,
+    });
     doc.moveDown(0.2);
     doc.text(leyendaOK, { align: "justify" });
 
@@ -609,7 +728,7 @@ module.exports = {
   eliminarMovimiento,
   generarExtractoPDF,
   getPorDni,
-  __test__: { buildFilasArea, parseCantidad, getPrecioModulo }
+  __test__: { buildFilasArea, parseCantidad, getPrecioModulo },
 };
 
 
