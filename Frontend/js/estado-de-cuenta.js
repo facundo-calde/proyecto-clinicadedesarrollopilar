@@ -490,7 +490,6 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
     MODULOS.forEach((m) => (moduloMap[String(m._id)] = m));
 
       // Profesionales por rol (Directoras, Coordinadores, Profesionales, Pasantes)
-       // Profesionales por rol (Directoras, Coordinadores, Profesionales, Pasantes)
     const PROFESIONALES = USUARIOS_ALL.filter((u) => {
       const rol = (u.rol || "").trim();
 
@@ -502,40 +501,54 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
       // Solo estos roles entran al select
       if (!esProfesional && !esCoordinador && !esPasante && !esDirectora) return false;
 
-      // Si no hay área seleccionada (todas las áreas), mostramos todos estos roles
+      // Si no hay área seleccionada, mostramos todos estos roles
       if (!areaId && !areaNombre) return true;
 
       // Directora: siempre aparece en el select, sin filtrar por área
       if (esDirectora) return true;
 
-      // A partir de acá, SOLO filtramos por id de área
-      if (!areaId) return false; // seguridad: si por alguna razón no vino id
+      const wantedId   = areaId ? String(areaId) : null;
+      const wantedName = areaNombre
+        ? areaNombre
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+        : null;
 
-      const wantedId = String(areaId);
-      let asignado = false;
+      const norm = (s) =>
+        String(s || "")
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "");
+
+      let ok = false;
 
       // Profesionales: áreasProfesional
       if (esProfesional && Array.isArray(u.areasProfesional)) {
-        if (u.areasProfesional.some(a => a && a.areaId && String(a.areaId) === wantedId)) {
-          asignado = true;
-        }
+        u.areasProfesional.forEach((a) => {
+          if (!a) return;
+          if (wantedId && a.areaId && String(a.areaId) === wantedId) ok = true;
+          if (wantedName && a.areaNombre && norm(a.areaNombre) === wantedName) ok = true;
+        });
       }
 
       // Coordinadores: áreasCoordinadas
-      if (!asignado && esCoordinador && Array.isArray(u.areasCoordinadas)) {
-        if (u.areasCoordinadas.some(a => a && a.areaId && String(a.areaId) === wantedId)) {
-          asignado = true;
-        }
+      if (esCoordinador && Array.isArray(u.areasCoordinadas)) {
+        u.areasCoordinadas.forEach((a) => {
+          if (!a) return;
+          if (wantedId && a.areaId && String(a.areaId) === wantedId) ok = true;
+          if (wantedName && a.areaNombre && norm(a.areaNombre) === wantedName) ok = true;
+        });
       }
 
       // Pasante: pasanteArea
-      if (!asignado && esPasante && u.pasanteArea && u.pasanteArea.areaId) {
-        if (String(u.pasanteArea.areaId) === wantedId) {
-          asignado = true;
-        }
+      if (esPasante && u.pasanteArea) {
+        const a = u.pasanteArea;
+        if (wantedId && a.areaId && String(a.areaId) === wantedId) ok = true;
+        if (wantedName && a.areaNombre && norm(a.areaNombre) === wantedName) ok = true;
       }
 
-      return asignado;
+      return ok;
     });
 
     const profMap = {};
