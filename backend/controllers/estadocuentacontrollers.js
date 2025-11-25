@@ -34,11 +34,10 @@ function parseNumberLike(v, def = 0) {
 function getPrecioModulo(mod) {
   if (!mod) return 0;
 
-  // usamos valorPadres primero (es el campo actual del esquema)
   const cands = [
     "valorPadres",
-    "valorModulo",    // <- agregado
-    "precioModulo",   // <- agregado
+    "valorModulo",
+    "precioModulo",
     "precio",
     "valor",
     "monto",
@@ -46,7 +45,6 @@ function getPrecioModulo(mod) {
     "importe",
     "tarifa",
   ];
-
 
   for (const k of cands) {
     const v = mod[k];
@@ -60,7 +58,6 @@ function getPrecioModulo(mod) {
   }
   return 0;
 }
-
 
 function labelUsuario(u) {
   if (!u) return "";
@@ -197,13 +194,13 @@ const obtenerEstadoDeCuenta = async (req, res) => {
     const estado = saldo <= 0 ? "PAGADO" : "PENDIENTE";
 
     // ============================================================
-    //   🔥 INYECTAR PAGOS EXISTENTES EN LAS FILAS DE MÓDULOS
+    //   INYECTAR PAGOS EXISTENTES EN LAS FILAS DE MÓDULOS
     // ============================================================
     for (const l of filas) {
       const period = l.mes || l.periodo || "";
       if (!period) continue;
 
-      // --- pago particular ---
+      // pago particular
       const pagoPart = movs.find(m =>
         m.tipo === "PART" &&
         m.period === period &&
@@ -214,7 +211,7 @@ const obtenerEstadoDeCuenta = async (req, res) => {
         l.detPadres = pagoPart.descripcion || pagoPart.observaciones || "";
       }
 
-      // --- pago obra social ---
+      // pago obra social
       const pagoOS = movs.find(m =>
         m.tipo === "OS" &&
         m.period === period &&
@@ -225,8 +222,6 @@ const obtenerEstadoDeCuenta = async (req, res) => {
         l.detOS = pagoOS.descripcion || pagoOS.observaciones || "";
       }
     }
-
-    // ============================================================
 
     res.json({
       paciente: {
@@ -260,7 +255,7 @@ const obtenerEstadoDeCuenta = async (req, res) => {
 
 
 // ----------------- PUT /api/estado-de-cuenta/:dni -----------------
-// Guarda líneas (CARGO) y facturas (FACT) que vienen del modal
+// Guarda líneas (CARGO + PART/OS) y facturas (FACT) que vienen del modal
 const actualizarEstadoDeCuenta = async (req, res) => {
   try {
     const dni = toStr(req.params.dni).trim();
@@ -295,7 +290,7 @@ const actualizarEstadoDeCuenta = async (req, res) => {
     const modById = mapById(modulos);
     const profById = mapById(profesionales);
 
-    // ---- limpiamos lo que vamos a regenerar (CARGO + FACT) ----
+    // ---- limpiamos lo que vamos a regenerar (CARGO + PART/OS + FACT) ----
     const baseFilter = { dni };
     if (areaId) baseFilter.areaId = areaId;
 
@@ -309,6 +304,12 @@ const actualizarEstadoDeCuenta = async (req, res) => {
       ...(periodsCargos.length ? { period: { $in: periodsCargos } } : {}),
     };
 
+    const deleteFilterPagos = {
+      ...baseFilter,
+      tipo: { $in: ["PART", "OS"] },
+      ...(periodsCargos.length ? { period: { $in: periodsCargos } } : {}),
+    };
+
     const deleteFilterFacts = {
       ...baseFilter,
       tipo: "FACT",
@@ -316,12 +317,13 @@ const actualizarEstadoDeCuenta = async (req, res) => {
 
     await Promise.all([
       Movimiento.deleteMany(deleteFilterCargos),
+      Movimiento.deleteMany(deleteFilterPagos),
       Movimiento.deleteMany(deleteFilterFacts),
     ]);
 
     const docsToInsert = [];
 
-    // ---- reconstruir CARGOS desde lineas ----
+    // ---- reconstruir CARGOS + PART/OS desde lineas ----
     for (const l of lineasArr) {
       const period = (l.mes || l.period || "").trim(); // YYYY-MM
       if (!period) continue;
@@ -350,8 +352,9 @@ const actualizarEstadoDeCuenta = async (req, res) => {
         modDoc?.numero ||
         "";
 
-      const fechaCargo = new Date(`${period}-01T00:00:00.000Z`);
+      const fechaBase = new Date(`${period}-01T00:00:00.000Z`);
 
+      // CARGO
       docsToInsert.push({
         pacienteId: paciente._id,
         dni,
@@ -363,21 +366,57 @@ const actualizarEstadoDeCuenta = async (req, res) => {
 
         period,
         tipo: "CARGO",
-        fecha: fechaCargo,
+        fecha: fechaBase,
         monto: montoCargo,
         cantidad: Number(cant) || 1,
         profesional: profesionalNombre,
-
-        // 🔥 NUEVO: pagos ingresados en el modal
-        pagPadres: parseNumberLike(l.pagPadres, 0),
-        detPadres: l.detPadres || "",
-        pagOS: parseNumberLike(l.pagOS, 0),
-        detOS: l.detOS || "",
-
         descripcion: `Cargo ${period} — ${moduloNombre || "Módulo"}`,
         estado: "PENDIENTE",
       });
 
+      // Pago Padres -> PART
+      const pagPadres = parseNumberLike(l.pagPadres, 0);
+      if (pagPadres > 0) {
+        docsToInsert.push({
+          pacienteId: paciente._id,
+          dni,
+          areaId: areaId || undefined,
+          areaNombre: area?.nombre || l.areaNombre || undefined,
+
+          moduloId: modDoc?._id || moduloIdStr || undefined,
+          moduloNombre: moduloNombre || undefined,
+
+          period,
+          tipo: "PART",
+          fecha: fechaBase,
+          monto: pagPadres,
+          descripcion: l.detPadres || `Pago padres ${period} — ${moduloNombre || "Módulo"}`,
+          observaciones: l.detPadres || undefined,
+          estado: "REGISTRADO",
+        });
+      }
+
+      // Pago Obra Social -> OS
+      const pagOS = parseNumberLike(l.pagOS, 0);
+      if (pagOS > 0) {
+        docsToInsert.push({
+          pacienteId: paciente._id,
+          dni,
+          areaId: areaId || undefined,
+          areaNombre: area?.nombre || l.areaNombre || undefined,
+
+          moduloId: modDoc?._id || moduloIdStr || undefined,
+          moduloNombre: moduloNombre || undefined,
+
+          period,
+          tipo: "OS",
+          fecha: fechaBase,
+          monto: pagOS,
+          descripcion: l.detOS || `Pago O.S. ${period} — ${moduloNombre || "Módulo"}`,
+          observaciones: l.detOS || undefined,
+          estado: "REGISTRADO",
+        });
+      }
     }
 
     // ---- reconstruir FACTURAS desde facturas ----
@@ -610,6 +649,5 @@ module.exports = {
   getPorDni,
   __test__: { buildFilasArea, parseCantidad, getPrecioModulo }
 };
-
 
 
