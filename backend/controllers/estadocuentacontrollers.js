@@ -261,11 +261,16 @@ const actualizarEstadoDeCuenta = async (req, res) => {
     const dni = toStr(req.params.dni).trim();
     const { areaId: rawAreaId, lineas, facturas } = req.body || {};
 
+    // 👇 Blindaje backend: sin área NO borro ni inserto nada
+    if (!rawAreaId) {
+      return res.status(400).json({ error: "areaId es obligatorio para guardar el estado de cuenta" });
+    }
+
     const paciente = await Paciente.findOne({ dni }).lean();
     if (!paciente) return res.status(404).json({ error: "Paciente no encontrado" });
 
-    const areaId = rawAreaId ? new mongoose.Types.ObjectId(rawAreaId) : null;
-    const area = areaId ? await Area.findById(areaId).lean() : null;
+    const areaId = new mongoose.Types.ObjectId(rawAreaId);
+    const area = await Area.findById(areaId).lean();
 
     const lineasArr = Array.isArray(lineas) ? lineas : [];
     const facturasArr = Array.isArray(facturas) ? facturas : [];

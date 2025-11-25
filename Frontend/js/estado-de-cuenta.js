@@ -1252,13 +1252,24 @@
 
           // Guardar
        // Guardar
+// Guardar
 const btnGuardar = popup.querySelector("#edcBtnGuardar");
 if (btnGuardar) {
   btnGuardar.addEventListener("click", async () => {
     try {
+      // 👇 Blindaje: sin área NO guardamos
+      if (!areaSel || !areaSel.id) {
+        await Swal.fire({
+          icon: "warning",
+          title: "Falta área",
+          text: "Tenés que seleccionar un área para poder guardar el estado de cuenta.",
+        });
+        return;
+      }
+
       const payload = {
         dni: paciente.dni,
-        areaId: areaSel?.id || null,
+        areaId: areaSel.id,   // 👈 ahora SIEMPRE va un id real
         lineas,
         facturas,
       };
@@ -1286,6 +1297,7 @@ if (btnGuardar) {
     }
   });
 }
+
 
 
           // PDF
