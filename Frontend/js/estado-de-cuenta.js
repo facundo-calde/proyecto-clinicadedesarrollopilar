@@ -489,42 +489,80 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
     const moduloMap = {};
     MODULOS.forEach((m) => (moduloMap[String(m._id)] = m));
 
-    // Profesionales por rol si corresponde
+      // Profesionales por rol (Directoras, Coordinadores, Profesionales, Pasantes)
     const PROFESIONALES = USUARIOS_ALL.filter((u) => {
-      const roles = [];
+      const rol = (u.rol || "").trim();
 
-      if (u.rol) roles.push(String(u.rol));
-      if (u.role) roles.push(String(u.role));
-      if (Array.isArray(u.roles)) roles.push(...u.roles.map(String));
+      // Roles válidos según el esquema
+      const esRolValido =
+        rol === "Profesional" ||
+        rol === "Coordinador y profesional" ||
+        rol === "Coordinador de área" ||
+        rol === "Directoras" ||
+        rol === "Pasante";
 
-      const esProf = roles.some((r) => r.toLowerCase().includes("prof"));
-      if (!esProf) return false;
+      if (!esRolValido) return false;
 
+      // Si NO hay área seleccionada, mostramos a todos estos roles
       if (!areaId && !areaNombre) return true;
 
-      const areasUser = [];
+      const areasIds = [];
+      const areasNames = [];
 
+      // Profesional por área
       if (Array.isArray(u.areasProfesional)) {
         u.areasProfesional.forEach((a) => {
           if (!a) return;
-          if (typeof a === "string") areasUser.push(a.toLowerCase());
-          else if (a.nombre) areasUser.push(a.nombre.toLowerCase());
-          else if (a.area) areasUser.push(String(a.area).toLowerCase());
+          if (a.areaId)     areasIds.push(String(a.areaId));
+          if (a.areaNombre) areasNames.push(a.areaNombre.toLowerCase());
         });
       }
 
-      if (u.area && typeof u.area === "string")
-        areasUser.push(u.area.toLowerCase());
-      if (u.areaNombre) areasUser.push(u.areaNombre.toLowerCase());
+      // Coordinación por área
+      if (Array.isArray(u.areasCoordinadas)) {
+        u.areasCoordinadas.forEach((a) => {
+          if (!a) return;
+          if (a.areaId)     areasIds.push(String(a.areaId));
+          if (a.areaNombre) areasNames.push(a.areaNombre.toLowerCase());
+        });
+      }
 
-      if (areaNombre && areasUser.includes(areaNombre.toLowerCase()))
+      // Pasante: un solo área
+      if (u.pasanteArea) {
+        if (u.pasanteArea.areaId)
+          areasIds.push(String(u.pasanteArea.areaId));
+        if (u.pasanteArea.areaNombre)
+          areasNames.push(u.pasanteArea.areaNombre.toLowerCase());
+      }
+
+      // LEGACY: lista chata de nombres de área
+      if (Array.isArray(u.areas)) {
+        u.areas.forEach((nom) => {
+          if (typeof nom === "string" && nom.trim()) {
+            areasNames.push(nom.toLowerCase());
+          }
+        });
+      }
+
+      // Si no tiene ninguna área asociada y estamos filtrando por área, afuera
+      if (!areasIds.length && !areasNames.length) return false;
+
+      // Coincidencia por id
+      if (areaId && areasIds.includes(String(areaId))) return true;
+
+      // Coincidencia por nombre
+      if (
+        areaNombre &&
+        areasNames.includes(areaNombre.toLowerCase())
+      )
         return true;
 
-      return !areasUser.length;
+      return false;
     });
 
     const profMap = {};
     PROFESIONALES.forEach((p) => (profMap[String(p._id)] = p));
+
 
     // ================== Datos de estado de cuenta ==================
     let path = `/estado-de-cuenta/${paciente.dni}`;
