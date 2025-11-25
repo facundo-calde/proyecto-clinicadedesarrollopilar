@@ -493,71 +493,62 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
     const PROFESIONALES = USUARIOS_ALL.filter((u) => {
       const rol = (u.rol || "").trim();
 
-      // Roles válidos según el esquema
-      const esRolValido =
-        rol === "Profesional" ||
-        rol === "Coordinador y profesional" ||
-        rol === "Coordinador de área" ||
-        rol === "Directoras" ||
-        rol === "Pasante";
+      const esProfesional = rol === "Profesional" || rol === "Coordinador y profesional";
+      const esCoordinador = rol === "Coordinador de área" || rol === "Coordinador y profesional";
+      const esPasante     = rol === "Pasante";
+      const esDirectora   = rol === "Directoras";
 
-      if (!esRolValido) return false;
+      // Solo estos roles entran al select
+      if (!esProfesional && !esCoordinador && !esPasante && !esDirectora) return false;
 
-      // Si NO hay área seleccionada, mostramos a todos estos roles
+      // Si no hay área seleccionada, mostramos todos estos roles
       if (!areaId && !areaNombre) return true;
 
-      const areasIds = [];
-      const areasNames = [];
+      // Directora: siempre aparece en el select, sin filtrar por área
+      if (esDirectora) return true;
 
-      // Profesional por área
-      if (Array.isArray(u.areasProfesional)) {
+      const wantedId   = areaId ? String(areaId) : null;
+      const wantedName = areaNombre
+        ? areaNombre
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+        : null;
+
+      const norm = (s) =>
+        String(s || "")
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "");
+
+      let ok = false;
+
+      // Profesionales: áreasProfesional
+      if (esProfesional && Array.isArray(u.areasProfesional)) {
         u.areasProfesional.forEach((a) => {
           if (!a) return;
-          if (a.areaId)     areasIds.push(String(a.areaId));
-          if (a.areaNombre) areasNames.push(a.areaNombre.toLowerCase());
+          if (wantedId && a.areaId && String(a.areaId) === wantedId) ok = true;
+          if (wantedName && a.areaNombre && norm(a.areaNombre) === wantedName) ok = true;
         });
       }
 
-      // Coordinación por área
-      if (Array.isArray(u.areasCoordinadas)) {
+      // Coordinadores: áreasCoordinadas
+      if (esCoordinador && Array.isArray(u.areasCoordinadas)) {
         u.areasCoordinadas.forEach((a) => {
           if (!a) return;
-          if (a.areaId)     areasIds.push(String(a.areaId));
-          if (a.areaNombre) areasNames.push(a.areaNombre.toLowerCase());
+          if (wantedId && a.areaId && String(a.areaId) === wantedId) ok = true;
+          if (wantedName && a.areaNombre && norm(a.areaNombre) === wantedName) ok = true;
         });
       }
 
-      // Pasante: un solo área
-      if (u.pasanteArea) {
-        if (u.pasanteArea.areaId)
-          areasIds.push(String(u.pasanteArea.areaId));
-        if (u.pasanteArea.areaNombre)
-          areasNames.push(u.pasanteArea.areaNombre.toLowerCase());
+      // Pasante: pasanteArea
+      if (esPasante && u.pasanteArea) {
+        const a = u.pasanteArea;
+        if (wantedId && a.areaId && String(a.areaId) === wantedId) ok = true;
+        if (wantedName && a.areaNombre && norm(a.areaNombre) === wantedName) ok = true;
       }
 
-      // LEGACY: lista chata de nombres de área
-      if (Array.isArray(u.areas)) {
-        u.areas.forEach((nom) => {
-          if (typeof nom === "string" && nom.trim()) {
-            areasNames.push(nom.toLowerCase());
-          }
-        });
-      }
-
-      // Si no tiene ninguna área asociada y estamos filtrando por área, afuera
-      if (!areasIds.length && !areasNames.length) return false;
-
-      // Coincidencia por id
-      if (areaId && areasIds.includes(String(areaId))) return true;
-
-      // Coincidencia por nombre
-      if (
-        areaNombre &&
-        areasNames.includes(areaNombre.toLowerCase())
-      )
-        return true;
-
-      return false;
+      return ok;
     });
 
     const profMap = {};
