@@ -267,8 +267,8 @@ const actualizarEstadoDeCuenta = async (req, res) => {
     const areaId = rawAreaId ? new mongoose.Types.ObjectId(rawAreaId) : null;
     const area   = areaId ? await Area.findById(areaId).lean() : null;
 
-    const lineasArr    = Array.isArray(lineas) ? lineas : [];
-    const facturasArr  = Array.isArray(facturas) ? facturas : [];
+    const lineasArr   = Array.isArray(lineas) ? lineas : [];
+    const facturasArr = Array.isArray(facturas) ? facturas : [];
 
     // ---- catálogos para módulos y profesionales ----
     const moduloIds = [
@@ -286,17 +286,17 @@ const actualizarEstadoDeCuenta = async (req, res) => {
     const modById  = mapById(modulos);
     const profById = mapById(profesionales);
 
-    // ---- limpiamos lo que vamos a regenerar (CARGO + FACT) ----
-    const baseFilter = { dni };
-    if (areaId) baseFilter.areaId = areaId;
-
-    // sólo meses válidos (mes tiene que venir con value del input month)
+    // ---- normalizar líneas: solo las que tienen mes y módulo ----
     const lineasValidas = lineasArr
       .map(l => ({
         ...l,
-        mes: (l.mes || l.period || "").trim(),
+        mes: (l.mes || l.period || "").trim(),    // YYYY-MM
       }))
-      .filter(l => l.mes && l.moduloId); // sin mes o sin módulo no se guarda nada
+      .filter(l => l.mes && l.moduloId);          // sin mes o sin módulo no se guarda
+
+    // ---- limpiamos lo que vamos a regenerar (CARGO + FACT) ----
+    const baseFilter = { dni };
+    if (areaId) baseFilter.areaId = areaId;
 
     const periodsCargos = [
       ...new Set(lineasValidas.map(l => l.mes).filter(Boolean)),
@@ -368,6 +368,12 @@ const actualizarEstadoDeCuenta = async (req, res) => {
         cantidad: Number(cant) || 1,
         profesional: profesionalNombre,
 
+        // ✅ pagos que vienen del modal (se guardan en el CARGO)
+        pagPadres: parseNumberLike(l.pagPadres, 0),
+        detPadres: l.detPadres || "",
+        pagOS:     parseNumberLike(l.pagOS, 0),
+        detOS:     l.detOS || "",
+
         descripcion: `Cargo ${period} — ${moduloNombre || "Módulo"}`,
         estado: "PENDIENTE",
       });
@@ -395,8 +401,8 @@ const actualizarEstadoDeCuenta = async (req, res) => {
         fecha,
         monto,
 
-        nroRecibo: f.nro || undefined,
-        descripcion: f.detalle || undefined,
+        nroRecibo:     f.nro || undefined,
+        descripcion:   f.detalle || undefined,
         observaciones: f.detalle || undefined,
         estado: "PENDIENTE",
       });
