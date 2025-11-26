@@ -772,21 +772,47 @@
         return { totalAPagar, totalPagado, totalFacturado, difFactPag, saldoRestante };
       };
 
-      const areaNombreActual =
+        const areaNombreActual =
         (areaSel && areaSel.nombre) || "Todas las áreas";
 
       const areaColor = (() => {
-        const n = (areaNombreActual || "").toLowerCase();
-        const nNorm = n.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        if (nNorm.includes("psicoped")) return "#8b3ffc";
-        if (nNorm.includes("fono")) return "#7fbf32";
-        if (nNorm.includes("terapia ocup")) return "#ff3b30";
-        if (nNorm.includes("atencion temprana")) return "#00c9d6";
-        if (nNorm.includes("abordaje integral") || nNorm.includes("discapacidad"))
-          return "#2457ff";
-        if (nNorm.includes("habilidades sociales")) return "#ffd800";
-        return "#7fbf32";
+        const nNorm = (areaNombreActual || "")
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "");
+
+        // FONO
+        if (nNorm.includes("fono")) return "#8BCB86";
+
+        // PSICO / Psicopedagogía
+        if (nNorm.includes("psicoped")) return "#A591EF";
+
+        // PSICOLOGÍA
+        if (nNorm.includes("psicolog")) return "#7986CB";
+
+        // T.O. – Terapia Ocupacional
+        if (nNorm.includes("terapia ocup") || nNorm.includes("t.o")) return "#E86A6A";
+
+        // HHSS – Habilidades Sociales
+        if (nNorm.includes("habilidades sociales") || nNorm.includes("hhss"))
+          return "#F9F171";
+
+        // A.T. – Atención Temprana
+        if (nNorm.includes("atencion temprana") || nNorm.includes("a.t"))
+          return "#41C6F1";
+
+        // A.I. – Abordaje Integral / Discapacidad
+        if (
+          nNorm.includes("abordaje integral") ||
+          nNorm.includes("discapacidad") ||
+          nNorm.includes("a.i")
+        )
+          return "#373DB6";
+
+        // Default
+        return "#8BCB86";
       })();
+
 
       const areaOptionsHtml = [
         `<option value="">(Todas las áreas)</option>`,
