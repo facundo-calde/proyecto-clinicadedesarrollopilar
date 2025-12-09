@@ -772,7 +772,7 @@
         return { totalAPagar, totalPagado, totalFacturado, difFactPag, saldoRestante };
       };
 
-        const areaNombreActual =
+      const areaNombreActual =
         (areaSel && areaSel.nombre) || "Todas las áreas";
 
       const areaColor = (() => {
@@ -863,27 +863,35 @@
             ">
 
               <div style="flex:0 0 auto; min-width:900px;">
-                <table class="edc-table">
-                  <thead>
-                    <tr class="edc-th">
-                      <th class="edc-col-mes">MES</th>
-                      <th class="edc-col-cant">CANT</th>
-                      <th class="edc-col-mod">CÓDIGO / MÓDULO</th>
-                      <th class="edc-col-prof">PROFESIONAL</th>
-                      <th class="edc-col-apag">A PAGAR</th>
-                      <th class="edc-col-pag">PAGADO POR PADRES</th>
-                      <th class="edc-col-obs">DETALLE</th>
-                      <th class="edc-col-pag">PAGADO POR O.S</th>
-                      <th class="edc-col-obs">DETALLE</th>
-                    </tr>
-                  </thead>
-                  <tbody id="edcBodyLineas"></tbody>
-                  <tfoot id="edcFootLineas"></tfoot>
-                </table>
-                <button id="edcBtnAddLinea" class="swal2-confirm swal2-styled" style="margin-top:6px;background:#6c5ce7;">
-                  + Agregar línea
-                </button>
-              </div>
+
+  <!-- Botón arriba de las líneas -->
+  <div style="display:flex; justify-content:flex-end; margin-bottom:6px;">
+    <button id="edcBtnAddLinea"
+            class="swal2-confirm swal2-styled"
+            style="background:#6c5ce7;">
+      + Agregar línea
+    </button>
+  </div>
+
+  <table class="edc-table">
+    <thead>
+      <tr class="edc-th">
+        <th class="edc-col-mes">MES</th>
+        <th class="edc-col-cant">CANT</th>
+        <th class="edc-col-mod">CÓDIGO / MÓDULO</th>
+        <th class="edc-col-prof">PROFESIONAL</th>
+        <th class="edc-col-apag">A PAGAR</th>
+        <th class="edc-col-pag">PAGADO POR PADRES</th>
+        <th class="edc-col-obs">DETALLE</th>
+        <th class="edc-col-pag">PAGADO POR O.S</th>
+        <th class="edc-col-obs">DETALLE</th>
+      </tr>
+    </thead>
+    <tbody id="edcBodyLineas"></tbody>
+    <tfoot id="edcFootLineas"></tfoot>
+  </table>
+</div>
+
 
               <div style="flex:0 0 auto; min-width:520px;">
                 <div style="background:${areaColor};color:#fff;padding:4px 6px;font-weight:600;margin-bottom:4px;">
