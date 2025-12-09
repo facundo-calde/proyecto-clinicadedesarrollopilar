@@ -606,116 +606,115 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
     });
 
     // ================== Normalizar líneas (solo CARGOS) ==================
-    const baseLineas = filas.length
-      ? filas
-      : movimientos.filter((m) => m.tipo === "CARGO");
+const baseLineas = filas.length
+  ? filas
+  : movimientos.filter((m) => m.tipo === "CARGO");
 
-    let lineas = baseLineas.map((f) => {
-      const mes = f.mes || f.periodo || f.period || "";
-      const cantidad = f.cantidad ?? f.cant ?? 1;
+let lineas = baseLineas.map((f) => {
+  const mes = f.mes || f.periodo || f.period || "";
+  const cantidad = f.cantidad ?? f.cant ?? 1;
 
-      const moduloNombre = f.moduloNombre || f.modulo || f.moduloNumero || "";
-      const moduloIdCrudo =
-        f.moduloId ||
-        f.moduloIdMongo ||
-        (typeof f.modulo === "string" && /^[0-9a-fA-F]{24}$/.test(f.modulo)
-          ? f.modulo
-          : null);
+  const moduloNombre = f.moduloNombre || f.modulo || f.moduloNumero || "";
+  const moduloIdCrudo =
+    f.moduloId ||
+    f.moduloIdMongo ||
+    (typeof f.modulo === "string" &&
+      /^[0-9a-fA-F]{24}$/.test(f.modulo)
+      ? f.modulo
+      : null);
 
-      let moduloId = moduloIdCrudo || "";
-      let moduloRef = moduloId ? moduloMap[String(moduloId)] : null;
+  let moduloId = moduloIdCrudo || "";
+  let moduloRef = moduloId ? moduloMap[String(moduloId)] : null;
 
-      if (!moduloRef && moduloNombre) {
-        moduloRef = MODULOS.find(
-          (m) =>
-            (m.nombre || m.codigo || m.titulo || "").toLowerCase() ===
-            String(moduloNombre).toLowerCase()
-        );
-        if (moduloRef) moduloId = String(moduloRef._id);
-      }
+  const precioModulo =
+    (moduloRef &&
+      Number(
+        moduloRef.valorPadres ??
+          moduloRef.valorModulo ??
+          moduloRef.precioModulo ??
+          moduloRef.precio ??
+          0
+      )) ||
+    Number(f.valorPadres || f.precioModulo || f.valorModulo || 0);
 
-      const precioModulo =
-        (moduloRef &&
-          Number(
-            moduloRef.valorPadres ??
-              moduloRef.valorModulo ??
-              moduloRef.precioModulo ??
-              moduloRef.precio ??
-              0
-          )) ||
-        Number(f.valorPadres || f.precioModulo || f.valorModulo || 0);
+  const aPagar = Number(
+    f.aPagar != null
+      ? f.aPagar
+      : precioModulo
+      ? precioModulo * (Number(cantidad) || 0)
+      : f.monto || 0
+  );
 
-      const aPagar = Number(
-        f.aPagar != null
-          ? f.aPagar
-          : precioModulo
-          ? precioModulo * (Number(cantidad) || 0)
-          : f.monto || 0
-      );
+  const clavePagos = `${mes}|${moduloId || ""}`;
+  const pagos = pagosMap[clavePagos] || {};
 
-      const clavePagos = `${mes}|${moduloId || ""}`;
-      const pagos = pagosMap[clavePagos] || {};
+  const pagPadres =
+    f.pagPadres != null || f.pagadoPadres != null
+      ? Number(f.pagPadres || f.pagadoPadres || 0)
+      : Number(pagos.padres || 0);
 
-      const pagPadres =
-        f.pagPadres != null || f.pagadoPadres != null
-          ? Number(f.pagPadres || f.pagadoPadres || 0)
-          : Number(pagos.padres || 0);
+  const pagOS =
+    f.pagOS != null || f.pagadoOS != null
+      ? Number(f.pagOS || f.pagadoOS || 0)
+      : Number(pagos.os || 0);
 
-      const pagOS =
-        f.pagOS != null || f.pagadoOS != null
-          ? Number(f.pagOS || f.pagadoOS || 0)
-          : Number(pagos.os || 0);
+  const detPadres =
+    f.detPadres ||
+    f.detallePadres ||
+    f.observaciones ||
+    pagos.detPadres ||
+    "";
 
-      const detPadres =
-        f.detPadres ||
-        f.detallePadres ||
-        f.observaciones ||
-        pagos.detPadres ||
-        "";
+  const detOS =
+    f.detOS || f.detalleOS || f.observacionOS || pagos.detOS || "";
 
-      const detOS =
-        f.detOS || f.detalleOS || f.observacionOS || pagos.detOS || "";
+  const profNombre =
+    f.profesional ||
+    (f.profesionales &&
+      (f.profesionales.profesional?.[0] ||
+        f.profesionales.coordinador?.[0] ||
+        f.profesionales.pasante?.[0] ||
+        f.profesionales.directora?.[0])) ||
+    "";
 
-      const profNombre =
-        f.profesional ||
-        (f.profesionales &&
-          (f.profesionales.profesional?.[0] ||
-            f.profesionales.coordinador?.[0] ||
-            f.profesionales.pasante?.[0] ||
-            f.profesionales.directora?.[0])) ||
-        "";
-
-      let profId = f.profesionalId || "";
-
-      if (!profId && profNombre) {
-        const found = PROFESIONALES.find((p) => {
-          const nom =
-            p.nombreApellido || p.nombreCompleto || p.nombre || "";
-          return nom.toLowerCase() === profNombre.toLowerCase();
-        });
-        if (found) profId = String(found._id);
-      }
-
-      const esAdmin =
-        (f.meta && f.meta.esAdministracion) ||
-        (!moduloId && (moduloNombre || "").toLowerCase() === "administracion");
-
-      return {
-        mes,
-        cantidad: Number(cantidad) || 0,
-        moduloId,
-        moduloNombre,
-        profesionalId: profId,
-        profesionalNombre: profNombre,
-        precioModulo,
-        aPagar,
-        pagPadres,
-        detPadres,
-        pagOS,
-        detOS,
-        esAdmin,
-      };
+  let profId = f.profesionalId || "";
+  if (!profId && profNombre) {
+    const found = PROFESIONALES.find((p) => {
+      const nom =
+        p.nombreApellido || p.nombreCompleto || p.nombre || "";
+      return nom.toLowerCase() === profNombre.toLowerCase();
     });
+    if (found) profId = String(found._id);
+  }
+
+  // 🔴 detectar si es línea de Administración guardada en BD
+  const esAdmin =
+    (f.meta && f.meta.esAdministracion) ||
+    (!moduloId &&
+      (moduloNombre || "").toLowerCase().trim() === "administracion");
+
+  // 👈 forzar que el select muestre "Administración"
+  if (esAdmin && !moduloId) {
+    moduloId = ADMIN_ID; // "__ADMIN__"
+  }
+
+  return {
+    mes,
+    cantidad: Number(cantidad) || 0,
+    moduloId,
+    moduloNombre,
+    profesionalId: profId,
+    profesionalNombre: profNombre,
+    precioModulo,
+    aPagar,
+    pagPadres,
+    detPadres,
+    pagOS,
+    detOS,
+    esAdmin,
+  };
+});
+
 
     // ================== Normalizar facturas ==================
     let facturas = facturasRaw.map((f) => {
