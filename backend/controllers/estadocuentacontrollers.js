@@ -418,50 +418,62 @@ const actualizarEstadoDeCuenta = async (req, res) => {
           .toLowerCase()
           .trim() === "administracion";
 
-      // 🟢 CASO ESPECIAL: ADMINISTRACIÓN (AJUSTE MANUAL)
-      if (esAdmin) {
-        const montoCargo = parseNumberLike(l.aPagar, 0);
-        if (!montoCargo) return; // si no tiene monto, no la guardamos
+   // 🟢 CASO ESPECIAL: ADMINISTRACIÓN (AJUSTE MANUAL)
+if (esAdmin) {
+  const montoCargo = parseNumberLike(l.aPagar, 0);
+  const pagPadres = parseNumberLike(l.pagPadres, 0);
+  const pagOS     = parseNumberLike(l.pagOS, 0);
 
-        const fechaCargo = new Date(`${period}-01T00:00:00.000Z`);
-        const asigKey = `ADMIN-${dni}-${areaId || "sinArea"}-${period}-${idx}`;
+  // si está totalmente vacía (sin cargo, sin pagos, sin detalles) no la guardamos
+  if (
+    !montoCargo &&
+    !pagPadres &&
+    !pagOS &&
+    !(l.detPadres && String(l.detPadres).trim()) &&
+    !(l.detOS && String(l.detOS).trim())
+  ) {
+    return;
+  }
 
-        docsToInsert.push({
-          pacienteId: paciente._id,
-          dni,
-          areaId: areaId || undefined,
-          areaNombre: area?.nombre || l.areaNombre || undefined,
+  const fechaCargo = new Date(`${period}-01T00:00:00.000Z`);
+  const asigKey = `ADMIN-${dni}-${areaId || "sinArea"}-${period}-${idx}`;
 
-          moduloId: undefined,
-          moduloNombre: "Administración",
+  docsToInsert.push({
+    pacienteId: paciente._id,
+    dni,
+    areaId: areaId || undefined,
+    areaNombre: area?.nombre || l.areaNombre || undefined,
 
-          period,
-          asigKey,
-          tipo: "CARGO",
-          fecha: fechaCargo,
-          monto: montoCargo,
-          cantidad: 1,
-          profesional: undefined,
+    moduloId: undefined,
+    moduloNombre: "Administración",
 
-          pagPadres: parseNumberLike(l.pagPadres, 0),
-          detPadres: l.detPadres || "",
-          pagOS: parseNumberLike(l.pagOS, 0),
-          detOS: l.detOS || "",
+    period,
+    asigKey,
+    tipo: "CARGO",
+    fecha: fechaCargo,
+    monto: montoCargo,     // puede ser 0
+    cantidad: 1,
+    profesional: undefined,
 
-          descripcion:
-            l.detPadres ||
-            l.detOS ||
-            `Ajuste administrativo ${period}`,
+    pagPadres,
+    detPadres: l.detPadres || "",
+    pagOS,
+    detOS: l.detOS || "",
 
-          estado: "PENDIENTE",
-          meta: {
-            ...(l.meta || {}),
-            esAdministracion: true,
-          },
-        });
+    descripcion:
+      l.detPadres ||
+      l.detOS ||
+      `Ajuste administrativo ${period}`,
 
-        return; // importante: no seguir con lógica de módulo normal
-      }
+    estado: "PENDIENTE",
+    meta: {
+      ...(l.meta || {}),
+      esAdministracion: true,
+    },
+  });
+
+  return;
+}
 
       // 🔵 CASO NORMAL (MÓDULO)
       const moduloIdStr = l.moduloId ? String(l.moduloId) : null;
