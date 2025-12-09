@@ -550,6 +550,8 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
     const profMap = {};
     PROFESIONALES.forEach((p) => (profMap[String(p._id)] = p));
 
+    const ADMIN_ID = "__ADMIN__"; // id ficticio para línea de administración
+
     // ================== Datos de estado de cuenta ==================
     let path = `/estado-de-cuenta/${paciente.dni}`;
     const qs = [];
@@ -694,6 +696,10 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         if (found) profId = String(found._id);
       }
 
+      const esAdmin =
+        (f.meta && f.meta.esAdministracion) ||
+        (!moduloId && (moduloNombre || "").toLowerCase() === "administracion");
+
       return {
         mes,
         cantidad: Number(cantidad) || 0,
@@ -707,6 +713,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
         detPadres,
         pagOS,
         detOS,
+        esAdmin,
       };
     });
 
@@ -738,7 +745,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
 
     const calcTotales = () => {
       lineas = lineas.map((l) => {
-        if (l.precioModulo && !isNaN(l.precioModulo)) {
+        if (!l.esAdmin && l.precioModulo && !isNaN(l.precioModulo)) {
           const cant = Number(l.cantidad) || 0;
           l.aPagar = l.precioModulo * cant;
         }
@@ -1005,7 +1012,10 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
             const normales = MODULOS.filter((m) => !esEventoEspecial(m));
             const especiales = MODULOS.filter(esEventoEspecial);
 
-            let html = `<option value="">(Elegir módulo / evento)</option>`;
+            let html = `<option value="">(Elegir módulo / evento)</option>
+                        <option value="${ADMIN_ID}" ${
+              selId === ADMIN_ID ? "selected" : ""
+            }>Administración (ajuste manual)</option>`;
 
             if (normales.length) {
               html += `<optgroup label="Módulos mensuales">`;
@@ -1085,6 +1095,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
               const selMod = r.moduloId ? String(r.moduloId) : "";
               const selProf = r.profesionalId ? String(r.profesionalId) : "";
               const vCant = Number(r.cantidad) || 0;
+              const isAdmin = r.esAdmin || r.moduloId === ADMIN_ID;
 
               return `
                 <tr>
@@ -1106,11 +1117,24 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
                     </select>
                   </td>
                   <td class="edc-col-prof">
-                    <select data-idx="${idx}" data-field="profesionalId" class="edc-input-linea">
-                      ${buildProfOptions(selProf, r.profesionalNombre)}
-                    </select>
+                    ${
+                      isAdmin
+                        ? `<select disabled class="edc-input-linea"><option>(No aplica)</option></select>`
+                        : `<select data-idx="${idx}" data-field="profesionalId" class="edc-input-linea">
+                             ${buildProfOptions(selProf, r.profesionalNombre)}
+                           </select>`
+                    }
                   </td>
-                  <td class="edc-col-apag">${fmtARS(r.aPagar)}</td>
+                  <td class="edc-col-apag">
+                    ${
+                      isAdmin
+                        ? `<input data-idx="${idx}" data-field="aPagar"
+                                  class="edc-input-linea"
+                                  style="width:100px;text-align:right;"
+                                  value="${r.aPagar ?? 0}">`
+                        : fmtARS(r.aPagar)
+                    }
+                  </td>
                   <td class="edc-col-pag">
                     <input data-idx="${idx}" data-field="pagPadres"
                       class="edc-input-linea" style="width:100px;text-align:right;"
@@ -1207,10 +1231,9 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
             </div>
           `;
 
-          // 👇 ajustar ancho del dummy del scroll superior
+          // ajustar ancho del dummy del scroll superior
           if (scrollMain && scrollTop && scrollTopInner) {
             scrollTopInner.style.width = scrollMain.scrollWidth + "px";
-            // mantener alineado el scroll superior con el inferior
             scrollTop.scrollLeft = scrollMain.scrollLeft;
           }
         };
@@ -1227,17 +1250,30 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
             if (field === "moduloId") {
               const id = t.value;
               lineas[idx].moduloId = id;
-              const m = id ? moduloMap[String(id)] : null;
-              if (m) {
-                lineas[idx].moduloNombre = m.nombre || "";
-                lineas[idx].precioModulo = Number(
-                  m.valorPadres ??
-                    m.valorModulo ??
-                    m.precioModulo ??
-                    m.precio ??
-                    0
-                );
+
+              if (id === ADMIN_ID) {
+                lineas[idx].esAdmin = true;
+                lineas[idx].moduloNombre = "Administración";
+                lineas[idx].precioModulo = 0;
+                lineas[idx].profesionalId = "";
+                lineas[idx].profesionalNombre = "";
+              } else {
+                lineas[idx].esAdmin = false;
+                const m = id ? moduloMap[String(id)] : null;
+                if (m) {
+                  lineas[idx].moduloNombre = m.nombre || "";
+                  lineas[idx].precioModulo = Number(
+                    m.valorPadres ??
+                      m.valorModulo ??
+                      m.precioModulo ??
+                      m.precio ??
+                      0
+                  );
+                } else {
+                  lineas[idx].precioModulo = 0;
+                }
               }
+
               render();
               return;
             }
@@ -1255,7 +1291,8 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
             if (
               field === "cantidad" ||
               field === "pagPadres" ||
-              field === "pagOS"
+              field === "pagOS" ||
+              field === "aPagar"
             ) {
               lineas[idx][field] = safeNum(t.value);
             } else {
@@ -1306,6 +1343,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
             detPadres: "",
             pagOS: 0,
             detOS: "",
+            esAdmin: false,
           });
           render();
         });
@@ -1408,6 +1446,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel) {
     });
   }
 }
+
 
 
   // ==============================

@@ -324,9 +324,21 @@ const actualizarEstadoDeCuenta = async (req, res) => {
     const lineasArr = Array.isArray(lineas) ? lineas : [];
     const facturasArr = Array.isArray(facturas) ? facturas : [];
 
+    const ADMIN_ID = "__ADMIN__";
+
     // ---- catálogos para módulos y profesionales ----
     const moduloIds = [
-      ...new Set(lineasArr.map((l) => l.moduloId).filter(Boolean).map(String)),
+      ...new Set(
+        lineasArr
+          .map((l) => l.moduloId)
+          .filter(
+            (id) =>
+              id &&
+              id !== ADMIN_ID &&
+              mongoose.Types.ObjectId.isValid(String(id))
+          )
+          .map(String)
+      ),
     ];
     const profesionalIds = [
       ...new Set(
@@ -344,13 +356,28 @@ const actualizarEstadoDeCuenta = async (req, res) => {
     const modById = mapById(modulos);
     const profById = mapById(profesionales);
 
-    // ---- normalizar líneas: solo las que tienen mes y módulo ----
+    // ---- normalizar líneas: ahora soporta "Administración" ----
     const lineasValidas = lineasArr
-      .map((l) => ({
-        ...l,
-        mes: (l.mes || l.period || "").trim(), // YYYY-MM
-      }))
-      .filter((l) => l.mes && l.moduloId); // sin mes o sin módulo no se guarda
+      .map((l) => {
+        const mes = (l.mes || l.period || "").trim(); // YYYY-MM
+        const esAdmin =
+          !!l.esAdmin ||
+          l.moduloId === ADMIN_ID ||
+          String(l.moduloNombre || "")
+            .toLowerCase()
+            .trim() === "administración" ||
+          String(l.moduloNombre || "")
+            .toLowerCase()
+            .trim() === "administracion";
+
+        return {
+          ...l,
+          mes,
+          esAdmin,
+        };
+      })
+      // si es admin, no exigimos módulo real; si no lo es, sí
+      .filter((l) => l.mes && (l.moduloId || l.esAdmin));
 
     // ---- limpiamos lo que vamos a regenerar (CARGO + FACT) ----
     const baseFilter = { dni };
@@ -381,7 +408,62 @@ const actualizarEstadoDeCuenta = async (req, res) => {
     // ---- reconstruir CARGOS desde líneas ----
     lineasValidas.forEach((l, idx) => {
       const period = l.mes; // YYYY-MM seguro
+      const esAdmin =
+        l.esAdmin ||
+        l.moduloId === ADMIN_ID ||
+        String(l.moduloNombre || "")
+          .toLowerCase()
+          .trim() === "administración" ||
+        String(l.moduloNombre || "")
+          .toLowerCase()
+          .trim() === "administracion";
 
+      // 🟢 CASO ESPECIAL: ADMINISTRACIÓN (AJUSTE MANUAL)
+      if (esAdmin) {
+        const montoCargo = parseNumberLike(l.aPagar, 0);
+        if (!montoCargo) return; // si no tiene monto, no la guardamos
+
+        const fechaCargo = new Date(`${period}-01T00:00:00.000Z`);
+        const asigKey = `ADMIN-${dni}-${areaId || "sinArea"}-${period}-${idx}`;
+
+        docsToInsert.push({
+          pacienteId: paciente._id,
+          dni,
+          areaId: areaId || undefined,
+          areaNombre: area?.nombre || l.areaNombre || undefined,
+
+          moduloId: undefined,
+          moduloNombre: "Administración",
+
+          period,
+          asigKey,
+          tipo: "CARGO",
+          fecha: fechaCargo,
+          monto: montoCargo,
+          cantidad: 1,
+          profesional: undefined,
+
+          pagPadres: parseNumberLike(l.pagPadres, 0),
+          detPadres: l.detPadres || "",
+          pagOS: parseNumberLike(l.pagOS, 0),
+          detOS: l.detOS || "",
+
+          descripcion:
+            l.detPadres ||
+            l.detOS ||
+            `Ajuste administrativo ${period}`,
+
+          estado: "PENDIENTE",
+          meta: {
+            ...(l.meta || {}),
+            esAdministracion: true,
+          },
+        });
+
+        return; // importante: no seguir con lógica de módulo normal
+      }
+
+      // 🔵 CASO NORMAL (MÓDULO)
       const moduloIdStr = l.moduloId ? String(l.moduloId) : null;
       const modDoc = moduloIdStr ? modById.get(moduloIdStr) : null;
 
@@ -483,6 +565,7 @@ const actualizarEstadoDeCuenta = async (req, res) => {
       .json({ error: "No se pudo actualizar el estado de cuenta" });
   }
 };
+
 
 // ----------------- POST /api/estado-de-cuenta/:dni/movimientos -----------------
 const crearMovimiento = async (req, res) => {
