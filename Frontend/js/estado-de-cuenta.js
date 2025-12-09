@@ -846,21 +846,30 @@
             AREA: ${areaNombreActual.toUpperCase()}
           </div>
 
-          <div style="
-            border:1px solid ${areaColor};
-            border-top:none;
-            border-radius:0 0 6px 6px;
-            padding:8px;
-            background:#f8fff4;
-            overflow-x:auto;
-          ">
-            <div style="
-              display:flex;
-              flex-direction:row;
-              flex-wrap:nowrap;
-              gap:10px;
-              width:max-content;
-            ">
+         <div style="
+  border:1px solid ${areaColor};
+  border-top:none;
+  border-radius:0 0 6px 6px;
+  padding:8px;
+  background:#f8fff4;
+">
+  <!-- Scroll superior sincronizado -->
+  <div id="edcScrollTop" style="overflow-x:auto;overflow-y:hidden;">
+    <div id="edcScrollTopInner" style="height:1px;"></div>
+  </div>
+
+  <!-- Scroll principal (abajo, el de siempre) -->
+  <div id="edcScrollMain" style="overflow-x:auto;overflow-y:hidden;">
+    <div style="
+      display:flex;
+      flex-direction:row;
+      flex-wrap:nowrap;
+      gap:10px;
+      width:max-content;
+    ">
+
+      <!-- acá quedan las dos columnas con tablas, sin cambios -->
+
 
               <div style="flex:0 0 auto; min-width:900px;">
 
@@ -957,6 +966,10 @@
           const resumenDif = popup.querySelector("#edcResumenDif");
           const tituloEl = popup.querySelector("#edcTituloArea");
           const btnAddLinea = popup.querySelector("#edcBtnAddLinea");
+          const scrollTop = popup.querySelector("#edcScrollTop");
+          const scrollMain = popup.querySelector("#edcScrollMain");
+          const scrollTopInner = popup.querySelector("#edcScrollTopInner");
+
 
 
           const safeNum = (v) => {
@@ -977,6 +990,30 @@
               nom.includes("evento")
             );
           };
+
+
+          // sincronizar scroll superior/inferior
+          if (scrollMain && scrollTop) {
+            let syncing = false;
+
+            const syncFromMain = () => {
+              if (syncing) return;
+              syncing = true;
+              scrollTop.scrollLeft = scrollMain.scrollLeft;
+              syncing = false;
+            };
+
+            const syncFromTop = () => {
+              if (syncing) return;
+              syncing = true;
+              scrollMain.scrollLeft = scrollTop.scrollLeft;
+              syncing = false;
+            };
+
+            scrollMain.addEventListener("scroll", syncFromMain);
+            scrollTop.addEventListener("scroll", syncFromTop);
+          }
+
 
           const render = () => {
             const { totalAPagar, totalPagado, totalFacturado, difFactPag, saldoRestante } =
