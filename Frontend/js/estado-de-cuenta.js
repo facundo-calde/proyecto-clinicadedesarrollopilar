@@ -874,19 +874,22 @@
   </div>
 
   <table class="edc-table">
-    <thead>
-      <tr class="edc-th">
-        <th class="edc-col-mes">MES</th>
-        <th class="edc-col-cant">CANT</th>
-        <th class="edc-col-mod">CÓDIGO / MÓDULO</th>
-        <th class="edc-col-prof">PROFESIONAL</th>
-        <th class="edc-col-apag">A PAGAR</th>
-        <th class="edc-col-pag">PAGADO POR PADRES</th>
-        <th class="edc-col-obs">DETALLE</th>
-        <th class="edc-col-pag">PAGADO POR O.S</th>
-        <th class="edc-col-obs">DETALLE</th>
-      </tr>
-    </thead>
+ <thead>
+  <tr class="edc-th">
+    <th class="edc-col-mes">MES</th>
+    <th class="edc-col-cant">CANT</th>
+    <th class="edc-col-mod">CÓDIGO / MÓDULO</th>
+    <th class="edc-col-prof">PROFESIONAL</th>
+    <th class="edc-col-apag">A PAGAR</th>
+    <th class="edc-col-pag">PAGADO POR PADRES</th>
+    <th class="edc-col-obs">DETALLE</th>
+    <th class="edc-col-pag">PAGADO POR O.S</th>
+    <th class="edc-col-obs">DETALLE</th>
+    <th style="width:32px;"></th> <!-- columna X -->
+  </tr>
+</thead>
+
+
     <tbody id="edcBodyLineas"></tbody>
     <tfoot id="edcFootLineas"></tfoot>
   </table>
@@ -954,6 +957,7 @@
           const resumenDif = popup.querySelector("#edcResumenDif");
           const tituloEl = popup.querySelector("#edcTituloArea");
           const btnAddLinea = popup.querySelector("#edcBtnAddLinea");
+
 
           const safeNum = (v) => {
             if (v === "" || v === null || v === undefined) return 0;
@@ -1060,50 +1064,67 @@
                 const vCant = Number(r.cantidad) || 0;
 
                 return `
-                  <tr>
-                    <td class="edc-col-mes">
-                      <input type="month" data-idx="${idx}" data-field="mes"
-                        class="edc-input-linea" style="width:110px;" value="${r.mes || ""}">
-                    </td>
-                    <td class="edc-col-cant">
-                      <select data-idx="${idx}" data-field="cantidad" class="edc-input-linea" style="width:80px;">
-                        <option value="1" ${vCant === 1 ? "selected" : ""}>1</option>
-                        <option value="0.3333" ${vCant === 0.3333 ? "selected" : ""}>1/3</option>
-                        <option value="0.5" ${vCant === 0.5 ? "selected" : ""}>1/2</option>
-                        <option value="0.25" ${vCant === 0.25 ? "selected" : ""}>1/4</option>
-                      </select>
-                    </td>
-                    <td class="edc-col-mod">
-                      <select data-idx="${idx}" data-field="moduloId" class="edc-input-linea">
-                        ${buildModuloOptions(selMod)}
-                      </select>
-                    </td>
-                    <td class="edc-col-prof">
-                      <select data-idx="${idx}" data-field="profesionalId" class="edc-input-linea">
-                        ${buildProfOptions(selProf, r.profesionalNombre)}
-                      </select>
-                    </td>
-                    <td class="edc-col-apag">${fmtARS(r.aPagar)}</td>
-                    <td class="edc-col-pag">
-                      <input data-idx="${idx}" data-field="pagPadres"
-                        class="edc-input-linea" style="width:100px;text-align:right;"
-                        value="${r.pagPadres}">
-                    </td>
-                    <td class="edc-col-obs">
-                      <input data-idx="${idx}" data-field="detPadres"
-                        class="edc-input-linea" style="width:100%;" value="${r.detPadres || ""}">
-                    </td>
-                    <td class="edc-col-pag">
-                      <input data-idx="${idx}" data-field="pagOS"
-                        class="edc-input-linea" style="width:100px;text-align:right;"
-                        value="${r.pagOS}">
-                    </td>
-                    <td class="edc-col-obs">
-                      <input data-idx="${idx}" data-field="detOS"
-                        class="edc-input-linea" style="width:100%;" value="${r.detOS || ""}">
-                    </td>
-                  </tr>
-                `;
+  <tr>
+    <td class="edc-col-mes">
+      <input type="month" data-idx="${idx}" data-field="mes"
+        class="edc-input-linea" style="width:110px;" value="${r.mes || ""}">
+    </td>
+    <td class="edc-col-cant">
+      <select data-idx="${idx}" data-field="cantidad" class="edc-input-linea" style="width:80px;">
+        <option value="1" ${vCant === 1 ? "selected" : ""}>1</option>
+        <option value="0.3333" ${vCant === 0.3333 ? "selected" : ""}>1/3</option>
+        <option value="0.5" ${vCant === 0.5 ? "selected" : ""}>1/2</option>
+        <option value="0.25" ${vCant === 0.25 ? "selected" : ""}>1/4</option>
+      </select>
+    </td>
+    <td class="edc-col-mod">
+      <select data-idx="${idx}" data-field="moduloId" class="edc-input-linea">
+        ${buildModuloOptions(selMod)}
+      </select>
+    </td>
+    <td class="edc-col-prof">
+      <select data-idx="${idx}" data-field="profesionalId" class="edc-input-linea">
+        ${buildProfOptions(selProf, r.profesionalNombre)}
+      </select>
+    </td>
+    <td class="edc-col-apag">${fmtARS(r.aPagar)}</td>
+    <td class="edc-col-pag">
+      <input data-idx="${idx}" data-field="pagPadres"
+        class="edc-input-linea" style="width:100px;text-align:right;"
+        value="${r.pagPadres}">
+    </td>
+    <td class="edc-col-obs">
+      <input data-idx="${idx}" data-field="detPadres"
+        class="edc-input-linea" style="width:100%;" value="${r.detPadres || ""}">
+    </td>
+    <td class="edc-col-pag">
+      <input data-idx="${idx}" data-field="pagOS"
+        class="edc-input-linea" style="width:100px;text-align:right;"
+        value="${r.pagOS}">
+    </td>
+    <td class="edc-col-obs">
+      <input data-idx="${idx}" data-field="detOS"
+        class="edc-input-linea" style="width:100%;" value="${r.detOS || ""}">
+    </td>
+
+    <!-- 👇 Nueva celda con X roja -->
+    <td style="text-align:center;">
+      <button type="button"
+              class="edc-del-linea"
+              data-idx="${idx}"
+              style="
+                border:none;
+                background:none;
+                color:#e53935;
+                font-weight:700;
+                cursor:pointer;
+              ">
+        ×
+      </button>
+    </td>
+  </tr>
+`;
+
               })
               .join("");
 
@@ -1232,6 +1253,20 @@
 
           root.addEventListener("change", handleChange);
           root.addEventListener("blur", handleChange, true);
+
+          // Borrar línea con la X roja
+          root.addEventListener("click", (e) => {
+            const btn = e.target.closest(".edc-del-linea");
+            if (!btn) return;
+
+            const idx = Number(btn.dataset.idx);
+            if (Number.isNaN(idx)) return;
+
+            // eliminamos esa línea y re-renderizamos
+            lineas.splice(idx, 1);
+            render();
+          });
+
 
           // Agregar línea
           btnAddLinea.addEventListener("click", () => {
