@@ -784,7 +784,7 @@ async function generarExtractoPDF(req, res) {
         mes: yyyymmFromMov(m) || "-",
         nro: m.nroRecibo || m.tipoFactura || "-",
         monto: Number(m.monto || 0),
-        estado: (m.estado || "PENDIENTE").toUpperCase(),
+        estado: "FACTURADA",
       }))
       .sort((a, b) => String(a.mes).localeCompare(String(b.mes)));
 
