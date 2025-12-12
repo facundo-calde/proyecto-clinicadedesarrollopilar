@@ -658,35 +658,62 @@ const getPorDni = async (req, res) => {
   }
 };
 
-// ----------------- GET /api/estado-de-cuenta/:dni/extracto?areaId=... -----------------
+// ----------------- GET /api/estado-de-cuenta/:dni/extracto?areaId=...&period=YYYY-MM -----------------
 async function generarExtractoPDF(req, res) {
   try {
+    const fs = require("fs");
+    const path = require("path");
+
     const dni = toStr(req.params.dni).trim();
-    const areaIdRaw = toStr(req.query.areaId || "").trim();
+    const areaId = toStr(req.query.areaId || "");
     const period = req.query.period ? toStr(req.query.period).trim() : null;
 
-    if (!areaIdRaw) return res.status(400).json({ error: "areaId es obligatorio" });
+    if (!areaId) return res.status(400).json({ error: "areaId es obligatorio" });
 
     const paciente = await Paciente.findOne({ dni }).lean();
     if (!paciente) return res.status(404).json({ error: "Paciente no encontrado" });
 
-    const area = await Area.findById(areaIdRaw).lean();
+    const area = await Area.findById(areaId).lean();
     if (!area) return res.status(404).json({ error: "Área no encontrada" });
 
     const tieneOS = /obra social/i.test(paciente.condicionDePago || "");
 
     // Filas informativas (módulos asignados)
-    const filas = await buildFilasArea(paciente, areaIdRaw);
+    const filasInfo = await buildFilasArea(paciente, areaId);
 
-    // Movimientos reales (lo que define el saldo + facturas)
-    const movs = await Movimiento.find({
+    // ✅ 1) Movimientos del periodo (para tablas si period viene)
+    const movsPeriodo = await Movimiento.find({
       dni,
-      areaId: new mongoose.Types.ObjectId(areaIdRaw),
+      areaId,
       ...(period ? { period } : {}),
     })
       .sort({ fecha: 1 })
       .lean();
 
+    // ✅ 2) Movimientos acumulados hasta el periodo (para SALDO ARRASTRADO)
+    const movsHastaPeriodo = await Movimiento.find({
+      dni,
+      areaId,
+      ...(period ? { period: { $lte: period } } : {}),
+    })
+      .sort({ fecha: 1 })
+      .lean();
+
+    // ---------- Helpers ----------
+    function fmtARS(n) {
+      const num = Number(n || 0);
+      return `$ ${num.toLocaleString("es-AR", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`;
+    }
+
+    const yyyymmFromMov = (m) =>
+      m.period ||
+      (m.fecha ? new Date(m.fecha).toISOString().slice(0, 7) : "") ||
+      "";
+
+    // ---------- Totales para el RESUMEN (acumulado hasta period) ----------
     let pagadoOS = 0,
       pagadoPART = 0,
       cargos = 0,
@@ -694,43 +721,74 @@ async function generarExtractoPDF(req, res) {
       ajustesMenos = 0,
       totalFacturado = 0;
 
-    for (const m of movs) {
+    for (const m of movsHastaPeriodo) {
       const monto = Number(m.monto || 0);
 
       if (m.tipo === "CARGO") {
         cargos += monto;
         pagadoPART += parseNumberLike(m.pagPadres, 0);
         pagadoOS += parseNumberLike(m.pagOS, 0);
-      } else if (m.tipo === "OS") {
-        pagadoOS += monto;
-      } else if (m.tipo === "PART") {
-        pagadoPART += monto;
-      } else if (m.tipo === "AJUSTE+") {
-        ajustesMas += monto;
-      } else if (m.tipo === "AJUSTE-") {
-        ajustesMenos += monto;
-      } else if (m.tipo === "FACT") {
-        totalFacturado += monto;
-      }
+      } else if (m.tipo === "OS") pagadoOS += monto;
+      else if (m.tipo === "PART") pagadoPART += monto;
+      else if (m.tipo === "AJUSTE+") ajustesMas += monto;
+      else if (m.tipo === "AJUSTE-") ajustesMenos += monto;
+      else if (m.tipo === "FACT") totalFacturado += monto;
     }
 
     if (!tieneOS) pagadoOS = 0;
 
     const totalCargos = cargos;
-    const totalPagado = pagadoOS + pagadoPART + ajustesMas - ajustesMenos;
-    const saldo = Number((totalCargos - totalPagado).toFixed(2));
+    const totalPagado = pagadoOS + pagadoPART; // (padres + OS)
+    const saldo = Number(
+      (totalCargos - (totalPagado + ajustesMas - ajustesMenos)).toFixed(2)
+    );
 
-    const fmtARS = (n) => {
-      const num = Number(n || 0);
-      return `$ ${num.toLocaleString("es-AR", {
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 2,
-      })}`;
-    };
+    // ---------- Armado "meses" para TABLA POR MES (usa SOLO periodo si hay period; si no, usa todo) ----------
+    const baseMovsMeses = period ? movsPeriodo : movsHastaPeriodo;
 
-    // ======================
-    // RESPUESTA PDF
-    // ======================
+    const mesesMap = new Map(); // key: YYYY-MM
+    for (const m of baseMovsMeses) {
+      const mes = yyyymmFromMov(m);
+      if (!mes) continue;
+
+      if (!mesesMap.has(mes)) {
+        mesesMap.set(mes, {
+          mes,
+          cargos: 0,
+          pagoPadres: 0,
+          pagoOS: 0,
+          ajustesMas: 0,
+          ajustesMenos: 0,
+        });
+      }
+      const acc = mesesMap.get(mes);
+
+      if (m.tipo === "CARGO") {
+        acc.cargos += Number(m.monto || 0);
+        acc.pagoPadres += parseNumberLike(m.pagPadres, 0);
+        acc.pagoOS += parseNumberLike(m.pagOS, 0);
+      } else if (m.tipo === "OS") acc.pagoOS += Number(m.monto || 0);
+      else if (m.tipo === "PART") acc.pagoPadres += Number(m.monto || 0);
+      else if (m.tipo === "AJUSTE+") acc.ajustesMas += Number(m.monto || 0);
+      else if (m.tipo === "AJUSTE-") acc.ajustesMenos += Number(m.monto || 0);
+    }
+
+    const meses = Array.from(mesesMap.values()).sort((a, b) =>
+      String(a.mes).localeCompare(String(b.mes))
+    );
+
+    // ---------- Facturas (solo del periodo si hay period, si no todas) ----------
+    const facturas = baseMovsMeses
+      .filter((m) => m.tipo === "FACT")
+      .map((m) => ({
+        mes: yyyymmFromMov(m) || "-",
+        nro: m.nroRecibo || m.tipoFactura || "-",
+        monto: Number(m.monto || 0),
+        estado: "FACTURADA",
+      }))
+      .sort((a, b) => String(a.mes).localeCompare(String(b.mes)));
+
+    // ---------- PDF ----------
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
@@ -741,50 +799,44 @@ async function generarExtractoPDF(req, res) {
     const doc = new PDFDocument({ margin: 40, size: "A4" });
     doc.pipe(res);
 
-    // ======================
-    // LOGO (rutas robustas)
-    // ======================
-    let drewLogo = false;
+    // ---------- LOGO (robusto) ----------
+    let logoDrawn = false;
     try {
-      const fileName = "fc885963d690a6787ca787cf208cdd25_1778x266_fit.png";
+      const logoFile = "fc885963d690a6787ca787cf208cdd25_1778x266_fit.png";
 
       const candidates = [
-        // cuando corrés desde /backend
-        path.resolve(process.cwd(), "frontend", "img", fileName),
-        // por si corrés desde raíz del repo
-        path.resolve(process.cwd(), "..", "frontend", "img", fileName),
-        // relativo a /backend/controllers
-        path.resolve(__dirname, "..", "..", "frontend", "img", fileName),
-        path.resolve(__dirname, "..", "..", "..", "frontend", "img", fileName),
+        // 1) desde el root de ejecución (lo más común)
+        path.resolve(process.cwd(), "frontend", "img", logoFile),
+
+        // 2) desde /backend/controllers -> /backend -> /root -> /frontend/img
+        path.resolve(__dirname, "..", "..", "frontend", "img", logoFile),
+
+        // 3) por si corrés desde /backend
+        path.resolve(process.cwd(), "..", "frontend", "img", logoFile),
       ];
 
-      const logoPath = candidates.find((p) => fs.existsSync(p));
-      if (logoPath) {
-        doc.image(logoPath, 40, 28, { width: 160 });
-        drewLogo = true;
+      const found = candidates.find((p) => fs.existsSync(p));
+      if (found) {
+        doc.image(found, 40, 20, { width: 170 });
+        logoDrawn = true;
       }
     } catch (e) {
-      console.error("No se pudo cargar el logo en PDF:", e);
+      // no cortamos el PDF
     }
 
-    // si hay logo, bajamos un poco el cursor para no pisarlo
-    if (drewLogo) doc.y = 95;
-    else doc.moveDown(0.5);
+    // Acomodar el "cursor" para que no se pise con el logo
+    doc.y = logoDrawn ? 70 : 40;
 
-    // ======================
-    // HEADER
-    // ======================
+    // ---------- HEADER ----------
     doc.fontSize(14).fillColor("#000").text("Informe de estado de cuenta");
-    doc.moveDown(0.3);
+    doc.moveDown(0.4);
 
     doc.fontSize(11).fillColor("#000").text(`${paciente.nombre || "-"} - DNI ${paciente.dni || "-"}`);
     doc.fontSize(10).fillColor("#444").text(`Área: ${area.nombre || "-"}`);
     if (period) doc.text(`Periodo: ${period}`);
-    doc.moveDown(0.5);
+    doc.moveDown(0.6);
 
-    // ======================
-    // RESUMEN
-    // ======================
+    // ---------- RESUMEN ----------
     doc
       .fontSize(12)
       .fillColor(saldo <= 0 ? "#0a7a36" : "#b00020")
@@ -795,136 +847,168 @@ async function generarExtractoPDF(req, res) {
     doc.text(`Debería pagar (cargos): ${fmtARS(totalCargos)}`);
     doc.text(`Pagó Padres: ${fmtARS(pagadoPART)}`);
     if (tieneOS) doc.text(`Pagó Obra Social: ${fmtARS(pagadoOS)}`);
-    doc.text(`Total pagado (Padres + O.S. + ajustes): ${fmtARS(totalPagado)}`);
+    doc.text(`Total pagado (Padres + O.S. + ajustes): ${fmtARS(totalPagado + ajustesMas - ajustesMenos)}`);
     doc.text(`Total facturado: ${fmtARS(totalFacturado)}`);
 
     doc.moveDown(0.6);
-    doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor("#ddd").stroke();
+    doc.strokeColor("#ddd").moveTo(40, doc.y).lineTo(555, doc.y).stroke();
     doc.moveDown(0.6);
 
-    // ======================
-    // CARGOS (informativo)
-    // ======================
-    doc.fontSize(11).fillColor("#000").text("CARGOS", { underline: true });
+    // ===== TABLA ESTADO DE CUENTA (por MES) =====
+    doc.fontSize(11).fillColor("#000").text("ESTADO DE CUENTA (por mes)", { underline: true });
     doc.moveDown(0.35);
 
-    // columnas: MES | MÓDULO | CANT | VALOR
-    const cx = [40, 120, 410, 495];
-    const cth = ["MES", "MÓDULO", "CANT.", "VALOR"];
+    const startX = 40;
+    const rowH = 14;
 
-    doc.fontSize(9).fillColor("#333");
-    cth.forEach((t, i) => doc.text(t, cx[i], doc.y, { continued: i < cth.length - 1 }));
-    doc.moveDown(0.2);
-    doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor("#eee").stroke();
-    doc.moveDown(0.2);
-
-    if (!filas || !filas.length) {
-      doc.fontSize(9).fillColor("#666").text("Sin cargos informativos para el área seleccionada.");
-      doc.moveDown(0.6);
-    } else {
-      doc.fontSize(9).fillColor("#000");
-
-      for (const f of filas) {
-        if (doc.y > 760) {
-          doc.addPage();
-          doc.fontSize(11).fillColor("#000").text("CARGOS", { underline: true });
-          doc.moveDown(0.35);
-          doc.fontSize(9).fillColor("#333");
-          cth.forEach((t, i) => doc.text(t, cx[i], doc.y, { continued: i < cth.length - 1 }));
-          doc.moveDown(0.2);
-          doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor("#eee").stroke();
-          doc.moveDown(0.2);
-          doc.fontSize(9).fillColor("#000");
-        }
-
-        const mes = f.mes || "-";
-        const moduloTxt = String(f.moduloNombre || f.moduloNumero || "-");
-        const cantTxt = String(f.cant ?? f.cantidad ?? "-");
-        const valorTxt = fmtARS(f.valorModulo ?? 0);
-
-        const row = [mes, moduloTxt, cantTxt, valorTxt];
-        row.forEach((t, i) => doc.text(t, cx[i], doc.y, { continued: i < row.length - 1 }));
-        doc.moveDown(0.15);
-      }
-
-      doc.moveDown(0.5);
-    }
-
-    // separador
-    doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor("#ddd").stroke();
-    doc.moveDown(0.6);
-
-    // ======================
-    // FACTURAS (MES, N°, MONTO, ESTADO) - con separación real
-    // ======================
-    doc.fontSize(11).fillColor("#000").text("FACTURAS", { underline: true });
-    doc.moveDown(0.35);
-
-    const facturas = movs.filter((m) => m.tipo === "FACT");
-
-    // ancho total ~ 515
-    const fx = [
-      { label: "MES", w: 70, align: "left" },
-      { label: "N°", w: 70, align: "left" },
-      { label: "MONTO", w: 160, align: "right" },   // más ancho
-      { label: "ESTADO", w: 120, align: "left" },   // separado del monto
+    const cols = [
+      { key: "mes",    label: "MES",           w: 60,  align: "left"  },
+      { key: "cargos", label: "DEBERÍA PAGAR", w: 95,  align: "right" },
+      { key: "padres", label: "PAGÓ PADRES",   w: 95,  align: "right" },
+      { key: "os",     label: "PAGÓ O.S.",     w: 85,  align: "right" },
+      { key: "total",  label: "TOTAL PAGADO",  w: 95,  align: "right" },
+      { key: "saldo",  label: "SALDO",         w: 85,  align: "right" },
     ];
 
-    const drawFactHeader = () => {
+    const drawLine = (y, color = "#eee") => {
+      doc.save();
+      doc.strokeColor(color);
+      doc.moveTo(40, y).lineTo(555, y).stroke();
+      doc.restore();
+    };
+
+    const drawHeader = () => {
       const y = doc.y;
-      doc.fontSize(9).fillColor("#333");
-      let x = 40;
-      for (let i = 0; i < fx.length; i++) {
-        doc.text(fx[i].label, x, y, { width: fx[i].w, align: fx[i].align, lineBreak: false });
-        x += fx[i].w;
+      doc.fontSize(8).fillColor("#333");
+
+      let x = startX;
+      for (const c of cols) {
+        doc.text(c.label, x, y, { width: c.w, align: c.align, lineBreak: false });
+        x += c.w;
       }
-      doc.y = y + 14;
-      doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor("#eee").stroke();
+
+      doc.y = y + rowH;
+      drawLine(doc.y, "#ddd");
       doc.y += 6;
     };
 
-    drawFactHeader();
+    const drawRow = (r) => {
+      if (doc.y + rowH > 780) {
+        doc.addPage();
+        doc.y = 40;
+        drawHeader();
+      }
+
+      const totalPagMes = (r.pagoPadres + r.pagoOS + r.ajustesMas - r.ajustesMenos);
+      const saldoMes = Number((r.cargos - totalPagMes).toFixed(2));
+
+      const y = doc.y;
+      doc.fontSize(9).fillColor("#000");
+
+      let x = startX;
+
+      const cells = {
+        mes: r.mes || "-",
+        cargos: fmtARS(r.cargos),
+        padres: fmtARS(r.pagoPadres),
+        os: tieneOS ? fmtARS(r.pagoOS) : fmtARS(0),
+        total: fmtARS(totalPagMes),
+        saldo: fmtARS(saldoMes),
+      };
+
+      for (const c of cols) {
+        doc.text(cells[c.key], x, y, {
+          width: c.w,
+          align: c.align,
+          lineBreak: false,
+          ellipsis: true,
+        });
+        x += c.w;
+      }
+
+      doc.y = y + rowH;
+    };
+
+    drawHeader();
+
+    if (!meses.length) {
+      doc.fontSize(9).fillColor("#666").text("Sin movimientos en el periodo seleccionado.");
+      doc.moveDown(0.8);
+    } else {
+      for (const r of meses) drawRow(r);
+      drawLine(doc.y, "#ddd");
+      doc.moveDown(0.8);
+    }
+
+    // ===== FACTURAS (compacto) =====
+    doc.fontSize(11).fillColor("#000").text("FACTURAS", { underline: true });
+    doc.moveDown(0.35);
+
+    const fcols = [
+      { key: "mes",    label: "MES",    w: 70,  align: "left"  },
+      { key: "nro",    label: "N°",     w: 70,  align: "left"  },
+      { key: "monto",  label: "MONTO",  w: 120, align: "right" },
+      { key: "estado", label: "ESTADO", w: 120, align: "left"  },
+    ];
+
+    const drawFHeader = () => {
+      const y = doc.y;
+      doc.fontSize(8).fillColor("#333");
+
+      let x = startX;
+      for (const c of fcols) {
+        doc.text(c.label, x, y, { width: c.w, align: c.align, lineBreak: false });
+        x += c.w;
+      }
+
+      doc.y = y + rowH;
+      drawLine(doc.y, "#ddd");
+      doc.y += 6;
+    };
+
+    const drawFRow = (f) => {
+      if (doc.y + rowH > 780) {
+        doc.addPage();
+        doc.y = 40;
+        drawFHeader();
+      }
+
+      const y = doc.y;
+      doc.fontSize(9).fillColor("#000");
+
+      const cells = {
+        mes: f.mes || "-",
+        nro: String(f.nro || "-"),
+        monto: fmtARS(f.monto),
+        estado: f.estado || "PENDIENTE",
+      };
+
+      let x = startX;
+      for (const c of fcols) {
+        doc.text(cells[c.key], x, y, {
+          width: c.w,
+          align: c.align,
+          lineBreak: false,
+          ellipsis: true,
+        });
+        x += c.w;
+      }
+
+      doc.y = y + rowH;
+    };
+
+    drawFHeader();
 
     if (!facturas.length) {
       doc.fontSize(9).fillColor("#666").text("Sin facturas registradas.");
-      doc.moveDown(0.8);
+      doc.moveDown(0.6);
     } else {
-      doc.fontSize(9).fillColor("#000");
-
-      for (const f of facturas) {
-        if (doc.y > 760) {
-          doc.addPage();
-          drawFactHeader();
-        }
-
-        const mes = f.period || (f.fecha ? new Date(f.fecha).toISOString().slice(0, 7) : "-");
-        const nro = f.nroRecibo || f.tipoFactura || "-";
-        const montoTxt = fmtARS(f.monto || 0);
-
-        // En PDF, FACT => "FACTURADO" (no tiene sentido mostrar "PENDIENTE" si es una factura cargada)
-        const estadoTxt = "FACTURADO";
-
-        const cells = [mes, String(nro), montoTxt, estadoTxt];
-
-        let x = 40;
-        const y = doc.y;
-        for (let i = 0; i < fx.length; i++) {
-          doc.text(cells[i], x, y, {
-            width: fx[i].w,
-            align: fx[i].align,
-            lineBreak: false,
-          });
-          x += fx[i].w;
-        }
-        doc.y = y + 14;
-      }
-
+      for (const f of facturas) drawFRow(f);
+      drawLine(doc.y, "#ddd");
       doc.moveDown(0.6);
     }
 
-    // ======================
-    // OBSERVACIONES
-    // ======================
+    // ===== OBSERVACIONES =====
     doc.fontSize(9).fillColor("#666").text("OBSERVACIONES:", { underline: true });
     doc.moveDown(0.2);
 
@@ -941,7 +1025,6 @@ async function generarExtractoPDF(req, res) {
     res.status(500).json({ error: "No se pudo generar el PDF" });
   }
 }
-
 
 
 
