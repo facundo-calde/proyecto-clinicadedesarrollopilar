@@ -864,50 +864,105 @@ async function generarExtractoPDF(req, res) {
     doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor("#ddd").stroke();
     doc.moveDown(0.6);
 
-    // ===== TABLA ESTADO DE CUENTA (por MES) =====
+       // ===== TABLA ESTADO DE CUENTA (por MES) =====
     doc.fontSize(11).fillColor("#000").text("ESTADO DE CUENTA (por mes)", { underline: true });
     doc.moveDown(0.35);
 
-    // Columnas
-    const col = {
-      mes: 40,
-      deberia: 115,
-      padres: 255,
-      os: 365,
-      total: 455,
-      saldo: 535,
+    const startX = 40;
+    const tableW = 555 - 40; // 515 aprox
+    const rowH = 14;
+
+    // Columnas compactas (sum ≈ 515)
+    const cols = [
+      { key: "mes",     label: "MES",           w: 60,  align: "left"  },
+      { key: "cargos",  label: "DEBERÍA PAGAR", w: 95,  align: "right" },
+      { key: "padres",  label: "PAGÓ PADRES",   w: 95,  align: "right" },
+      { key: "os",      label: "PAGÓ O.S.",     w: 85,  align: "right" },
+      { key: "total",   label: "TOTAL PAGADO",  w: 95,  align: "right" },
+      { key: "saldo",   label: "SALDO",         w: 85,  align: "right" },
+    ];
+
+    const drawLine = (y, color = "#eee") => {
+      doc.save();
+      doc.strokeColor(color);
+      doc.moveTo(40, y).lineTo(555, y).stroke();
+      doc.restore();
     };
 
-    const rowH = 16;
+    const ensureSpace = (yNeeded = rowH) => {
+      if (doc.y + yNeeded > 780) {
+        doc.addPage();
+        return true;
+      }
+      return false;
+    };
 
-    const printHeaderRow = () => {
+    const drawHeader = () => {
+      ensureSpace(60);
+
+      const y = doc.y;
       doc.fontSize(8).fillColor("#333");
-      doc.text("MES", col.mes, doc.y, { width: 60 });
-      doc.text("DEBERÍA PAGAR", col.deberia, doc.y, { width: 120, align: "right" });
-      doc.text("PAGÓ PADRES", col.padres, doc.y, { width: 100, align: "right" });
-      doc.text("PAGÓ O.S.", col.os, doc.y, { width: 80, align: "right" });
-      doc.text("TOTAL PAGADO", col.total, doc.y, { width: 80, align: "right" });
-      doc.text("SALDO", col.saldo, doc.y, { width: 60, align: "right" });
-      doc.moveDown(0.3);
-      doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor("#eee").stroke();
-      doc.moveDown(0.2);
+
+      let x = startX;
+      for (const c of cols) {
+        doc.text(c.label, x, y, { width: c.w, align: c.align, lineBreak: false });
+        x += c.w;
+      }
+
+      doc.y = y + rowH;
+      drawLine(doc.y, "#ddd");
+      doc.y += 6;
     };
 
-    printHeaderRow();
+    const drawRow = (r) => {
+      // salto de página si hace falta
+      if (doc.y + rowH > 780) {
+        doc.addPage();
+        drawHeader();
+      }
 
-    doc.fontSize(9).fillColor("#000");
+      const mes = r.mes || "-";
+      const totalPagMes = (r.pagoPadres + r.pagoOS + r.ajustesMas - r.ajustesMenos);
+      const saldoMes = Number((r.cargos - totalPagMes).toFixed(2));
+
+      const y = doc.y;
+      doc.fontSize(9).fillColor("#000");
+
+      let x = startX;
+
+      const cells = {
+        mes,
+        cargos: fmtARS(r.cargos),
+        padres: fmtARS(r.pagoPadres),
+        os: tieneOS ? fmtARS(r.pagoOS) : "$ 0,00",
+        total: fmtARS(totalPagMes),
+        saldo: fmtARS(saldoMes),
+      };
+
+      for (const c of cols) {
+        doc.text(cells[c.key], x, y, {
+          width: c.w,
+          align: c.align,
+          lineBreak: false,
+          ellipsis: true, // por si algo se pasa
+        });
+        x += c.w;
+      }
+
+      doc.y = y + rowH;
+    };
+
+    drawHeader();
 
     if (!meses.length) {
       doc.fontSize(9).fillColor("#666").text("Sin movimientos en el periodo seleccionado.");
-      doc.moveDown(0.6);
+      doc.moveDown(0.8);
     } else {
-      for (const r of meses) {
-        // salto de página si hace falta
-        if (doc.y > 760) {
-          doc.addPage();
-          printHeaderRow();
-          doc.fontSize(9).fillColor("#000");
-        }
+      for (const r of meses) drawRow(r);
+      drawLine(doc.y, "#ddd");
+      doc.moveDown(0.8);
+    }
+
 
         const totalPagMes = (r.pagoPadres + r.pagoOS + r.ajustesMas - r.ajustesMenos);
         const saldoMes = Number((r.cargos - totalPagMes).toFixed(2));
