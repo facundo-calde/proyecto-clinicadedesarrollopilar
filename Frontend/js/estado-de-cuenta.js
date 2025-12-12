@@ -447,7 +447,7 @@
     });
   }
 
- // ==============================
+// ==============================
 // Modal de detalle por área (Excel + editable + selects) + rango DESDE/HASTA
 // ==============================
 async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel, opts = {}) {
