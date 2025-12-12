@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agenda</title>
+
+  <link rel="icon" href="/img/fc885963d690a6787ca787cf208cdd25_1778x266_fit.png" type="image/png">
+
+  <!-- CSS base del sistema -->
+  <link rel="stylesheet" href="/css/dashboard.css">
+  <link rel="stylesheet" href="/css/calendario.css">
+</head>
+
+<body>
+
+  <!-- HEADER -->
+  <header class="navbar">
+    <div class="logo">
+      <img src="/img/fc885963d690a6787ca787cf208cdd25_1778x266_fit.png" alt="Logo" class="logo-img">
+    </div>
+
+    <div class="user-actions">
+      <span class="user-label">USUARIO: <strong>Administrador Principal</strong></span>
+      <button id="btnLogout" class="logout-btn">Cerrar sesión</button>
+    </div>
+  </header>
+
+  <!-- ACCIONES SUPERIORES -->
+  <div class="top-actions">
+    <a href="dashboard.html" class="btn-outline">Inicio</a>
+    <a href="estado-de-cuenta.html" class="btn-outline">Estado de cuenta</a>
+  </div>
+
+  <!-- CONTENIDO -->
+  <main class="contenido">
+
+    <h2 class="titulo-seccion">Agenda</h2>
+
+    <div class="calendar-container">
+      <!-- Google Calendar -->
+      <iframe
+        src="https://calendar.google.com/calendar/embed?src=TU_CALENDAR_ID&ctz=America%2FArgentina%2FBuenos_Aires"
+        frameborder="0"
+        scrolling="no">
+      </iframe>
+    </div>
+
+  </main>
+
+  <!-- JS global -->
+  <script src="/js/config.js"></script>
+  <script src="/js/dashboard.js"></script>
+
+</body>
+</html>
