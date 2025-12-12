@@ -448,323 +448,322 @@
   }
 
   // ==============================
-// Modal de detalle por área (Excel + editable + selects)
-// ==============================
-async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel, periodSel = null) {
-  try {
-    // Catálogos
-    const [AREAS, MODULOS_ALL, USUARIOS_ALL] = await Promise.all([
-      edcFetchAreas(),
-      edcFetchModulos(),
-      edcFetchUsuarios(),
-    ]);
+  // Modal de detalle por área (Excel + editable + selects)
+  // ==============================
+  async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel, periodSel = null) {
+    try {
+      // Catálogos
+      const [AREAS, MODULOS_ALL, USUARIOS_ALL] = await Promise.all([
+        edcFetchAreas(),
+        edcFetchModulos(),
+        edcFetchUsuarios(),
+      ]);
 
-    const areaId = areaSel && areaSel.id ? String(areaSel.id) : null;
-    const areaNombre = areaSel && areaSel.nombre ? String(areaSel.nombre) : null;
+      const areaId = areaSel && areaSel.id ? String(areaSel.id) : null;
+      const areaNombre = areaSel && areaSel.nombre ? String(areaSel.nombre) : null;
 
-    // Módulos filtrados por área (si se puede)
-    const MODULOS = MODULOS_ALL.filter((m) => {
-      if (!areaId && !areaNombre) return true;
+      // Módulos filtrados por área (si se puede)
+      const MODULOS = MODULOS_ALL.filter((m) => {
+        if (!areaId && !areaNombre) return true;
 
-      const mAreaId = m.areaId || (m.area && m.area._id) || m.area || null;
-      const mAreaNom =
-        m.areaNombre ||
-        (typeof m.area === "string" ? m.area : m.area && m.area.nombre) ||
-        "";
+        const mAreaId = m.areaId || (m.area && m.area._id) || m.area || null;
+        const mAreaNom =
+          m.areaNombre ||
+          (typeof m.area === "string" ? m.area : m.area && m.area.nombre) ||
+          "";
 
-      if (areaId && mAreaId && String(mAreaId) === areaId) return true;
-      if (
-        areaNombre &&
-        mAreaNom &&
-        mAreaNom.toLowerCase() === areaNombre.toLowerCase()
-      ) return true;
+        if (areaId && mAreaId && String(mAreaId) === areaId) return true;
+        if (
+          areaNombre &&
+          mAreaNom &&
+          mAreaNom.toLowerCase() === areaNombre.toLowerCase()
+        ) return true;
 
-      return !mAreaId && !mAreaNom;
-    });
+        return !mAreaId && !mAreaNom;
+      });
 
-    const moduloMap = {};
-    MODULOS.forEach((m) => (moduloMap[String(m._id)] = m));
+      const moduloMap = {};
+      MODULOS.forEach((m) => (moduloMap[String(m._id)] = m));
 
-    // Profesionales por rol (Directoras, Coordinadores, Profesionales, Pasantes)
-    const PROFESIONALES = USUARIOS_ALL.filter((u) => {
-      const rol = (u.rol || "").trim();
+      // Profesionales por rol (Directoras, Coordinadores, Profesionales, Pasantes)
+      const PROFESIONALES = USUARIOS_ALL.filter((u) => {
+        const rol = (u.rol || "").trim();
 
-      const esProfesional = rol === "Profesional" || rol === "Coordinador y profesional";
-      const esCoordinador = rol === "Coordinador de área" || rol === "Coordinador y profesional";
-      const esPasante = rol === "Pasante";
-      const esDirectora = rol === "Directoras";
+        const esProfesional = rol === "Profesional" || rol === "Coordinador y profesional";
+        const esCoordinador = rol === "Coordinador de área" || rol === "Coordinador y profesional";
+        const esPasante = rol === "Pasante";
+        const esDirectora = rol === "Directoras";
 
-      if (!esProfesional && !esCoordinador && !esPasante && !esDirectora) return false;
+        if (!esProfesional && !esCoordinador && !esPasante && !esDirectora) return false;
 
-      if (!areaId && !areaNombre) return true;
-      if (esDirectora) return true;
+        if (!areaId && !areaNombre) return true;
+        if (esDirectora) return true;
 
-      const wantedId = areaId ? String(areaId) : null;
-      const wantedName = areaNombre
-        ? areaNombre
+        const wantedId = areaId ? String(areaId) : null;
+        const wantedName = areaNombre
+          ? areaNombre
             .toLowerCase()
             .normalize("NFD")
             .replace(/[\u0300-\u036f]/g, "")
-        : null;
+          : null;
 
-      const norm = (s) =>
-        String(s || "")
-          .toLowerCase()
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "");
+        const norm = (s) =>
+          String(s || "")
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "");
 
-      let ok = false;
+        let ok = false;
 
-      if (esProfesional && Array.isArray(u.areasProfesional)) {
-        u.areasProfesional.forEach((a) => {
-          if (!a) return;
+        if (esProfesional && Array.isArray(u.areasProfesional)) {
+          u.areasProfesional.forEach((a) => {
+            if (!a) return;
+            if (wantedId && a.areaId && String(a.areaId) === wantedId) ok = true;
+            if (wantedName && a.areaNombre && norm(a.areaNombre) === wantedName) ok = true;
+          });
+        }
+
+        if (esCoordinador && Array.isArray(u.areasCoordinadas)) {
+          u.areasCoordinadas.forEach((a) => {
+            if (!a) return;
+            if (wantedId && a.areaId && String(a.areaId) === wantedId) ok = true;
+            if (wantedName && a.areaNombre && norm(a.areaNombre) === wantedName) ok = true;
+          });
+        }
+
+        if (esPasante && u.pasanteArea) {
+          const a = u.pasanteArea;
           if (wantedId && a.areaId && String(a.areaId) === wantedId) ok = true;
           if (wantedName && a.areaNombre && norm(a.areaNombre) === wantedName) ok = true;
-        });
-      }
-
-      if (esCoordinador && Array.isArray(u.areasCoordinadas)) {
-        u.areasCoordinadas.forEach((a) => {
-          if (!a) return;
-          if (wantedId && a.areaId && String(a.areaId) === wantedId) ok = true;
-          if (wantedName && a.areaNombre && norm(a.areaNombre) === wantedName) ok = true;
-        });
-      }
-
-      if (esPasante && u.pasanteArea) {
-        const a = u.pasanteArea;
-        if (wantedId && a.areaId && String(a.areaId) === wantedId) ok = true;
-        if (wantedName && a.areaNombre && norm(a.areaNombre) === wantedName) ok = true;
-      }
-
-      return ok;
-    });
-
-    const profMap = {};
-    PROFESIONALES.forEach((p) => (profMap[String(p._id)] = p));
-
-    const ADMIN_ID = "__ADMIN__"; // id ficticio para línea de administración
-
-    // ================== Datos de estado de cuenta ==================
-    let path = `/estado-de-cuenta/${paciente.dni}`;
-    const qs = [];
-    if (areaSel && areaSel.id) qs.push(`areaId=${encodeURIComponent(areaSel.id)}`);
-    if (areaSel && areaSel.nombre) qs.push(`areaNombre=${encodeURIComponent(areaSel.nombre)}`);
-    if (periodSel) qs.push(`period=${encodeURIComponent(periodSel)}`);
-    if (qs.length) path += `?${qs.join("&")}`;
-
-    const data = await edcApiJson(path);
-
-    const filas = Array.isArray(data.filas) ? data.filas : [];
-    const movimientos = Array.isArray(data.movimientos) ? data.movimientos : [];
-    const facturasRaw = Array.isArray(data.facturas) ? data.facturas : [];
-
-    // ================== Mapear pagos PART / OS por mes + módulo ==================
-    const pagosMap = {};
-    movimientos.forEach((m) => {
-      const tipo = m.tipo;
-      if (tipo !== "PART" && tipo !== "OS") return;
-
-      const mes = m.period || m.periodo || m.mes || "";
-      const modId = m.moduloId ? String(m.moduloId) : "";
-      const clave = `${mes}|${modId}`;
-
-      if (!pagosMap[clave]) {
-        pagosMap[clave] = { padres: 0, os: 0, detPadres: "", detOS: "" };
-      }
-
-      const monto = Number(m.monto || 0) || 0;
-      const obs = m.descripcion || m.observaciones || "";
-
-      if (tipo === "PART") {
-        pagosMap[clave].padres += monto;
-        if (obs) {
-          pagosMap[clave].detPadres = pagosMap[clave].detPadres
-            ? `${pagosMap[clave].detPadres} | ${obs}`
-            : obs;
         }
-      } else if (tipo === "OS") {
-        pagosMap[clave].os += monto;
-        if (obs) {
-          pagosMap[clave].detOS = pagosMap[clave].detOS
-            ? `${pagosMap[clave].detOS} | ${obs}`
-            : obs;
+
+        return ok;
+      });
+
+      const profMap = {};
+      PROFESIONALES.forEach((p) => (profMap[String(p._id)] = p));
+
+      const ADMIN_ID = "__ADMIN__"; // id ficticio para línea de administración
+
+      // ================== Datos de estado de cuenta ==================
+      let path = `/estado-de-cuenta/${paciente.dni}`;
+      const qs = [];
+      if (areaSel && areaSel.id) qs.push(`areaId=${encodeURIComponent(areaSel.id)}`);
+      if (areaSel && areaSel.nombre) qs.push(`areaNombre=${encodeURIComponent(areaSel.nombre)}`);
+      if (periodSel) qs.push(`period=${encodeURIComponent(periodSel)}`);
+      if (qs.length) path += `?${qs.join("&")}`;
+
+      const data = await edcApiJson(path);
+
+      const filas = Array.isArray(data.filas) ? data.filas : [];
+      const movimientos = Array.isArray(data.movimientos) ? data.movimientos : [];
+      const facturasRaw = Array.isArray(data.facturas) ? data.facturas : [];
+
+      // ================== Mapear pagos PART / OS por mes + módulo ==================
+      const pagosMap = {};
+      movimientos.forEach((m) => {
+        const tipo = m.tipo;
+        if (tipo !== "PART" && tipo !== "OS") return;
+
+        const mes = m.period || m.periodo || m.mes || "";
+        const modId = m.moduloId ? String(m.moduloId) : "";
+        const clave = `${mes}|${modId}`;
+
+        if (!pagosMap[clave]) {
+          pagosMap[clave] = { padres: 0, os: 0, detPadres: "", detOS: "" };
         }
-      }
-    });
 
-    // ================== Normalizar líneas (solo CARGOS) ==================
-    const baseLineas = filas.length ? filas : movimientos.filter((m) => m.tipo === "CARGO");
+        const monto = Number(m.monto || 0) || 0;
+        const obs = m.descripcion || m.observaciones || "";
 
-    let lineas = baseLineas.map((f) => {
-      const mes = f.mes || f.periodo || f.period || "";
-      const cantidad = f.cantidad ?? f.cant ?? 1;
+        if (tipo === "PART") {
+          pagosMap[clave].padres += monto;
+          if (obs) {
+            pagosMap[clave].detPadres = pagosMap[clave].detPadres
+              ? `${pagosMap[clave].detPadres} | ${obs}`
+              : obs;
+          }
+        } else if (tipo === "OS") {
+          pagosMap[clave].os += monto;
+          if (obs) {
+            pagosMap[clave].detOS = pagosMap[clave].detOS
+              ? `${pagosMap[clave].detOS} | ${obs}`
+              : obs;
+          }
+        }
+      });
 
-      const moduloNombre = f.moduloNombre || f.modulo || f.moduloNumero || "";
-      const moduloIdCrudo =
-        f.moduloId ||
-        f.moduloIdMongo ||
-        (typeof f.modulo === "string" && /^[0-9a-fA-F]{24}$/.test(f.modulo) ? f.modulo : null);
+      // ================== Normalizar líneas (solo CARGOS) ==================
+      const baseLineas = filas.length ? filas : movimientos.filter((m) => m.tipo === "CARGO");
 
-      let moduloId = moduloIdCrudo || "";
-      let moduloRef = moduloId ? moduloMap[String(moduloId)] : null;
+      let lineas = baseLineas.map((f) => {
+        const mes = f.mes || f.periodo || f.period || "";
+        const cantidad = f.cantidad ?? f.cant ?? 1;
 
-      const precioModulo =
-        (moduloRef &&
-          Number(
-            moduloRef.valorPadres ??
+        const moduloNombre = f.moduloNombre || f.modulo || f.moduloNumero || "";
+        const moduloIdCrudo =
+          f.moduloId ||
+          f.moduloIdMongo ||
+          (typeof f.modulo === "string" && /^[0-9a-fA-F]{24}$/.test(f.modulo) ? f.modulo : null);
+
+        let moduloId = moduloIdCrudo || "";
+        let moduloRef = moduloId ? moduloMap[String(moduloId)] : null;
+
+        const precioModulo =
+          (moduloRef &&
+            Number(
+              moduloRef.valorPadres ??
               moduloRef.valorModulo ??
               moduloRef.precioModulo ??
               moduloRef.precio ??
               0
-          )) ||
-        Number(f.valorPadres || f.precioModulo || f.valorModulo || 0);
+            )) ||
+          Number(f.valorPadres || f.precioModulo || f.valorModulo || 0);
 
-      const aPagar = Number(
-        f.aPagar != null
-          ? f.aPagar
-          : precioModulo
-          ? precioModulo * (Number(cantidad) || 0)
-          : f.monto || 0
-      );
+        const aPagar = Number(
+          f.aPagar != null
+            ? f.aPagar
+            : precioModulo
+              ? precioModulo * (Number(cantidad) || 0)
+              : f.monto || 0
+        );
 
-      const clavePagos = `${mes}|${moduloId || ""}`;
-      const pagos = pagosMap[clavePagos] || {};
+        const clavePagos = `${mes}|${moduloId || ""}`;
+        const pagos = pagosMap[clavePagos] || {};
 
-      const pagPadres =
-        f.pagPadres != null || f.pagadoPadres != null
-          ? Number(f.pagPadres || f.pagadoPadres || 0)
-          : Number(pagos.padres || 0);
+        const pagPadres =
+          f.pagPadres != null || f.pagadoPadres != null
+            ? Number(f.pagPadres || f.pagadoPadres || 0)
+            : Number(pagos.padres || 0);
 
-      const pagOS =
-        f.pagOS != null || f.pagadoOS != null
-          ? Number(f.pagOS || f.pagadoOS || 0)
-          : Number(pagos.os || 0);
+        const pagOS =
+          f.pagOS != null || f.pagadoOS != null
+            ? Number(f.pagOS || f.pagadoOS || 0)
+            : Number(pagos.os || 0);
 
-      const detPadres =
-        f.detPadres || f.detallePadres || f.observaciones || pagos.detPadres || "";
+        const detPadres =
+          f.detPadres || f.detallePadres || f.observaciones || pagos.detPadres || "";
 
-      const detOS = f.detOS || f.detalleOS || f.observacionOS || pagos.detOS || "";
+        const detOS = f.detOS || f.detalleOS || f.observacionOS || pagos.detOS || "";
 
-      const profNombre =
-        f.profesional ||
-        (f.profesionales &&
-          (f.profesionales.profesional?.[0] ||
-            f.profesionales.coordinador?.[0] ||
-            f.profesionales.pasante?.[0] ||
-            f.profesionales.directora?.[0])) ||
-        "";
+        const profNombre =
+          f.profesional ||
+          (f.profesionales &&
+            (f.profesionales.profesional?.[0] ||
+              f.profesionales.coordinador?.[0] ||
+              f.profesionales.pasante?.[0] ||
+              f.profesionales.directora?.[0])) ||
+          "";
 
-      let profId = f.profesionalId || "";
-      if (!profId && profNombre) {
-        const found = PROFESIONALES.find((p) => {
-          const nom = p.nombreApellido || p.nombreCompleto || p.nombre || "";
-          return nom.toLowerCase() === profNombre.toLowerCase();
-        });
-        if (found) profId = String(found._id);
-      }
-
-      // 🔴 detectar si es línea de Administración guardada en BD
-      const esAdmin =
-        (f.meta && f.meta.esAdministracion) ||
-        (!moduloId && (moduloNombre || "").toLowerCase().trim() === "administracion");
-
-      // 👈 forzar que el select muestre "Administración"
-      if (esAdmin && !moduloId) moduloId = ADMIN_ID;
-
-      return {
-        mes,
-        cantidad: Number(cantidad) || 0,
-        moduloId,
-        moduloNombre,
-        profesionalId: profId,
-        profesionalNombre: profNombre,
-        precioModulo,
-        aPagar,
-        pagPadres,
-        detPadres,
-        pagOS,
-        detOS,
-        esAdmin,
-      };
-    });
-
-    // ================== Normalizar facturas ==================
-    let facturas = facturasRaw.map((f) => {
-      const mes =
-        f.mes ||
-        f.periodo ||
-        (f.fecha ? new Date(f.fecha).toISOString().slice(0, 7) : "");
-      const fecha = f.fecha ? new Date(f.fecha).toISOString().slice(0, 10) : "";
-      const nro = f.numero || f.nro || f.nFactura || "";
-      const monto = Number(f.monto || f.total || 0);
-      const detalle = f.detalle || f.descripcion || f.observacion || "";
-
-      // si en backend ya viene estado, lo mantenemos (para PDF/tabla si querés)
-      const estado = f.estado || f.estadoFactura || "";
-
-      return { mes, nro, monto, detalle, fecha, estado };
-    });
-
-    if (!facturas.length) {
-      facturas.push({ mes: "", nro: "", monto: 0, detalle: "", fecha: "", estado: "" });
-    }
-
-    const calcTotales = () => {
-      lineas = lineas.map((l) => {
-        if (!l.esAdmin && l.precioModulo && !isNaN(l.precioModulo)) {
-          const cant = Number(l.cantidad) || 0;
-          l.aPagar = l.precioModulo * cant;
+        let profId = f.profesionalId || "";
+        if (!profId && profNombre) {
+          const found = PROFESIONALES.find((p) => {
+            const nom = p.nombreApellido || p.nombreCompleto || p.nombre || "";
+            return nom.toLowerCase() === profNombre.toLowerCase();
+          });
+          if (found) profId = String(found._id);
         }
-        return l;
+
+        // 🔴 detectar si es línea de Administración guardada en BD
+        const esAdmin =
+          (f.meta && f.meta.esAdministracion) ||
+          (!moduloId && (moduloNombre || "").toLowerCase().trim() === "administracion");
+
+        // 👈 forzar que el select muestre "Administración"
+        if (esAdmin && !moduloId) moduloId = ADMIN_ID;
+
+        return {
+          mes,
+          cantidad: Number(cantidad) || 0,
+          moduloId,
+          moduloNombre,
+          profesionalId: profId,
+          profesionalNombre: profNombre,
+          precioModulo,
+          aPagar,
+          pagPadres,
+          detPadres,
+          pagOS,
+          detOS,
+          esAdmin,
+        };
       });
 
-      const totalAPagar = lineas.reduce((acc, l) => acc + (Number(l.aPagar) || 0), 0);
-      const totalPagado = lineas.reduce(
-        (acc, l) => acc + (Number(l.pagPadres) || 0) + (Number(l.pagOS) || 0),
-        0
-      );
-      const totalFacturado = facturas.reduce((acc, f) => acc + (Number(f.monto) || 0), 0);
+      // ================== Normalizar facturas ==================
+      let facturas = facturasRaw.map((f) => {
+        const mes =
+          f.mes ||
+          f.periodo ||
+          (f.fecha ? new Date(f.fecha).toISOString().slice(0, 7) : "");
+        const fecha = f.fecha ? new Date(f.fecha).toISOString().slice(0, 10) : "";
+        const nro = f.numero || f.nro || f.nFactura || "";
+        const monto = Number(f.monto || f.total || 0);
+        const detalle = f.detalle || f.descripcion || f.observacion || "";
 
-      const difFactPag = totalFacturado - totalPagado;
-      const saldoRestante = totalAPagar - totalPagado;
+        // si en backend ya viene estado, lo mantenemos (para PDF/tabla si querés)
+        const estado = f.estado || f.estadoFactura || "";
 
-      return { totalAPagar, totalPagado, totalFacturado, difFactPag, saldoRestante };
-    };
+        return { mes, nro, monto, detalle, fecha, estado };
+      });
 
-    const areaNombreActual = (areaSel && areaSel.nombre) || "Todas las áreas";
+      if (!facturas.length) {
+        facturas.push({ mes: "", nro: "", monto: 0, detalle: "", fecha: "", estado: "" });
+      }
 
-    const areaColor = (() => {
-      const nNorm = (areaNombreActual || "")
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "");
+      const calcTotales = () => {
+        lineas = lineas.map((l) => {
+          if (!l.esAdmin && l.precioModulo && !isNaN(l.precioModulo)) {
+            const cant = Number(l.cantidad) || 0;
+            l.aPagar = l.precioModulo * cant;
+          }
+          return l;
+        });
 
-      if (nNorm.includes("fono")) return "#8BCB86";
-      if (nNorm.includes("psicoped")) return "#A591EF";
-      if (nNorm.includes("psicolog")) return "#7986CB";
-      if (nNorm.includes("terapia ocup") || nNorm.includes("t.o")) return "#E86A6A";
-      if (nNorm.includes("habilidades sociales") || nNorm.includes("hhss")) return "#F9F171";
-      if (nNorm.includes("atencion temprana") || nNorm.includes("a.t")) return "#41C6F1";
-      if (
-        nNorm.includes("abordaje integral") ||
-        nNorm.includes("discapacidad") ||
-        nNorm.includes("a.i")
-      ) return "#373DB6";
-      return "#8BCB86";
-    })();
+        const totalAPagar = lineas.reduce((acc, l) => acc + (Number(l.aPagar) || 0), 0);
+        const totalPagado = lineas.reduce(
+          (acc, l) => acc + (Number(l.pagPadres) || 0) + (Number(l.pagOS) || 0),
+          0
+        );
+        const totalFacturado = facturas.reduce((acc, f) => acc + (Number(f.monto) || 0), 0);
 
-    const areaOptionsHtml = [
-      `<option value="">(Todas las áreas)</option>`,
-      ...AREAS.map(
-        (a) =>
-          `<option value="${a._id}" ${
-            areaSel && String(areaSel.id) === String(a._id) ? "selected" : ""
-          }>${a.nombre}</option>`
-      ),
-    ].join("");
+        const difFactPag = totalFacturado - totalPagado;
+        const saldoRestante = totalAPagar - totalPagado;
 
-    const html = `
+        return { totalAPagar, totalPagado, totalFacturado, difFactPag, saldoRestante };
+      };
+
+      const areaNombreActual = (areaSel && areaSel.nombre) || "Todas las áreas";
+
+      const areaColor = (() => {
+        const nNorm = (areaNombreActual || "")
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "");
+
+        if (nNorm.includes("fono")) return "#8BCB86";
+        if (nNorm.includes("psicoped")) return "#A591EF";
+        if (nNorm.includes("psicolog")) return "#7986CB";
+        if (nNorm.includes("terapia ocup") || nNorm.includes("t.o")) return "#E86A6A";
+        if (nNorm.includes("habilidades sociales") || nNorm.includes("hhss")) return "#F9F171";
+        if (nNorm.includes("atencion temprana") || nNorm.includes("a.t")) return "#41C6F1";
+        if (
+          nNorm.includes("abordaje integral") ||
+          nNorm.includes("discapacidad") ||
+          nNorm.includes("a.i")
+        ) return "#373DB6";
+        return "#8BCB86";
+      })();
+
+      const areaOptionsHtml = [
+        `<option value="">(Todas las áreas)</option>`,
+        ...AREAS.map(
+          (a) =>
+            `<option value="${a._id}" ${areaSel && String(areaSel.id) === String(a._id) ? "selected" : ""
+            }>${a.nombre}</option>`
+        ),
+      ].join("");
+
+      const html = `
       <div id="edcModalRoot" style="text-align:left;font-family:'Segoe UI',sans-serif;">
         <div style="margin-bottom:8px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
           <div style="display:flex; align-items:center; gap:8px;">
@@ -774,12 +773,18 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel, periodSel = nu
             </select>
           </div>
 
-          <div style="display:flex; align-items:center; gap:8px;">
-            <strong>Periodo:</strong>
-            <input id="edcPeriodoModal" type="month" value="${periodSel || ""}"
-                   style="padding:4px 6px; border-radius:6px; border:1px solid #bbb; width:160px;">
-          </div>
-        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+  <strong>Desde:</strong>
+  <input id="edcDesde" type="month"
+         style="padding:4px 6px; border-radius:6px; border:1px solid #bbb; width:140px;">
+</div>
+
+<div style="display:flex; align-items:center; gap:8px;">
+  <strong>Hasta:</strong>
+  <input id="edcHasta" type="month"
+         style="padding:4px 6px; border-radius:6px; border:1px solid #bbb; width:140px;">
+</div>
+
 
         <h3 id="edcTituloArea" style="margin:0 0 6px 0; color:${areaColor};">
           ${paciente.nombre} — ${areaNombreActual}
@@ -865,165 +870,165 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel, periodSel = nu
       </div>
     `;
 
-    // ================== Mostrar modal ==================
-    await Swal.fire({
-      title: "Estado de cuenta",
-      html,
-      showCloseButton: true,
-      confirmButtonText: "Cerrar",
-      grow: "fullscreen",
-      width: "100%",
-      padding: 0,
-      didOpen: (popup) => {
-        const root = popup.querySelector("#edcModalRoot");
-        const tbodyLin = popup.querySelector("#edcBodyLineas");
-        const tfootLin = popup.querySelector("#edcFootLineas");
-        const tbodyFac = popup.querySelector("#edcBodyFacturas");
-        const tfootFac = popup.querySelector("#edcFootFacturas");
-        const resumenDif = popup.querySelector("#edcResumenDif");
-        const tituloEl = popup.querySelector("#edcTituloArea");
-        const btnAddLinea = popup.querySelector("#edcBtnAddLinea");
+      // ================== Mostrar modal ==================
+      await Swal.fire({
+        title: "Estado de cuenta",
+        html,
+        showCloseButton: true,
+        confirmButtonText: "Cerrar",
+        grow: "fullscreen",
+        width: "100%",
+        padding: 0,
+        didOpen: (popup) => {
+          const root = popup.querySelector("#edcModalRoot");
+          const tbodyLin = popup.querySelector("#edcBodyLineas");
+          const tfootLin = popup.querySelector("#edcFootLineas");
+          const tbodyFac = popup.querySelector("#edcBodyFacturas");
+          const tfootFac = popup.querySelector("#edcFootFacturas");
+          const resumenDif = popup.querySelector("#edcResumenDif");
+          const tituloEl = popup.querySelector("#edcTituloArea");
+          const btnAddLinea = popup.querySelector("#edcBtnAddLinea");
 
-        const scrollTop = popup.querySelector("#edcScrollTop");
-        const scrollMain = popup.querySelector("#edcScrollMain");
-        const scrollTopInner = popup.querySelector("#edcScrollTopInner");
+          const scrollTop = popup.querySelector("#edcScrollTop");
+          const scrollMain = popup.querySelector("#edcScrollMain");
+          const scrollTopInner = popup.querySelector("#edcScrollTopInner");
 
-        const safeNum = (v) => {
-          if (v === "" || v === null || v === undefined) return 0;
-          const clean = String(v)
-            .replace(/\$/g, "")
-            .replace(/\s/g, "")
-            .replace(/\./g, "")
-            .replace(",", "."); // acepta coma decimal
-          const n = Number(clean);
-          return isNaN(n) ? 0 : n;
-        };
-
-        const fmtARS = (n) => {
-          const num = Number(n || 0);
-          return `$ ${num.toLocaleString("es-AR", {
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 2,
-          })}`;
-        };
-
-        const fmtARSInput = (n) => {
-          const num = Number(n || 0);
-          if (!num) return "";
-          return `$ ${num.toLocaleString("es-AR", {
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 2,
-          })}`;
-        };
-
-        const esEventoEspecial = (m) => {
-          if (!m || typeof m !== "object") return false;
-          if (m.esEspecial || m.esEventoEspecial || m.eventoEspecial) return true;
-          const tipo = (m.tipo || "").toLowerCase();
-          const cat = (m.categoria || m.clase || "").toLowerCase();
-          const nom = (m.nombre || "").toLowerCase();
-          return tipo.includes("evento") || cat.includes("evento") || nom.includes("evento");
-        };
-
-        // sincronizar scroll superior/inferior
-        if (scrollMain && scrollTop) {
-          let syncing = false;
-
-          const syncFromMain = () => {
-            if (syncing) return;
-            syncing = true;
-            scrollTop.scrollLeft = scrollMain.scrollLeft;
-            syncing = false;
+          const safeNum = (v) => {
+            if (v === "" || v === null || v === undefined) return 0;
+            const clean = String(v)
+              .replace(/\$/g, "")
+              .replace(/\s/g, "")
+              .replace(/\./g, "")
+              .replace(",", "."); // acepta coma decimal
+            const n = Number(clean);
+            return isNaN(n) ? 0 : n;
           };
 
-          const syncFromTop = () => {
-            if (syncing) return;
-            syncing = true;
-            scrollMain.scrollLeft = scrollTop.scrollLeft;
-            syncing = false;
+          const fmtARS = (n) => {
+            const num = Number(n || 0);
+            return `$ ${num.toLocaleString("es-AR", {
+              minimumFractionDigits: 0,
+              maximumFractionDigits: 2,
+            })}`;
           };
 
-          scrollMain.addEventListener("scroll", syncFromMain);
-          scrollTop.addEventListener("scroll", syncFromTop);
-        }
+          const fmtARSInput = (n) => {
+            const num = Number(n || 0);
+            if (!num) return "";
+            return `$ ${num.toLocaleString("es-AR", {
+              minimumFractionDigits: 0,
+              maximumFractionDigits: 2,
+            })}`;
+          };
 
-        const render = () => {
-          const { totalAPagar, totalPagado, totalFacturado, difFactPag, saldoRestante } = calcTotales();
+          const esEventoEspecial = (m) => {
+            if (!m || typeof m !== "object") return false;
+            if (m.esEspecial || m.esEventoEspecial || m.eventoEspecial) return true;
+            const tipo = (m.tipo || "").toLowerCase();
+            const cat = (m.categoria || m.clase || "").toLowerCase();
+            const nom = (m.nombre || "").toLowerCase();
+            return tipo.includes("evento") || cat.includes("evento") || nom.includes("evento");
+          };
 
-          const buildModuloOptions = (selId) => {
-            const normales = MODULOS.filter((m) => !esEventoEspecial(m));
-            const especiales = MODULOS.filter(esEventoEspecial);
+          // sincronizar scroll superior/inferior
+          if (scrollMain && scrollTop) {
+            let syncing = false;
 
-            let html = `<option value="">(Elegir módulo / evento)</option>
+            const syncFromMain = () => {
+              if (syncing) return;
+              syncing = true;
+              scrollTop.scrollLeft = scrollMain.scrollLeft;
+              syncing = false;
+            };
+
+            const syncFromTop = () => {
+              if (syncing) return;
+              syncing = true;
+              scrollMain.scrollLeft = scrollTop.scrollLeft;
+              syncing = false;
+            };
+
+            scrollMain.addEventListener("scroll", syncFromMain);
+            scrollTop.addEventListener("scroll", syncFromTop);
+          }
+
+          const render = () => {
+            const { totalAPagar, totalPagado, totalFacturado, difFactPag, saldoRestante } = calcTotales();
+
+            const buildModuloOptions = (selId) => {
+              const normales = MODULOS.filter((m) => !esEventoEspecial(m));
+              const especiales = MODULOS.filter(esEventoEspecial);
+
+              let html = `<option value="">(Elegir módulo / evento)</option>
                         <option value="${ADMIN_ID}" ${selId === ADMIN_ID ? "selected" : ""}>
                           Administración (ajuste manual)
                         </option>`;
 
-            if (normales.length) {
-              html += `<optgroup label="Módulos mensuales">`;
-              html += normales
-                .map((m) => {
-                  const text = m.nombre || `${m.numero || ""} ${m.descripcion || ""}`.trim();
-                  const id = String(m._id);
-                  return `<option value="${id}" ${selId === id ? "selected" : ""}>${text}</option>`;
-                })
-                .join("");
-              html += `</optgroup>`;
-            }
+              if (normales.length) {
+                html += `<optgroup label="Módulos mensuales">`;
+                html += normales
+                  .map((m) => {
+                    const text = m.nombre || `${m.numero || ""} ${m.descripcion || ""}`.trim();
+                    const id = String(m._id);
+                    return `<option value="${id}" ${selId === id ? "selected" : ""}>${text}</option>`;
+                  })
+                  .join("");
+                html += `</optgroup>`;
+              }
 
-            if (especiales.length) {
-              html += `<optgroup label="Eventos especiales">`;
-              html += especiales
-                .map((m) => {
-                  const text = m.nombre || `${m.numero || ""} ${m.descripcion || ""}`.trim();
-                  const id = String(m._id);
-                  return `<option value="${id}" ${selId === id ? "selected" : ""}>${text}</option>`;
-                })
-                .join("");
-              html += `</optgroup>`;
-            }
+              if (especiales.length) {
+                html += `<optgroup label="Eventos especiales">`;
+                html += especiales
+                  .map((m) => {
+                    const text = m.nombre || `${m.numero || ""} ${m.descripcion || ""}`.trim();
+                    const id = String(m._id);
+                    return `<option value="${id}" ${selId === id ? "selected" : ""}>${text}</option>`;
+                  })
+                  .join("");
+                html += `</optgroup>`;
+              }
 
-            return html;
-          };
+              return html;
+            };
 
-          const buildProfOptions = (selId, selNombre) => {
-            const selKey = selId ? String(selId) : "";
-            const base = [...PROFESIONALES];
+            const buildProfOptions = (selId, selNombre) => {
+              const selKey = selId ? String(selId) : "";
+              const base = [...PROFESIONALES];
 
-            if (selKey && !profMap[selKey]) {
-              base.unshift({
-                _id: selKey,
-                nombreApellido: selNombre || "(Profesional asignado)",
-                _esExtra: true,
-              });
-            }
+              if (selKey && !profMap[selKey]) {
+                base.unshift({
+                  _id: selKey,
+                  nombreApellido: selNombre || "(Profesional asignado)",
+                  _esExtra: true,
+                });
+              }
 
-            return [
-              `<option value="">(Elegir profesional)</option>`,
-              ...base.map((p) => {
-                const txt = p.nombreApellido || p.nombreCompleto || p.nombre || "";
-                const id = String(p._id);
-                return `<option value="${id}" ${selKey === id ? "selected" : ""}>${txt}</option>`;
-              }),
-            ].join("");
-          };
+              return [
+                `<option value="">(Elegir profesional)</option>`,
+                ...base.map((p) => {
+                  const txt = p.nombreApellido || p.nombreCompleto || p.nombre || "";
+                  const id = String(p._id);
+                  return `<option value="${id}" ${selKey === id ? "selected" : ""}>${txt}</option>`;
+                }),
+              ].join("");
+            };
 
-          if (tituloEl) {
-            tituloEl.innerHTML = `
+            if (tituloEl) {
+              tituloEl.innerHTML = `
               ${paciente.nombre} — ${areaNombreActual}
               <span style="float:right;font-weight:600;">Saldo: ${fmtARS(saldoRestante)}</span>
             `;
-          }
+            }
 
-          // LÍNEAS
-          tbodyLin.innerHTML = lineas
-            .map((r, idx) => {
-              const selMod = r.moduloId ? String(r.moduloId) : "";
-              const selProf = r.profesionalId ? String(r.profesionalId) : "";
-              const vCant = Number(r.cantidad) || 0;
-              const isAdmin = r.esAdmin || r.moduloId === ADMIN_ID;
+            // LÍNEAS
+            tbodyLin.innerHTML = lineas
+              .map((r, idx) => {
+                const selMod = r.moduloId ? String(r.moduloId) : "";
+                const selProf = r.profesionalId ? String(r.profesionalId) : "";
+                const vCant = Number(r.cantidad) || 0;
+                const isAdmin = r.esAdmin || r.moduloId === ADMIN_ID;
 
-              return `
+                return `
                 <tr>
                   <td class="edc-col-mes">
                     <input type="month" data-idx="${idx}" data-field="mes"
@@ -1046,24 +1051,22 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel, periodSel = nu
                   </td>
 
                   <td class="edc-col-prof">
-                    ${
-                      isAdmin
-                        ? `<select disabled class="edc-input-linea"><option>(No aplica)</option></select>`
-                        : `<select data-idx="${idx}" data-field="profesionalId" class="edc-input-linea">
+                    ${isAdmin
+                    ? `<select disabled class="edc-input-linea"><option>(No aplica)</option></select>`
+                    : `<select data-idx="${idx}" data-field="profesionalId" class="edc-input-linea">
                              ${buildProfOptions(selProf, r.profesionalNombre)}
                            </select>`
-                    }
+                  }
                   </td>
 
                   <td class="edc-col-apag">
-                    ${
-                      isAdmin
-                        ? `<input data-idx="${idx}" data-field="aPagar"
+                    ${isAdmin
+                    ? `<input data-idx="${idx}" data-field="aPagar"
                                   class="edc-input-linea edc-money"
                                   style="width:110px;text-align:right;"
                                   value="${fmtARSInput(r.aPagar)}">`
-                        : fmtARS(r.aPagar)
-                    }
+                    : fmtARS(r.aPagar)
+                  }
                   </td>
 
                   <td class="edc-col-pag">
@@ -1096,11 +1099,11 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel, periodSel = nu
                   </td>
                 </tr>
               `;
-            })
-            .join("");
+              })
+              .join("");
 
-          // Totales líneas
-          tfootLin.innerHTML = `
+            // Totales líneas
+            tfootLin.innerHTML = `
             <tr class="edc-total-row">
               <td colspan="4" style="text-align:left;">Total que debería haber pagado</td>
               <td class="edc-col-apag">${fmtARS(totalAPagar)}</td>
@@ -1108,10 +1111,10 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel, periodSel = nu
             </tr>
           `;
 
-          // FACTURAS
-          tbodyFac.innerHTML = facturas
-            .map(
-              (f, idx) => `
+            // FACTURAS
+            tbodyFac.innerHTML = facturas
+              .map(
+                (f, idx) => `
                 <tr>
                   <td class="edc-col-mes">
                     <input type="month" data-idx="${idx}" data-field="mes"
@@ -1136,10 +1139,10 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel, periodSel = nu
                   </td>
                 </tr>
               `
-            )
-            .join("");
+              )
+              .join("");
 
-          tfootFac.innerHTML = `
+            tfootFac.innerHTML = `
             <tr class="edc-total-row">
               <td colspan="2" style="text-align:left;">Total que se le facturó</td>
               <td class="edc-col-apag">${fmtARS(totalFacturado)}</td>
@@ -1147,7 +1150,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel, periodSel = nu
             </tr>
           `;
 
-          resumenDif.innerHTML = `
+            resumenDif.innerHTML = `
             <div>
               <strong>Total que pagó (OS + Padres + ajustes):</strong>
               <span style="margin-left:6px;">${fmtARS(totalPagado)}</span>
@@ -1158,224 +1161,231 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel, periodSel = nu
             </div>
           `;
 
-          // ajustar ancho del dummy del scroll superior
-          if (scrollMain && scrollTop && scrollTopInner) {
-            scrollTopInner.style.width = scrollMain.scrollWidth + "px";
-            scrollTop.scrollLeft = scrollMain.scrollLeft;
-          }
-        };
+            // ajustar ancho del dummy del scroll superior
+            if (scrollMain && scrollTop && scrollTopInner) {
+              scrollTopInner.style.width = scrollMain.scrollWidth + "px";
+              scrollTop.scrollLeft = scrollMain.scrollLeft;
+            }
+          };
 
-        // Render inicial
-        render();
+          // Render inicial
+          render();
 
-        const handleChange = (e) => {
-          const t = e.target;
-          const idx = Number(t.dataset.idx);
-          const field = t.dataset.field;
+          const handleChange = (e) => {
+            const t = e.target;
+            const idx = Number(t.dataset.idx);
+            const field = t.dataset.field;
 
-          if (t.classList.contains("edc-input-linea")) {
-            if (field === "moduloId") {
-              const id = t.value;
-              lineas[idx].moduloId = id;
+            if (t.classList.contains("edc-input-linea")) {
+              if (field === "moduloId") {
+                const id = t.value;
+                lineas[idx].moduloId = id;
 
-              if (id === ADMIN_ID) {
-                lineas[idx].esAdmin = true;
-                lineas[idx].moduloNombre = "Administración";
-                lineas[idx].precioModulo = 0;
-                lineas[idx].profesionalId = "";
-                lineas[idx].profesionalNombre = "";
-              } else {
-                lineas[idx].esAdmin = false;
-                const m = id ? moduloMap[String(id)] : null;
-                if (m) {
-                  lineas[idx].moduloNombre = m.nombre || "";
-                  lineas[idx].precioModulo = Number(
-                    m.valorPadres ?? m.valorModulo ?? m.precioModulo ?? m.precio ?? 0
-                  );
-                } else {
+                if (id === ADMIN_ID) {
+                  lineas[idx].esAdmin = true;
+                  lineas[idx].moduloNombre = "Administración";
                   lineas[idx].precioModulo = 0;
+                  lineas[idx].profesionalId = "";
+                  lineas[idx].profesionalNombre = "";
+                } else {
+                  lineas[idx].esAdmin = false;
+                  const m = id ? moduloMap[String(id)] : null;
+                  if (m) {
+                    lineas[idx].moduloNombre = m.nombre || "";
+                    lineas[idx].precioModulo = Number(
+                      m.valorPadres ?? m.valorModulo ?? m.precioModulo ?? m.precio ?? 0
+                    );
+                  } else {
+                    lineas[idx].precioModulo = 0;
+                  }
                 }
-              }
 
-              render();
-              return;
-            }
-
-            if (field === "profesionalId") {
-              const id = t.value;
-              lineas[idx].profesionalId = id;
-              const p = id ? profMap[String(id)] : null;
-              lineas[idx].profesionalNombre = p?.nombreApellido || p?.nombreCompleto || p?.nombre || "";
-              render();
-              return;
-            }
-
-            if (field === "cantidad" || field === "pagPadres" || field === "pagOS" || field === "aPagar") {
-              lineas[idx][field] = safeNum(t.value);
-            } else {
-              lineas[idx][field] = t.value;
-            }
-            render();
-            return;
-          }
-
-          if (t.classList.contains("edc-input-fact")) {
-            if (field === "monto") {
-              facturas[idx].monto = safeNum(t.value);
-            } else {
-              facturas[idx][field] = t.value;
-            }
-            render();
-            return;
-          }
-        };
-
-        root.addEventListener("change", handleChange);
-        root.addEventListener("blur", handleChange, true);
-
-        // Formatear inputs de dinero al salir
-        root.addEventListener(
-          "blur",
-          (e) => {
-            const el = e.target;
-            if (!el.classList || !el.classList.contains("edc-money")) return;
-            el.value = fmtARSInput(safeNum(el.value));
-          },
-          true
-        );
-
-        // Borrar línea con la X roja
-        root.addEventListener("click", (e) => {
-          const btn = e.target.closest(".edc-del-linea");
-          if (!btn) return;
-
-          const idx = Number(btn.dataset.idx);
-          if (Number.isNaN(idx)) return;
-
-          lineas.splice(idx, 1);
-          render();
-        });
-
-        // Agregar línea
-        btnAddLinea.addEventListener("click", () => {
-          lineas.unshift({
-            mes: "",
-            cantidad: 1,
-            moduloId: "",
-            moduloNombre: "",
-            profesionalId: "",
-            profesionalNombre: "",
-            precioModulo: 0,
-            aPagar: 0,
-            pagPadres: 0,
-            detPadres: "",
-            pagOS: 0,
-            detOS: "",
-            esAdmin: false,
-          });
-          render();
-        });
-
-        // Agregar factura
-        const btnAddFactura = popup.querySelector("#edcBtnAddFactura");
-        if (btnAddFactura) {
-          btnAddFactura.addEventListener("click", () => {
-            facturas.push({ mes: "", nro: "", monto: 0, detalle: "", fecha: "", estado: "" });
-            render();
-          });
-        }
-
-        // Cambio de área
-        const selAreaModal = popup.querySelector("#edcAreaSelectModal");
-        if (selAreaModal) {
-          selAreaModal.addEventListener("change", () => {
-            const selId = selAreaModal.value;
-            const found = AREAS.find((a) => String(a._id) === String(selId));
-            const nuevaArea = selId ? { id: selId, nombre: found?.nombre || null } : null;
-
-            const per = popup.querySelector("#edcPeriodoModal")?.value || null;
-
-            Swal.close();
-            edcMostrarEstadoCuentaAreaModal(paciente, nuevaArea, per || null);
-          });
-        }
-
-        // Cambio de periodo
-        const inpPeriodo = popup.querySelector("#edcPeriodoModal");
-        if (inpPeriodo) {
-          inpPeriodo.addEventListener("change", () => {
-            const per = inpPeriodo.value || null;
-            Swal.close();
-            edcMostrarEstadoCuentaAreaModal(paciente, areaSel || null, per);
-          });
-        }
-
-        // Guardar
-        const btnGuardar = popup.querySelector("#edcBtnGuardar");
-        if (btnGuardar) {
-          btnGuardar.addEventListener("click", async () => {
-            try {
-              if (!areaSel || !areaSel.id) {
-                await Swal.fire({
-                  icon: "warning",
-                  title: "Falta área",
-                  text: "Tenés que seleccionar un área para poder guardar el estado de cuenta.",
-                });
+                render();
                 return;
               }
 
-              const payload = {
-                dni: paciente.dni,
-                areaId: areaSel.id,
-                lineas,
-                facturas,
-              };
+              if (field === "profesionalId") {
+                const id = t.value;
+                lineas[idx].profesionalId = id;
+                const p = id ? profMap[String(id)] : null;
+                lineas[idx].profesionalNombre = p?.nombreApellido || p?.nombreCompleto || p?.nombre || "";
+                render();
+                return;
+              }
 
-              await edcApiJson(`/estado-de-cuenta/${encodeURIComponent(paciente.dni)}`, {
-                method: "PUT",
-                body: JSON.stringify(payload),
-              });
-
-              await Swal.fire({
-                icon: "success",
-                title: "Guardado",
-                text: "Estado de cuenta actualizado.",
-              });
-            } catch (err) {
-              console.error(err);
-              await Swal.fire({
-                icon: "error",
-                title: "Error",
-                text: "No se pudieron guardar los cambios.",
-              });
+              if (field === "cantidad" || field === "pagPadres" || field === "pagOS" || field === "aPagar") {
+                lineas[idx][field] = safeNum(t.value);
+              } else {
+                lineas[idx][field] = t.value;
+              }
+              render();
+              return;
             }
-          });
-        }
 
-        // PDF (con period)
-        const btnPDF = popup.querySelector("#edcBtnDescargarPDF");
-        if (btnPDF) {
-          btnPDF.addEventListener("click", () => {
-            let url = `/api/estado-de-cuenta/${encodeURIComponent(paciente.dni)}/extracto`;
-            const qs2 = [];
-            if (areaSel?.id) qs2.push(`areaId=${encodeURIComponent(areaSel.id)}`);
-            const per = popup.querySelector("#edcPeriodoModal")?.value || "";
-            if (per) qs2.push(`period=${encodeURIComponent(per)}`);
-            if (qs2.length) url += `?${qs2.join("&")}`;
-            window.open(url, "_blank");
+            if (t.classList.contains("edc-input-fact")) {
+              if (field === "monto") {
+                facturas[idx].monto = safeNum(t.value);
+              } else {
+                facturas[idx][field] = t.value;
+              }
+              render();
+              return;
+            }
+          };
+
+          root.addEventListener("change", handleChange);
+          root.addEventListener("blur", handleChange, true);
+
+          // Formatear inputs de dinero al salir
+          root.addEventListener(
+            "blur",
+            (e) => {
+              const el = e.target;
+              if (!el.classList || !el.classList.contains("edc-money")) return;
+              el.value = fmtARSInput(safeNum(el.value));
+            },
+            true
+          );
+
+          // Borrar línea con la X roja
+          root.addEventListener("click", (e) => {
+            const btn = e.target.closest(".edc-del-linea");
+            if (!btn) return;
+
+            const idx = Number(btn.dataset.idx);
+            if (Number.isNaN(idx)) return;
+
+            lineas.splice(idx, 1);
+            render();
           });
-        }
-      },
-    });
-  } catch (e) {
-    console.error("Error al abrir modal de estado de cuenta:", e);
-    await Swal.fire({
-      icon: "error",
-      title: "Error",
-      text: "No se pudo cargar el estado de cuenta del área seleccionada.",
-    });
+
+          // Agregar línea
+          btnAddLinea.addEventListener("click", () => {
+            lineas.unshift({
+              mes: "",
+              cantidad: 1,
+              moduloId: "",
+              moduloNombre: "",
+              profesionalId: "",
+              profesionalNombre: "",
+              precioModulo: 0,
+              aPagar: 0,
+              pagPadres: 0,
+              detPadres: "",
+              pagOS: 0,
+              detOS: "",
+              esAdmin: false,
+            });
+            render();
+          });
+
+          // Agregar factura
+          const btnAddFactura = popup.querySelector("#edcBtnAddFactura");
+          if (btnAddFactura) {
+            btnAddFactura.addEventListener("click", () => {
+              facturas.push({ mes: "", nro: "", monto: 0, detalle: "", fecha: "", estado: "" });
+              render();
+            });
+          }
+
+          // Cambio de área
+          const selAreaModal = popup.querySelector("#edcAreaSelectModal");
+          if (selAreaModal) {
+            selAreaModal.addEventListener("change", () => {
+              const selId = selAreaModal.value;
+              const found = AREAS.find((a) => String(a._id) === String(selId));
+              const nuevaArea = selId ? { id: selId, nombre: found?.nombre || null } : null;
+
+              const per = popup.querySelector("#edcPeriodoModal")?.value || null;
+
+              Swal.close();
+              edcMostrarEstadoCuentaAreaModal(paciente, nuevaArea, per || null);
+            });
+          }
+
+          // Cambio de periodo
+          const inpPeriodo = popup.querySelector("#edcPeriodoModal");
+          if (inpPeriodo) {
+            inpPeriodo.addEventListener("change", () => {
+              const per = inpPeriodo.value || null;
+              Swal.close();
+              edcMostrarEstadoCuentaAreaModal(paciente, areaSel || null, per);
+            });
+          }
+
+          // Guardar
+          const btnGuardar = popup.querySelector("#edcBtnGuardar");
+          if (btnGuardar) {
+            btnGuardar.addEventListener("click", async () => {
+              try {
+                if (!areaSel || !areaSel.id) {
+                  await Swal.fire({
+                    icon: "warning",
+                    title: "Falta área",
+                    text: "Tenés que seleccionar un área para poder guardar el estado de cuenta.",
+                  });
+                  return;
+                }
+
+                const payload = {
+                  dni: paciente.dni,
+                  areaId: areaSel.id,
+                  lineas,
+                  facturas,
+                };
+
+                await edcApiJson(`/estado-de-cuenta/${encodeURIComponent(paciente.dni)}`, {
+                  method: "PUT",
+                  body: JSON.stringify(payload),
+                });
+
+                await Swal.fire({
+                  icon: "success",
+                  title: "Guardado",
+                  text: "Estado de cuenta actualizado.",
+                });
+              } catch (err) {
+                console.error(err);
+                await Swal.fire({
+                  icon: "error",
+                  title: "Error",
+                  text: "No se pudieron guardar los cambios.",
+                });
+              }
+            });
+          }
+
+          // PDF (con period)
+          const btnPDF = popup.querySelector("#edcBtnDescargarPDF");
+          if (btnPDF) {
+            btnPDF.addEventListener("click", () => {
+              let url = `/api/estado-de-cuenta/${encodeURIComponent(paciente.dni)}/extracto`;
+
+              const qs = [];
+              if (areaSel?.id) qs.push(`areaId=${encodeURIComponent(areaSel.id)}`);
+
+              const desde = document.getElementById("edcDesde")?.value;
+              const hasta = document.getElementById("edcHasta")?.value;
+
+              if (desde) qs.push(`desde=${encodeURIComponent(desde)}`);
+              if (hasta) qs.push(`hasta=${encodeURIComponent(hasta)}`);
+
+              if (qs.length) url += `?${qs.join("&")}`;
+
+              window.open(url, "_blank");
+            });
+          }
+        },
+      });
+    } catch (e) {
+      console.error("Error al abrir modal de estado de cuenta:", e);
+      await Swal.fire({
+        icon: "error",
+        title: "Error",
+        text: "No se pudo cargar el estado de cuenta del área seleccionada.",
+      });
+    }
   }
-}
 
 
 
