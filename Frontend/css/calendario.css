@@ -1,190 +1,33 @@
-/* Reset */
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+/* ===== FIX: dashboard.css oculta la vista ===== */
+html, body {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
 }
 
-body {
-  font-family: 'Segoe UI', 'Montserrat', sans-serif;
-  background-color: #f4f4f4;
+.navbar,
+.top-actions,
+.contenido {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
 }
 
-.top-bar {
-  background-color: #fff;
-  border-bottom: 1px solid #ddd;
-  padding: 10px 20px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.nav-left {
-  display: flex;
-  gap: 10px;
-}
-
-a.btn,
-button.btn {
-  background-color: #5f9f9c;
-  color: white;
-  padding: 8px 12px;
-  border: none;
-  border-radius: 5px;
-  font-size: 14px;
-  font-family: 'Montserrat', sans-serif;
-  font-weight: bold;
-  cursor: pointer;
-  transition: 0.2s;
-  text-decoration: none;
-}
-
-a.btn:hover,
-button.btn:hover {
-  background-color: white;
-  color: #5f9f9c;
-  border: 1px solid #5f9f9c;
-}
-
-a.btn.active {
-  background-color: white;
-  color: #5f9f9c;
-  border: 2px solid #5f9f9c;
-}
-
-.logout-btn {
-  background-color: #e53835dc;
-  color: white;
-  border: none;
-  border-radius: 5px;
-  padding: 8px 12px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: 0.2s;
-  font-weight: bold;
-}
-
-.logout-btn:hover {
-  background-color: white;
-  color: #c62828;
-  border: 1px solid #c62828;
-}
-
-.user-icon {
-  font-size: 18px;
-}
-
-.user-info {
-  font-weight: 500;
-  color: #333;
-}
-
-hr {
-  border: none;
-  height: 1px;
-  background-color: #ddd;
-  margin: 0;
-}
-
-.content {
-  padding: 20px;
-}
-
-.filtros {
-  background-color: white;
-  padding: 15px;
-  border: 1px solid #ccc;
-  border-radius: 8px;
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  align-items: center;
-  margin-bottom: 20px;
-  font-weight: bold;
-}
-
-.filtros select {
-  padding: 8px 12px;
-  border-radius: 5px;
-  border: 1px solid #ccc;
-  font-size: 14px;
-  font-family: 'Montserrat', sans-serif;
-}
-
-.buscar-btn {
-  background-color: #5f9f9c;
-  color: white;
-  border: none;
-  border-radius: 5px;
-  padding: 10px 16px;
-  font-weight: bold;
-  cursor: pointer;
-  transition: 0.2s;
-  text-transform: uppercase;
-}
-
-.buscar-btn:hover {
-  background-color: white;
-  color: #5f9f9c;
-  border: 1px solid #5f9f9c;
-}
-
-.tabla {
-  background-color: white;
-  border: 1px solid #ccc;
-  border-radius: 10px;
-  padding: 15px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-  min-height: 150px;
-}
-
-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
-  font-family: 'Montserrat', sans-serif;
-}
-
-thead th {
-  background-color: #5f9f9c;
-  color: white;
-  padding: 10px;
-  text-align: left;
-}
-
-tbody td {
-  padding: 10px;
-  border-bottom: 1px solid #ccc;
-}
-
-tbody tr:hover {
-  background-color: #f9f9f9;
-}
-
-.sin-info {
-  padding: 10px;
-  font-style: italic;
-  color: #777;
-}
-
-/* ===== FIX VISIBILIDAD + LAYOUT CALENDARIO ===== */
-body { display: block !important; visibility: visible !important; }
-
-.navbar { display: flex !important; align-items: center; justify-content: space-between; }
+/* Layout mínimo */
 .top-actions { display: flex !important; gap: 10px; padding: 10px 20px; }
-.contenido { display: block !important; padding: 20px; }
+.contenido { padding: 20px; }
 
+/* Calendar */
 .calendar-container{
-  background: #fff;
-  border: 1px solid #ccc;
-  border-radius: 10px;
-  padding: 12px;
+  background:#fff;
+  border:1px solid #ccc;
+  border-radius:10px;
+  padding:12px;
   box-shadow: 0 2px 6px rgba(0,0,0,.08);
   margin-top: 10px;
 }
-
 #gcalFrame{
-  width: 100%;
-  height: 75vh;
-  border: 0;
+  width:100%;
+  height:75vh;
+  border:0;
 }
