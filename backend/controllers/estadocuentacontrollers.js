@@ -658,15 +658,12 @@ const getPorDni = async (req, res) => {
   }
 };
 
-// ----------------- GET /api/estado-de-cuenta/:dni/extracto?areaId=...&period=YYYY-MM -----------------
+// ----------------- GET /api/estado-de-cuenta/:dni/extracto?areaId=... -----------------
 async function generarExtractoPDF(req, res) {
   try {
-    const fs = require("fs");
-    const path = require("path");
-
     const dni = toStr(req.params.dni).trim();
-    const areaId = toStr(req.query.areaId || "").trim();
-    const period = req.query.period ? toStr(req.query.period).trim() : null; // YYYY-MM opcional
+    const areaId = toStr(req.query.areaId || "");
+    const period = req.query.period ? toStr(req.query.period) : null;
 
     if (!areaId) return res.status(400).json({ error: "areaId es obligatorio" });
 
@@ -676,12 +673,10 @@ async function generarExtractoPDF(req, res) {
     const area = await Area.findById(areaId).lean();
     if (!area) return res.status(404).json({ error: "Área no encontrada" });
 
-    const tieneOS = /obra social/i.test(paciente.condicionDePago || "");
-
     // Filas informativas (módulos asignados)
     const filas = await buildFilasArea(paciente, areaId);
 
-    // Movimientos (si viene period -> filtra)
+    // Movimientos reales
     const movs = await Movimiento.find({
       dni,
       areaId,
@@ -690,13 +685,14 @@ async function generarExtractoPDF(req, res) {
       .sort({ fecha: 1 })
       .lean();
 
-    // ------------------ Totales generales (sobre movs filtrados) ------------------
     let pagadoOS = 0,
       pagadoPART = 0,
       cargos = 0,
       ajustesMas = 0,
       ajustesMenos = 0,
       totalFacturado = 0;
+
+    const tieneOS = /obra social/i.test(paciente.condicionDePago || "");
 
     for (const m of movs) {
       const monto = Number(m.monto || 0);
@@ -721,301 +717,194 @@ async function generarExtractoPDF(req, res) {
     if (!tieneOS) pagadoOS = 0;
 
     const totalCargos = cargos;
-    const totalPagado = pagadoPART + pagadoOS + ajustesMas - ajustesMenos;
-    const saldo = Number((totalCargos - totalPagado).toFixed(2));
+    const totalPagado = pagadoOS + pagadoPART; // padres + OS
+    const saldo = Number(
+      (totalCargos - (totalPagado + ajustesMas - ajustesMenos)).toFixed(2)
+    );
 
-    // ------------------ Agrupar por mes para “Estado de cuenta (por mes)” ------------------
-    const byMes = new Map(); // YYYY-MM -> acumuladores
-    const getMes = (m) =>
-      (m.period ||
-        (m.fecha ? new Date(m.fecha).toISOString().slice(0, 7) : "") ||
-        "").slice(0, 7);
-
-    for (const m of movs) {
-      const mes = getMes(m) || "—";
-      if (!byMes.has(mes)) {
-        byMes.set(mes, {
-          mes,
-          cargos: 0,
-          pagoPadres: 0,
-          pagoOS: 0,
-          ajustesMas: 0,
-          ajustesMenos: 0,
-        });
-      }
-      const r = byMes.get(mes);
-
-      const monto = Number(m.monto || 0);
-
-      if (m.tipo === "CARGO") {
-        r.cargos += monto;
-        r.pagoPadres += parseNumberLike(m.pagPadres, 0);
-        r.pagoOS += parseNumberLike(m.pagOS, 0);
-      } else if (m.tipo === "PART") {
-        r.pagoPadres += monto;
-      } else if (m.tipo === "OS") {
-        r.pagoOS += monto;
-      } else if (m.tipo === "AJUSTE+") {
-        r.ajustesMas += monto;
-      } else if (m.tipo === "AJUSTE-") {
-        r.ajustesMenos += monto;
-      }
+    // Helper de formato (lo dejo simple)
+    function fmtARS(n) {
+      const num = Number(n || 0);
+      return `$ ${num.toLocaleString("es-AR", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`;
     }
 
-    let meses = Array.from(byMes.values()).sort((a, b) => a.mes.localeCompare(b.mes));
-
-    // Si te pasan period, mostrás SOLO ese mes (más claro para la clienta)
-    if (period) meses = meses.filter((x) => x.mes === period);
-
-    // ------------------ Facturas ------------------
-    const facturas = movs
-      .filter((m) => m.tipo === "FACT")
-      .map((m) => {
-        const mes = m.period || (m.fecha ? new Date(m.fecha).toISOString().slice(0, 7) : "");
-        const nro = m.nroRecibo || m.tipoFactura || "";
-        const monto = Number(m.monto || 0);
-
-        // Si tu modelo usa estado en FACT, respetalo. Si no, MOSTRAMOS FACTURADO.
-        const estadoDB = String(m.estado || "").toUpperCase();
-        const estado = estadoDB === "PAGADO" ? "PAGADA" : "FACTURADO";
-
-        return { mes, nro, monto, estado };
-      });
-
-    // ------------------ PDF ------------------
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
-      `inline; filename="Extracto_${dni}_${(area.nombre || "area").replace(/\s+/g, "_")}${period ? "_" + period : ""}.pdf"`
+      `inline; filename="Extracto_${dni}_${(area.nombre || "area")
+        .replace(/\s+/g, "_")}${period ? "_" + period : ""}.pdf"`
     );
 
     const doc = new PDFDocument({ margin: 40 });
     doc.pipe(res);
 
-    const pageBottom = 770;
+    // ======================
+    // LOGO (ruta robusta)
+    // ======================
+    try {
+      const logoPath = path.resolve(
+        process.cwd(),
+        "frontend",
+        "img",
+        "fc885963d690a6787ca787cf208cdd25_1778x266_fit.png"
+      );
 
-    const ensureSpace = (h = 16) => {
-      if (doc.y + h > pageBottom) {
-        doc.addPage();
-        return true;
+      if (fs.existsSync(logoPath)) {
+        doc.image(logoPath, 40, 25, { width: 170 });
+        doc.moveDown(2.5); // deja espacio debajo del logo
+      } else {
+        doc.moveDown(1.2);
       }
-      return false;
-    };
-
-    const drawHr = (color = "#ddd") => {
-      doc.save();
-      doc.strokeColor(color);
-      doc.moveTo(40, doc.y).lineTo(555, doc.y).stroke();
-      doc.restore();
-    };
-
-    // ---------- Logo (ruta real) ----------
-    // OJO: tu archivo está en /frontend/img/...
-    const logoPath = path.resolve(
-      process.cwd(),
-      "frontend",
-      "img",
-      "fc885963d690a6787ca787cf208cdd25_1778x266_fit.png"
-    );
-
-    if (fs.existsSync(logoPath)) {
-      // x, y fijo arriba a la derecha/izquierda
-      doc.image(logoPath, 40, 25, { width: 160 });
+    } catch (e) {
+      doc.moveDown(1.2);
     }
 
-    // Empujar texto para que no se pise con logo
-    doc.y = 85;
+    // ======================
+    // HEADER
+    // ======================
+    doc.fontSize(14).fillColor("#000").text("Informe de estado de cuenta", {
+      align: "left",
+    });
+    doc.moveDown(0.4);
 
-    // ---------- Header ----------
-    doc.fontSize(14).fillColor("#000").text("Informe de estado de cuenta", { align: "left" });
-    doc.moveDown(0.35);
-
-    doc.fontSize(11).fillColor("#000").text(`${paciente.nombre || "-"} - DNI ${paciente.dni || "-"}`);
-    doc.fontSize(10).fillColor("#444").text(`Área: ${area.nombre || "-"}`);
-    if (period) doc.text(`Periodo: ${period}`);
-    doc.moveDown(0.5);
-
-    // ---------- Resumen ----------
     doc
       .fontSize(12)
-      .fillColor(saldo <= 0 ? "#0a7a36" : "#b00020")
-      .text(`SALDO ACTUAL: ${fmtARS(saldo)}`);
+      .fillColor("#000")
+      .text(`${paciente.nombre || "-"} - DNI ${paciente.dni || "-"}`);
+    doc.fontSize(10).fillColor("#444").text(`Área: ${area.nombre || "-"}`);
+    if (period) doc.text(`Periodo: ${period}`);
+    doc.moveDown(0.6);
+
+    // ======================
+    // RESUMEN
+    // ======================
+    doc
+      .fontSize(12)
+      .fillColor("#b00020")
+      .text(`SALDO ACTUAL: ${fmtARS(saldo)}`, { align: "left" });
 
     doc.moveDown(0.2);
     doc.fontSize(10).fillColor("#000");
-
     doc.text(`Debería pagar (cargos): ${fmtARS(totalCargos)}`);
     doc.text(`Pagó Padres: ${fmtARS(pagadoPART)}`);
-    doc.text(`Pagó Obra Social: ${tieneOS ? fmtARS(pagadoOS) : "$ 0,00"}`);
+    if (tieneOS) doc.text(`Pagó Obra Social: ${fmtARS(pagadoOS)}`);
     doc.text(`Total pagado (Padres + O.S. + ajustes): ${fmtARS(totalPagado)}`);
     doc.text(`Total facturado: ${fmtARS(totalFacturado)}`);
 
     doc.moveDown(0.6);
-    drawHr();
+    doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor("#ccc").stroke();
     doc.moveDown(0.6);
 
-    // ==========================================================
-    // TABLA ESTADO DE CUENTA (por MES) - COMPACTA Y PROLIJA
-    // ==========================================================
-    doc.fontSize(11).fillColor("#000").text("ESTADO DE CUENTA (por mes)", { underline: true });
+    // ======================
+    // CARGOS (informativo - como ya lo tenías)
+    // ======================
+    doc.fontSize(11).fillColor("#000").text("CARGOS", { underline: true });
     doc.moveDown(0.35);
 
-    const startX = 40;
-    const rowH = 14;
+    const colx = [40, 120, 330, 410, 495];
+    const th = ["MES", "MÓDULO", "CANT.", "VALOR", "A PAGAR"];
 
-    // Total ancho útil ≈ 515 (de 40 a 555)
-    const cols = [
-      { key: "mes", label: "MES", w: 60, align: "left" },
-      { key: "cargos", label: "DEBERÍA PAGAR", w: 95, align: "right" },
-      { key: "padres", label: "PAGÓ PADRES", w: 95, align: "right" },
-      { key: "os", label: "PAGÓ O.S.", w: 85, align: "right" },
-      { key: "total", label: "TOTAL PAGADO", w: 95, align: "right" },
-      { key: "saldo", label: "SALDO", w: 85, align: "right" },
-    ];
+    doc.fontSize(9).fillColor("#333");
+    th.forEach((t, i) =>
+      doc.text(t, colx[i], doc.y, { continued: i < th.length - 1 })
+    );
+    doc.moveDown(0.2);
+    doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor("#ddd").stroke();
+    doc.moveDown(0.2);
 
-    const drawHeaderMes = () => {
-      ensureSpace(40);
-      const y = doc.y;
-      doc.fontSize(8).fillColor("#333");
+    filas.forEach((f) => {
+      if (doc.y > 770) doc.addPage();
 
-      let x = startX;
-      for (const c of cols) {
-        doc.text(c.label, x, y, { width: c.w, align: c.align, lineBreak: false });
-        x += c.w;
-      }
+      const mes = f.mes || "-";
+      const modulo = String(f.moduloNumero ?? "-");
+      const cant = String(f.cant ?? "-");
+      const valor = fmtARS(f.valorModulo);
+      const ap = fmtARS(f.aPagar);
 
-      doc.y = y + rowH;
-      drawHr("#ddd");
-      doc.y += 6;
-    };
+      const row = [mes, modulo, cant, valor, ap];
+      row.forEach((t, i) =>
+        doc.text(t, colx[i], doc.y, { continued: i < row.length - 1 })
+      );
+      doc.moveDown(0.15);
+    });
 
-    const drawRowMes = (r) => {
-      if (doc.y + rowH > pageBottom) {
-        doc.addPage();
-        drawHeaderMes();
-      }
+    doc.moveDown(0.6);
+    doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor("#ccc").stroke();
+    doc.moveDown(0.6);
 
-      const totalPagMes = (r.pagoPadres + r.pagoOS + r.ajustesMas - r.ajustesMenos);
-      const saldoMes = Number((r.cargos - totalPagMes).toFixed(2));
-
-      const cells = {
-        mes: r.mes || "-",
-        cargos: fmtARS(r.cargos),
-        padres: fmtARS(r.pagoPadres),
-        os: tieneOS ? fmtARS(r.pagoOS) : "$ 0,00",
-        total: fmtARS(totalPagMes),
-        saldo: fmtARS(saldoMes),
-      };
-
-      const y = doc.y;
-      doc.fontSize(9).fillColor("#000");
-
-      let x = startX;
-      for (const c of cols) {
-        doc.text(cells[c.key], x, y, {
-          width: c.w,
-          align: c.align,
-          lineBreak: false,
-          ellipsis: true,
-        });
-        x += c.w;
-      }
-
-      doc.y = y + rowH;
-    };
-
-    drawHeaderMes();
-
-    if (!meses.length) {
-      doc.fontSize(9).fillColor("#666").text("Sin movimientos en el periodo seleccionado.");
-      doc.moveDown(0.8);
-    } else {
-      for (const r of meses) drawRowMes(r);
-      drawHr("#ddd");
-      doc.moveDown(0.8);
-    }
-
-    // ==========================================================
-    // FACTURAS (MONTO y ESTADO SEPARADOS, NO PEGADOS)
-    // ==========================================================
-    ensureSpace(40);
+    // ======================
+    // FACTURAS (SEPARADO MONTO / ESTADO)
+    // ======================
     doc.fontSize(11).fillColor("#000").text("FACTURAS", { underline: true });
     doc.moveDown(0.35);
 
-    const fcols = [
-      { key: "mes", label: "MES", w: 70, align: "left" },
-      { key: "nro", label: "N°", w: 60, align: "left" },
-      { key: "monto", label: "MONTO", w: 120, align: "right" },
-      { key: "estado", label: "ESTADO", w: 120, align: "left" },
-    ];
+    const facturas = movs
+      .filter((m) => m.tipo === "FACT")
+      .map((m) => ({
+        mes: m.period || (m.fecha ? new Date(m.fecha).toISOString().slice(0, 7) : ""),
+        nro: m.nroRecibo || m.tipoFactura || "",
+        monto: Number(m.monto || 0),
+        estado: (m.estado || "FACTURADO").toUpperCase(), // si no tenés estado, queda FACTURADO
+      }));
 
-    const drawHeaderFac = () => {
-      ensureSpace(40);
-      const y = doc.y;
-      doc.fontSize(8).fillColor("#333");
-
-      let x = 40;
-      for (const c of fcols) {
-        doc.text(c.label, x, y, { width: c.w, align: c.align, lineBreak: false });
-        x += c.w;
-      }
-      doc.y = y + rowH;
-      drawHr("#ddd");
-      doc.y += 6;
-    };
-
-    const drawRowFac = (f) => {
-      if (doc.y + rowH > pageBottom) {
-        doc.addPage();
-        drawHeaderFac();
-      }
-
-      const cells = {
-        mes: f.mes || "-",
-        nro: String(f.nro || "-"),
-        monto: fmtARS(f.monto),
-        estado: f.estado || "FACTURADO",
-      };
-
-      const y = doc.y;
-      doc.fontSize(9).fillColor("#000");
-
-      let x = 40;
-      for (const c of fcols) {
-        doc.text(cells[c.key], x, y, {
-          width: c.w,
-          align: c.align,
-          lineBreak: false,
-          ellipsis: true,
-        });
-        x += c.w;
-      }
-
-      doc.y = y + rowH;
-    };
-
-    drawHeaderFac();
+    // Columnas reales (NO pegadas)
+    const fx = [40, 120, 220, 360]; // MES | N° | MONTO | ESTADO
+    doc.fontSize(9).fillColor("#333");
+    doc.text("MES", fx[0], doc.y, { continued: true });
+    doc.text("N°", fx[1], doc.y, { continued: true });
+    doc.text("MONTO", fx[2], doc.y, { continued: true });
+    doc.text("ESTADO", fx[3], doc.y);
+    doc.moveDown(0.2);
+    doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor("#ddd").stroke();
+    doc.moveDown(0.2);
 
     if (!facturas.length) {
       doc.fontSize(9).fillColor("#666").text("Sin facturas registradas.");
-      doc.moveDown(0.8);
     } else {
-      for (const f of facturas) drawRowFac(f);
-      drawHr("#ddd");
-      doc.moveDown(0.8);
+      facturas.forEach((f) => {
+        if (doc.y > 770) {
+          doc.addPage();
+
+          // Repetir header de tabla facturas al cambiar de página
+          doc.fontSize(11).fillColor("#000").text("FACTURAS", { underline: true });
+          doc.moveDown(0.35);
+
+          doc.fontSize(9).fillColor("#333");
+          doc.text("MES", fx[0], doc.y, { continued: true });
+          doc.text("N°", fx[1], doc.y, { continued: true });
+          doc.text("MONTO", fx[2], doc.y, { continued: true });
+          doc.text("ESTADO", fx[3], doc.y);
+          doc.moveDown(0.2);
+          doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor("#ddd").stroke();
+          doc.moveDown(0.2);
+        }
+
+        doc.fontSize(9).fillColor("#000");
+        doc.text(f.mes || "-", fx[0], doc.y, { continued: true });
+        doc.text(String(f.nro || "-"), fx[1], doc.y, { continued: true });
+        doc.text(fmtARS(f.monto), fx[2], doc.y, { continued: true });
+        doc.text(f.estado || "FACTURADO", fx[3], doc.y);
+        doc.moveDown(0.15);
+      });
     }
 
-    // ==========================================================
+    doc.moveDown(0.8);
+
+    // ======================
     // OBSERVACIONES
-    // ==========================================================
-    ensureSpace(60);
+    // ======================
     doc.fontSize(9).fillColor("#666").text("OBSERVACIONES:", { underline: true });
     doc.moveDown(0.2);
 
     const leyenda =
       saldo <= 0
         ? `Al día de la fecha, la cuenta del área de ${area.nombre} no registra deuda pendiente.`
-        : `Al día de la fecha, la cuenta del área de ${area.nombre} registra un saldo pendiente de ${fmtARS(saldo)}.`;
+        : `Al día de la fecha, la cuenta del área de ${area.nombre} registra un saldo pendiente de ${fmtARS(
+            saldo
+          )}.`;
 
     doc.text(leyenda, { align: "justify" });
 
