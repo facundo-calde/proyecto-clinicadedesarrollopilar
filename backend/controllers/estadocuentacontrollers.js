@@ -663,12 +663,10 @@ async function generarExtractoPDF(req, res) {
     const dni = toStr(req.params.dni).trim();
     const areaId = toStr(req.query.areaId || "");
     const period = req.query.period ? toStr(req.query.period) : null;
-    if (!areaId)
-      return res.status(400).json({ error: "areaId es obligatorio" });
+    if (!areaId) return res.status(400).json({ error: "areaId es obligatorio" });
 
     const paciente = await Paciente.findOne({ dni }).lean();
-    if (!paciente)
-      return res.status(404).json({ error: "Paciente no encontrado" });
+    if (!paciente) return res.status(404).json({ error: "Paciente no encontrado" });
 
     const area = await Area.findById(areaId).lean();
     if (!area) return res.status(404).json({ error: "Área no encontrada" });
@@ -722,7 +720,9 @@ async function generarExtractoPDF(req, res) {
 
     const totalCargos = cargos;
     const totalPagado = pagadoOS + pagadoPART; // (padres + OS)
-    const saldo = Number((totalCargos - (totalPagado + ajustesMas - ajustesMenos)).toFixed(2));
+    const saldo = Number(
+      (totalCargos - (totalPagado + ajustesMas - ajustesMenos)).toFixed(2)
+    );
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
@@ -735,20 +735,21 @@ async function generarExtractoPDF(req, res) {
     doc.pipe(res);
 
     // ======================
-    // LOGO (tu ruta real)
+    // LOGO (ruta robusta usando process.cwd())
     // ======================
     try {
       const logoPath = path.join(
-        __dirname,   // /backend/controllers
-        "..",        // /backend
-        "..",        // /
+        process.cwd(),
         "frontend",
         "img",
         "fc885963d690a6787ca787cf208cdd25_1778x266_fit.png"
       );
+
+      console.log("Logo path PDF:", logoPath);
+
       doc.image(logoPath, 40, 30, { width: 160 });
     } catch (e) {
-      console.error("No se pudo cargar el logo en PDF:", e);
+      console.error("No se pudo cargar el logo en PDF:", e.message);
     }
 
     // Espacio para que no se pisen
@@ -757,10 +758,16 @@ async function generarExtractoPDF(req, res) {
     // ======================
     // HEADER
     // ======================
-    doc.fontSize(14).fillColor("#000").text("Informe de estado de cuenta", { align: "left" });
+    doc
+      .fontSize(14)
+      .fillColor("#000")
+      .text("Informe de estado de cuenta", { align: "left" });
     doc.moveDown(0.4);
 
-    doc.fontSize(12).fillColor("#000").text(`${paciente.nombre || "-"} - DNI ${paciente.dni || "-"}`);
+    doc
+      .fontSize(12)
+      .fillColor("#000")
+      .text(`${paciente.nombre || "-"} - DNI ${paciente.dni || "-"}`);
     doc.fontSize(10).fillColor("#444").text(`Área: ${area.nombre || "-"}`);
     if (period) doc.text(`Periodo: ${period}`);
     doc.moveDown(0.6);
@@ -791,7 +798,10 @@ async function generarExtractoPDF(req, res) {
     // ======================
     // TABLA CARGOS (SIN profesional)
     // ======================
-    doc.fontSize(11).fillColor("#000").text("CARGOS (informativo)", { underline: true });
+    doc
+      .fontSize(11)
+      .fillColor("#000")
+      .text("CARGOS (informativo)", { underline: true });
     doc.moveDown(0.3);
 
     // columnas: MES | MÓDULO | CANT | VALOR | A PAGAR
@@ -799,7 +809,9 @@ async function generarExtractoPDF(req, res) {
     const th = ["MES", "MÓDULO", "CANT.", "VALOR", "A PAGAR"];
 
     doc.fontSize(9).fillColor("#333");
-    th.forEach((t, i) => doc.text(t, colx[i], doc.y, { continued: i < th.length - 1 }));
+    th.forEach((t, i) =>
+      doc.text(t, colx[i], doc.y, { continued: i < th.length - 1 })
+    );
     doc.moveDown(0.2);
     doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor("#ddd").stroke();
     doc.moveDown(0.2);
@@ -812,7 +824,9 @@ async function generarExtractoPDF(req, res) {
       const ap = fmtARS(f.aPagar);
 
       const row = [mes, modulo, cant, valor, ap];
-      row.forEach((t, i) => doc.text(t, colx[i], doc.y, { continued: i < row.length - 1 }));
+      row.forEach((t, i) =>
+        doc.text(t, colx[i], doc.y, { continued: i < row.length - 1 })
+      );
       doc.moveDown(0.15);
     });
 
@@ -839,7 +853,8 @@ async function generarExtractoPDF(req, res) {
       doc.fontSize(9).fillColor("#666").text("Sin facturas registradas.");
     } else {
       facturas.forEach((f) => {
-        const mes = f.period || (f.fecha ? new Date(f.fecha).toISOString().slice(0, 7) : "-");
+        const mes =
+          f.period || (f.fecha ? new Date(f.fecha).toISOString().slice(0, 7) : "-");
         const nro = f.nroRecibo || f.tipoFactura || "-";
         const monto = fmtARS(f.monto);
         const estadoF = (f.estado || "PENDIENTE").toUpperCase();
@@ -864,7 +879,9 @@ async function generarExtractoPDF(req, res) {
     const leyenda =
       saldo <= 0
         ? `Al día de la fecha, la cuenta del área de ${area.nombre} no registra deuda pendiente.`
-        : `Al día de la fecha, la cuenta del área de ${area.nombre} registra un saldo pendiente de ${fmtARS(saldo)}.`;
+        : `Al día de la fecha, la cuenta del área de ${area.nombre} registra un saldo pendiente de ${fmtARS(
+            saldo
+          )}.`;
 
     doc.text(leyenda, { align: "justify" });
 
