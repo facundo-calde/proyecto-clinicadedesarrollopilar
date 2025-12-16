@@ -664,9 +664,9 @@ async function generarExtractoPDF(req, res) {
     const path = require("path");
     const PDFDocument = require("pdfkit");
 
-    const dni = toStr(req.params.dni).trim();
-    const areaId = toStr(req.query.areaId || "");
-    const period = req.query.period ? toStr(req.query.period).trim() : null;
+    const dni = String(req.params.dni).trim();
+    const areaId = String(req.query.areaId || "");
+    const period = req.query.period ? String(req.query.period) : null;
 
     if (!areaId) return res.status(400).json({ error: "areaId es obligatorio" });
 
@@ -693,16 +693,16 @@ async function generarExtractoPDF(req, res) {
     const fmtCant = (n) =>
       n === 0.25 ? "1/4" : n === 0.5 ? "1/2" : n === 0.75 ? "3/4" : n === 1 ? "1" : "";
 
-    // ===== PDF =====
+    // ================= PDF =================
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `inline; filename="Extracto_${dni}.pdf"`);
 
     const doc = new PDFDocument({ size: "A4", margin: 30 });
     doc.pipe(res);
 
-    // HEADER VERDE
+    // ===== HEADER =====
     doc.rect(30, 30, 535, 22).fill("#9BBB59");
-    doc.fillColor("#000").fontSize(11).font("Helvetica-Bold");
+    doc.fillColor("#000").font("Helvetica-Bold").fontSize(11);
     doc.text(`AREA: ${area.nombre.toUpperCase()}`, 30, 36, {
       width: 535,
       align: "center",
@@ -710,30 +710,27 @@ async function generarExtractoPDF(req, res) {
 
     doc.moveDown(3);
 
-    // ===== TABLA =====
+    // ===== TABLA PRINCIPAL =====
     const startX = 30;
-    let y = doc.y + 10;
+    let y = doc.y;
     const rowH = 16;
 
     const cols = [
       { k: "mes", label: "MES", w: 55 },
-      { k: "cant", label: "CANT", w: 45 },
-      { k: "codigo", label: "CODIGO", w: 170 },
+      { k: "cant", label: "CANT", w: 40 },
+      { k: "codigo", label: "CÓDIGO / MÓDULO", w: 190 },
       { k: "prof", label: "PROFESIONAL", w: 120 },
       { k: "apagar", label: "A PAGAR", w: 65 },
-      { k: "pagPadres", label: "PAGADO", w: 70 },
+      { k: "pagPadres", label: "PAGADO", w: 65 },
     ];
 
     if (tieneOS) {
-      cols.push(
-        { k: "pagOS", label: "PAGADO O.S.", w: 70 },
-        { k: "detOS", label: "DETALLE", w: 80 }
-      );
+      cols.push({ k: "pagOS", label: "PAGADO O.S.", w: 65 });
     }
 
-    // Headers
+    // Header tabla
     let x = startX;
-    doc.fontSize(8).font("Helvetica-Bold");
+    doc.font("Helvetica-Bold").fontSize(8);
     for (const c of cols) {
       doc.rect(x, y, c.w, rowH).fill("#D9EAD3").stroke();
       doc.fillColor("#000").text(c.label, x + 2, y + 4, {
@@ -744,10 +741,13 @@ async function generarExtractoPDF(req, res) {
     }
     y += rowH;
 
-    // Rows
     doc.font("Helvetica").fontSize(8);
-    for (const m of movimientos) {
-      if (m.tipo === "FACT") continue;
+
+    for (const m of movimientos.filter(m => m.tipo !== "FACT")) {
+      if (y + rowH > 780) {
+        doc.addPage();
+        y = 40;
+      }
 
       x = startX;
       const row = {
@@ -758,7 +758,6 @@ async function generarExtractoPDF(req, res) {
         apagar: fmtARS(m.monto),
         pagPadres: fmtARS(m.pagPadres || 0),
         pagOS: fmtARS(m.pagOS || 0),
-        detOS: m.detalleOS || "",
       };
 
       for (const c of cols) {
@@ -766,31 +765,63 @@ async function generarExtractoPDF(req, res) {
         doc.text(row[c.k] || "", x + 2, y + 3, {
           width: c.w - 4,
           lineBreak: true,
-          ellipsis: false,
         });
         x += c.w;
       }
       y += rowH;
     }
 
-    // ===== FACTURAS (DERECHA) =====
+    // ===== FACTURAS ABAJO =====
+    y += 20;
+    if (y > 760) {
+      doc.addPage();
+      y = 40;
+    }
+
+    doc.font("Helvetica-Bold").fontSize(10).fillColor("#000");
+    doc.text("FACTURAS", startX, y);
+    y += 12;
+
+    const fcols = [
+      { k: "mes", label: "MES", w: 80 },
+      { k: "nro", label: "N° FACTURA", w: 100 },
+      { k: "monto", label: "MONTO", w: 120 },
+      { k: "fecha", label: "FECHA", w: 120 },
+    ];
+
+    x = startX;
+    doc.fontSize(8);
+    for (const c of fcols) {
+      doc.rect(x, y, c.w, rowH).fill("#D9EAD3").stroke();
+      doc.text(c.label, x + 2, y + 4, { width: c.w - 4, align: "center" });
+      x += c.w;
+    }
+    y += rowH;
+
+    doc.font("Helvetica");
+
     const facturas = movimientos.filter(m => m.tipo === "FACT");
-    let fx = startX + 410;
-    let fy = 70;
 
-    doc.font("Helvetica-Bold").fontSize(9);
-    doc.text("FACTURAS", fx, fy);
-    fy += 14;
-
-    doc.font("Helvetica").fontSize(8);
     for (const f of facturas) {
-      doc.text(
-        `${f.period}  ${f.nroRecibo || ""}  ${fmtARS(f.monto)}  ${new Date(f.fecha).toLocaleDateString("es-AR")}`,
-        fx,
-        fy,
-        { width: 200 }
-      );
-      fy += 12;
+      if (y + rowH > 780) {
+        doc.addPage();
+        y = 40;
+      }
+
+      x = startX;
+      const row = {
+        mes: f.period || "",
+        nro: f.nroRecibo || "-",
+        monto: fmtARS(f.monto),
+        fecha: f.fecha ? new Date(f.fecha).toLocaleDateString("es-AR") : "",
+      };
+
+      for (const c of fcols) {
+        doc.rect(x, y, c.w, rowH).stroke();
+        doc.text(row[c.k], x + 2, y + 3, { width: c.w - 4 });
+        x += c.w;
+      }
+      y += rowH;
     }
 
     doc.end();
