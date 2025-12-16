@@ -771,18 +771,17 @@ async function generarExtractoPDF(req, res) {
 
     // ===== TABLA PRINCIPAL =====
     const cols = [
-      ["mes", "MES", 80],
-      ["cantidad", "CANT", 60],
-      ["codigo", "CÓDIGO / MÓDULO", 300],
-      ["profesional", "PROFESIONAL", 180],
-      ["aPagar", "A PAGAR", 100],
-      ["pagado", "PAGADO", 100],
+      ["mes", "MES", 75],
+      ["cantidad", "CANT", 55],
+      ["codigo", "CÓDIGO / MÓDULO", 260],
+      ["profesional", "PROFESIONAL", 150],
+      ["aPagar", "A PAGAR", 95],
+      ["pagado", "PAGADO", 95],
     ];
 
     const headerH = 20;
     const rowH = 18;
 
-    // Headers
     let x = left;
     doc.font("Helvetica-Bold").fontSize(8);
     for (const [, label, w] of cols) {
@@ -792,7 +791,6 @@ async function generarExtractoPDF(req, res) {
     }
     y += headerH;
 
-    // Rows
     doc.font("Helvetica").fontSize(7.6).fillColor("#000");
     for (const r of filas) {
       x = left;
@@ -807,18 +805,18 @@ async function generarExtractoPDF(req, res) {
         x += w;
       }
       y += rowH;
-      if (y > doc.page.height - 200) break;
+      if (y > doc.page.height - 180) break;
     }
 
     // ===== FACTURAS =====
-    y += 30;
+    y += 28;
     doc.font("Helvetica-Bold").fontSize(9).fillColor("#000");
     doc.text("FACTURAS", left, y);
     y += 14;
 
     const fCols = [
       ["mes", "MES", 100],
-      ["nroFactura", "N° FACTURA", 140],
+      ["nroFactura", "N° FACTURA", 130],
       ["monto", "MONTO", 140],
       ["fecha", "FECHA", 140],
     ];
@@ -826,7 +824,7 @@ async function generarExtractoPDF(req, res) {
     x = left;
     doc.fontSize(8);
     for (const [, label, w] of fCols) {
-      doc.rect(x, y, w, 18).fill("#D9EAD3").stroke();
+      doc.rect(x, y, w, 18).stroke();
       doc.text(label, x, y + 5, { width: w, align: "center" });
       x += w;
     }
@@ -850,12 +848,11 @@ async function generarExtractoPDF(req, res) {
         x += w;
       }
       y += 18;
-      if (y > doc.page.height - 80) break;
     }
 
     // ===== TOTALES =====
-    y += 20;
-    doc.font("Helvetica-Bold").fontSize(9);
+    y += 24;
+    doc.font("Helvetica-Bold").fontSize(9).fillColor("#000");
     doc.text(`Total que debería haber pagado: ${fmtARS(totalAPagar)}`, left, y);
     doc.text(`Total que pagó: ${fmtARS(totalPagado)}`, left, y + 16);
     doc.text(`Total facturado: ${fmtARS(totalFacturado)}`, left + 420, y + 16);
