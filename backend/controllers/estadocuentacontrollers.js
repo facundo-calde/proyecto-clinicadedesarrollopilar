@@ -668,7 +668,6 @@ async function generarExtractoPDF(req, res) {
     const dni = toStr(req.params.dni).trim();
     const areaId = toStr(req.query.areaId || "").trim();
 
-    // ✅ rango: desde/hasta (YYYY-MM). Si viene period, equivale a desde=hasta=period
     const period = req.query.period ? toStr(req.query.period).trim() : null;
     let desde = req.query.desde ? toStr(req.query.desde).trim() : null;
     let hasta = req.query.hasta ? toStr(req.query.hasta).trim() : null;
@@ -695,10 +694,21 @@ async function generarExtractoPDF(req, res) {
 
     const tieneOS = /obra social/i.test(paciente.condicionDePago || "");
 
-    // ========= Helpers =========
+    // ---------- Helpers ----------
+    const pick = (obj, keys, def = "") => {
+      for (const k of keys) {
+        const v = obj && obj[k];
+        if (v !== undefined && v !== null && String(v).trim() !== "") return v;
+      }
+      return def;
+    };
+
     function fmtARS(n) {
       const num = Number(n || 0);
-      return num.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return `$ ${num.toLocaleString("es-AR", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`;
     }
 
     const yyyymmFromMov = (m) =>
@@ -712,86 +722,77 @@ async function generarExtractoPDF(req, res) {
     };
 
     // ========= Datos =========
-    // Movimientos del rango (para tabla izquierda de cargos / pagos)
     const movsRango = await Movimiento.find({
       dni,
       areaId,
       ...rangeFilter(),
-    }).sort({ fecha: 1 }).lean();
-
-    // Facturas: por defecto mostramos HASTA "hasta" (como el Excel de tu captura)
-    const factFilter = {};
-    if (hasta) factFilter.period = { $lte: hasta };
+    })
+      .sort({ fecha: 1 })
+      .lean();
 
     const movsFact = await Movimiento.find({
       dni,
       areaId,
       tipo: "FACT",
-      ...factFilter,
-    }).sort({ fecha: 1 }).lean();
+      ...(hasta ? { period: { $lte: hasta } } : {}),
+    })
+      .sort({ fecha: 1 })
+      .lean();
 
-    // Cargos: filas de la tabla principal (Excel)
-    const cargos = movsRango.filter((m) => m.tipo === "CARGO");
+    // ========= Filas (tabla izquierda) =========
+    const filas = movsRango
+      .filter((m) => m.tipo === "CARGO")
+      .map((m) => {
+        const mes = yyyymmFromMov(m) || "-";
+        const cantidad = Number(pick(m, ["cantidad", "qty", "cant"], 1)) || 1;
 
-    // Normalizador defensivo (por si tus campos se llaman distinto)
-    const pick = (obj, keys, def = "") => {
-      for (const k of keys) {
-        const v = obj && obj[k];
-        if (v !== undefined && v !== null && String(v).trim() !== "") return v;
-      }
-      return def;
-    };
+        const codigo = pick(m, ["codigo", "moduloCodigo", "cod"], "");
+        const moduloNombre = pick(m, ["moduloNombre", "nombreModulo", "modulo", "descripcion", "desc"], "");
+        const codigoFinal = codigo && moduloNombre ? `${codigo}. ${moduloNombre}` : (codigo || moduloNombre || "-");
 
-    const filas = cargos.map((m) => {
-      const mes = yyyymmFromMov(m) || "-";
-      const cantidad = Number(pick(m, ["cantidad", "qty", "cant"], 1)) || 1;
+        const profesional =
+          pick(m, ["profesionalNombre", "profesional", "usuarioNombre", "nombreProfesional"], "") || "No aplica";
 
-      const codigo = pick(m, ["codigo", "moduloCodigo", "cod"], "");
-      const descModulo = pick(m, ["descripcion", "desc", "moduloNombre", "modulo"], "");
-      const codigoFinal = codigo && descModulo ? `${codigo}. ${descModulo}` : (codigo || descModulo || "-");
+        const aPagar = Number(m.monto || 0);
 
-      const profesional = pick(m, ["profesionalNombre", "profesional", "usuarioNombre", "nombreProfesional"], "-");
+        const pagPadres = parseNumberLike(m.pagPadres, 0);
+        const detPadres = pick(m, ["detallePadres", "detallePagPadres", "detallePart", "detalle"], "");
 
-      const aPagar = Number(m.monto || 0);
+        const pagOS = tieneOS ? parseNumberLike(m.pagOS, 0) : 0;
+        const detOS = tieneOS ? pick(m, ["detalleOS", "detallePagOS", "detalleObraSocial"], "") : "";
 
-      // pagos embebidos en CARGO
-      const pagPadres = parseNumberLike(m.pagPadres, 0);
-      const detPadres = pick(m, ["detallePadres", "detallePagPadres", "detallePart", "detalle"], "");
+        return {
+          mes,
+          cantidad,
+          codigo: codigoFinal,
+          profesional,
+          aPagar,
+          pagPadres,
+          detPadres,
+          pagOS,
+          detOS,
+        };
+      });
 
-      const pagOS = tieneOS ? parseNumberLike(m.pagOS, 0) : 0;
-      const detOS = tieneOS ? pick(m, ["detalleOS", "detallePagOS", "detalleObraSocial"], "") : "";
-
-      return {
-        mes,
-        cantidad,
-        codigo: codigoFinal,
-        profesional,
-        aPagar,
-        pagPadres,
-        detPadres,
-        pagOS,
-        detOS,
-      };
-    });
-
-    // Totales (como el Excel)
     const totalAPagar = filas.reduce((a, r) => a + Number(r.aPagar || 0), 0);
     const totalPadres = filas.reduce((a, r) => a + Number(r.pagPadres || 0), 0);
     const totalOS = tieneOS ? filas.reduce((a, r) => a + Number(r.pagOS || 0), 0) : 0;
     const totalPago = totalPadres + totalOS;
 
-    const facturas = movsFact.map((m) => ({
-      mes: yyyymmFromMov(m) || "-",
-      nro: pick(m, ["nroFactura", "nroRecibo", "numero", "comprobante", "tipoFactura"], "-"),
-      monto: Number(m.monto || 0),
-      detalle: pick(m, ["detalle", "estado", "observaciones"], ""), // en tu excel dice PAGADA / IMPAGA
-      fecha: m.fecha ? new Date(m.fecha).toLocaleDateString("es-AR") : "",
-    }));
+    const facturas = movsFact
+      .map((m) => ({
+        mes: yyyymmFromMov(m) || "-",
+        nro: pick(m, ["nroFactura", "nroRecibo", "numero", "comprobante", "tipoFactura"], "-"),
+        monto: Number(m.monto || 0),
+        detalle: pick(m, ["detalle", "estado", "observaciones"], ""),
+        fecha: m.fecha ? new Date(m.fecha).toLocaleDateString("es-AR") : "",
+      }))
+      .sort((a, b) => String(a.mes).localeCompare(String(b.mes)));
 
     const totalFacturado = facturas.reduce((a, f) => a + Number(f.monto || 0), 0);
     const difFactVsPagado = Number((totalFacturado - totalPago).toFixed(2));
 
-    // ========= PDF (stream sin tildarse) =========
+    // ========= PDF (stream estable) =========
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
@@ -801,8 +802,7 @@ async function generarExtractoPDF(req, res) {
     res.setHeader("Pragma", "no-cache");
     res.setHeader("Expires", "0");
 
-    // Landscape para calcar el excel (entra todo sin apretar)
-    const doc = new PDFDocument({ size: "A4", layout: "landscape", margin: 28, compress: true });
+    const doc = new PDFDocument({ size: "A4", layout: "landscape", margin: 24, compress: true });
 
     let closed = false;
     const safeEnd = () => {
@@ -812,10 +812,9 @@ async function generarExtractoPDF(req, res) {
       }
     };
 
-    res.on("close", safeEnd);
-    res.on("finish", () => { closed = true; });
-    res.on("error", safeEnd);
     req.on("aborted", safeEnd);
+    res.on("close", safeEnd);
+    res.on("error", safeEnd);
 
     doc.on("error", (e) => {
       console.error("PDFKit error:", e);
@@ -825,12 +824,28 @@ async function generarExtractoPDF(req, res) {
 
     doc.pipe(res);
 
-    // ========= Dibujo tipo Excel =========
-    const GREEN = "#9BBB59";      // banda excel
-    const GRID = "#2a2a2a";       // bordes oscuros como tu captura
-    const LIGHT_GRID = "#bfbfbf"; // líneas internas
-    const HEADER_BG = "#D9EAD3";  // verde claro header de tabla
-    const CELL_BG = "#EAF3E3";    // celda verdosa suave
+    // ---------- LOGO (opcional, no rompe) ----------
+    let logoDrawn = false;
+    try {
+      const logoFile = "fc885963d690a6787ca787cf208cdd25_1778x266_fit.png";
+      const candidates = [
+        path.resolve(process.cwd(), "frontend", "img", logoFile),
+        path.resolve(__dirname, "..", "..", "frontend", "img", logoFile),
+        path.resolve(process.cwd(), "..", "frontend", "img", logoFile),
+      ];
+      const found = candidates.find((p) => fs.existsSync(p));
+      if (found) {
+        doc.image(found, doc.page.margins.left, 14, { width: 150 });
+        logoDrawn = true;
+      }
+    } catch (_) {}
+
+    // ========= Dibujo tipo Excel (PROLIJO + CLIP + AUTO FIT) =========
+    const GREEN = "#9BBB59";
+    const GRID = "#2a2a2a";
+    const LIGHT_GRID = "#bfbfbf";
+    const HEADER_BG = "#D9EAD3";
+    const CELL_BG = "#EAF3E3";
 
     const pageW = doc.page.width;
     const pageH = doc.page.height;
@@ -838,23 +853,23 @@ async function generarExtractoPDF(req, res) {
     const top = doc.page.margins.top;
     const right = pageW - doc.page.margins.right;
 
-    // Banda superior
     const bandH = 26;
     doc.save();
     doc.rect(left, top, right - left, bandH).fill(GREEN);
     doc.fillColor("#000").fontSize(11).font("Helvetica-Bold");
-    doc.text(`AREA: ${String(area.nombre || "-").toUpperCase()}`, left, top + 7, { width: right - left, align: "center" });
+    doc.text(`AREA: ${String(area.nombre || "-").toUpperCase()}`, left, top + 7, {
+      width: right - left,
+      align: "center",
+    });
     doc.restore();
 
-    // Texto dif arriba derecha (como tu excel)
     doc.font("Helvetica-Bold").fontSize(9).fillColor("#000");
     doc.text(`DIF ENTRE FACT Y PAGADO   -$`, right - 260, top + 6, { width: 160, align: "right" });
-    doc.text(fmtARS(difFactVsPagado), right - 95, top + 6, { width: 90, align: "right" });
+    doc.text(fmtARS(difFactVsPagado).replace("$ ", ""), right - 95, top + 6, { width: 90, align: "right" });
 
-    // Layout: 2 bloques (izq cargos / der facturas)
     const gap = 14;
-    const blockTop = top + bandH + 10;
-    const blockH = pageH - blockTop - 20;
+    const blockTop = top + bandH + 12;
+    const blockH = pageH - blockTop - 26;
 
     const leftW = Math.floor((right - left - gap) * 0.62);
     const rightW = (right - left - gap) - leftW;
@@ -862,25 +877,22 @@ async function generarExtractoPDF(req, res) {
     const leftX = left;
     const rightX = left + leftW + gap;
 
-    // Helpers de tabla
-    const cellText = (text, x, y, w, h, opts = {}) => {
-      const pad = opts.pad ?? 3;
-      const align = opts.align ?? "left";
-      const fontSize = opts.fontSize ?? 8;
-      const bold = !!opts.bold;
-      const color = opts.color ?? "#000";
+    const blockHeaderH = 22;
+    const headRowH = 20;
+    const rowH = 18;
 
-      doc.font(bold ? "Helvetica-Bold" : "Helvetica").fontSize(fontSize).fillColor(color);
-      doc.text(String(text ?? ""), x + pad, y + 3, {
-        width: Math.max(0, w - pad * 2),
-        height: Math.max(0, h - 6),
-        align,
-        ellipsis: true,
-        lineBreak: false,
-      });
+    const scaleColsToFit = (cols, targetW) => {
+      const sum = cols.reduce((a, c) => a + c.w, 0);
+      if (sum <= 0) return cols;
+      const ratio = targetW / sum;
+      const out = cols.map((c) => ({ ...c, w: Math.max(30, Math.floor(c.w * ratio)) }));
+      // ajuste por redondeo
+      const sum2 = out.reduce((a, c) => a + c.w, 0);
+      out[out.length - 1].w += (targetW - sum2);
+      return out;
     };
 
-    const drawGridRect = (x, y, w, h, fillColor) => {
+    const drawOuter = (x, y, w, h, fillColor = null) => {
       if (fillColor) {
         doc.save();
         doc.rect(x, y, w, h).fill(fillColor);
@@ -891,186 +903,186 @@ async function generarExtractoPDF(req, res) {
       doc.restore();
     };
 
-    const drawInnerV = (x, y1, y2) => {
+    const vLine = (x, y1, y2) => {
       doc.save();
       doc.lineWidth(0.7).strokeColor(LIGHT_GRID).moveTo(x, y1).lineTo(x, y2).stroke();
       doc.restore();
     };
 
-    const drawInnerH = (x1, x2, y) => {
+    const cellText = (text, x, y, w, h, opts = {}) => {
+      const pad = opts.pad ?? 3;
+      const align = opts.align ?? "left";
+      const fontSize = opts.fontSize ?? 7.6;
+      const bold = !!opts.bold;
+      const color = opts.color ?? "#000";
+
+      // ✅ CLIP por celda: nada se sale del rect
       doc.save();
-      doc.lineWidth(0.7).strokeColor(LIGHT_GRID).moveTo(x1, y).lineTo(x2, y).stroke();
+      doc.rect(x, y, w, h).clip();
+
+      doc.font(bold ? "Helvetica-Bold" : "Helvetica").fontSize(fontSize).fillColor(color);
+      doc.text(String(text ?? ""), x + pad, y + 4, {
+        width: Math.max(0, w - pad * 2),
+        height: Math.max(0, h - 8),
+        align,
+        ellipsis: true,
+        lineBreak: false,
+      });
+
       doc.restore();
     };
 
-    // ====== BLOQUE IZQUIERDO (CARGOS) ======
-    // Banda header de bloque (verde)
-    const blockHeaderH = 22;
-    drawGridRect(leftX, blockTop, leftW, blockHeaderH, GREEN);
-    cellText("", leftX, blockTop, leftW, blockHeaderH);
-    doc.font("Helvetica-Bold").fontSize(10).fillColor("#000");
-    doc.text("", leftX, blockTop + 6);
+    // ===== Bloque IZQ header =====
+    drawOuter(leftX, blockTop, leftW, blockHeaderH, GREEN);
 
-    // Columnas como el excel
-    // MES | CANTIDAD | CODIGO | PROFESIONAL | A PAGAR | PAGADO POR PADRES | DETALLE | (OS...) | (DETALLE...)
-    const colDefsLeft = (() => {
-      const base = [
-        { key: "mes", label: "MES", w: 60, align: "left" },
-        { key: "cantidad", label: "CANTIDAD", w: 60, align: "center" },
-        { key: "codigo", label: "CODIGO", w: 190, align: "left" },
-        { key: "profesional", label: "PROFESIONAL", w: 140, align: "left" },
-        { key: "aPagar", label: "A PAGAR", w: 85, align: "right" },
-        { key: "pagPadres", label: "PAGADO POR PADRES", w: 105, align: "right" },
-        { key: "detPadres", label: "DETALLE", w: 130, align: "left" },
-      ];
+    // ===== Tabla IZQ: columnas (auto-fit al bloque) =====
+    let colDefsLeft = [
+      { key: "mes", label: "MES", w: 70, align: "left" },
+      { key: "cantidad", label: "CANT", w: 55, align: "center" },
+      { key: "codigo", label: "CODIGO", w: 200, align: "left" },
+      { key: "profesional", label: "PROFESIONAL", w: 140, align: "left" },
+      { key: "aPagar", label: "A PAGAR", w: 85, align: "right" },
+      { key: "pagPadres", label: "PAGADO POR PADRES", w: 110, align: "right" },
+      { key: "detPadres", label: "DETALLE", w: 150, align: "left" },
+    ];
 
-      if (tieneOS) {
-        base.push(
-          { key: "pagOS", label: "PAGADO POR O.S", w: 95, align: "right" },
-          { key: "detOS", label: "DETALLE", w: 120, align: "left" }
-        );
-      } else {
-        // Si no hay OS, ensanchamos el detalle para que quede prolijo
-        base[6].w += 95 + 120;
-      }
+    if (tieneOS) {
+      colDefsLeft.push(
+        { key: "pagOS", label: "PAGADO POR O.S", w: 105, align: "right" },
+        { key: "detOS", label: "DETALLE", w: 150, align: "left" }
+      );
+    } else {
+      colDefsLeft.find(c => c.key === "detPadres").w += 255; // agrando detalle si no hay OS
+    }
 
-      // Ajuste final para que calce exacto al ancho del bloque
-      const sumW = base.reduce((a, c) => a + c.w, 0);
-      if (sumW !== leftW) base[2].w += (leftW - sumW); // sumo/resto en CODIGO
-      return base;
-    })();
+    colDefsLeft = scaleColsToFit(colDefsLeft, leftW);
 
     const headerYLeft = blockTop + blockHeaderH;
-    const headRowH = 20;
-    drawGridRect(leftX, headerYLeft, leftW, headRowH, HEADER_BG);
+    drawOuter(leftX, headerYLeft, leftW, headRowH, HEADER_BG);
 
-    // verticales + labels
-    let cx = leftX;
+    let x = leftX;
     for (let i = 0; i < colDefsLeft.length; i++) {
       const c = colDefsLeft[i];
-      if (i > 0) drawInnerV(cx, headerYLeft, headerYLeft + headRowH);
-      cellText(c.label, cx, headerYLeft, c.w, headRowH, { bold: true, fontSize: 7.5, align: "center" });
-      cx += c.w;
+      if (i > 0) vLine(x, headerYLeft, headerYLeft + headRowH);
+      cellText(c.label, x, headerYLeft, c.w, headRowH, { bold: true, fontSize: 7.2, align: "center" });
+      x += c.w;
     }
-    // borde outer ya hecho, pero hacemos rect completo
-    doc.save(); doc.lineWidth(1).strokeColor(GRID).rect(leftX, headerYLeft, leftW, headRowH).stroke(); doc.restore();
 
-    // filas
-    const rowH = 18;
+    // filas IZQ
     let y = headerYLeft + headRowH;
+    const maxYLeft = blockTop + blockH - 88; // deja lugar a totales
 
-    const maxRowsArea = Math.floor((blockTop + blockH - 90 - y) / rowH);
-    const filasToDraw = filas.slice(0, Math.max(0, maxRowsArea)); // evita explosión si hay muchísimas
+    for (const r of filas) {
+      if (y + rowH > maxYLeft) break;
 
-    for (const r of filasToDraw) {
-      drawGridRect(leftX, y, leftW, rowH, CELL_BG);
+      drawOuter(leftX, y, leftW, rowH, CELL_BG);
 
-      let x = leftX;
+      let xx = leftX;
       for (let i = 0; i < colDefsLeft.length; i++) {
         const c = colDefsLeft[i];
-        if (i > 0) drawInnerV(x, y, y + rowH);
+        if (i > 0) vLine(xx, y, y + rowH);
 
         let val = r[c.key];
-        if (c.key === "aPagar" || c.key === "pagPadres" || c.key === "pagOS") val = `$ ${fmtARS(val)}`;
+        if (c.key === "aPagar" || c.key === "pagPadres" || c.key === "pagOS") val = fmtARS(val);
         if (c.key === "cantidad") val = String(val ?? "");
-        cellText(val ?? "", x, y, c.w, rowH, { align: c.align, fontSize: 8 });
 
-        x += c.w;
+        cellText(val ?? "", xx, y, c.w, rowH, { align: c.align, fontSize: 7.4 });
+        xx += c.w;
       }
 
-      doc.save(); doc.lineWidth(1).strokeColor(GRID).rect(leftX, y, leftW, rowH).stroke(); doc.restore();
       y += rowH;
     }
 
-    // Totales (abajo izquierda como el excel)
-    const totalsBoxY = y + 6;
+    // ===== Totales abajo IZQ =====
+    const totalsBoxY = blockTop + blockH - 70;
     const totalsH = 60;
 
-    // Caja de totales (con bordes más marcados)
-    drawGridRect(leftX + Math.floor(leftW * 0.52), totalsBoxY, Math.floor(leftW * 0.18), totalsH, "#fff");
-    drawGridRect(leftX + Math.floor(leftW * 0.70), totalsBoxY, Math.floor(leftW * 0.30), totalsH, "#fff");
+    const tX1 = leftX + Math.floor(leftW * 0.55);
+    const tW1 = Math.floor(leftW * 0.15);
+    const tX2 = tX1 + tW1;
+    const tW2 = leftX + leftW - tX2;
 
-    // Texto: "Total que deberia haber pagado" / "Total que pago"
-    cellText("Total que deberia\nhaber pagado", leftX + Math.floor(leftW * 0.52), totalsBoxY, Math.floor(leftW * 0.18), totalsH, { fontSize: 8, align: "left", bold: true });
-    cellText(`$ ${fmtARS(totalAPagar)}`, leftX + Math.floor(leftW * 0.70), totalsBoxY, Math.floor(leftW * 0.30), Math.floor(totalsH / 2), { fontSize: 9, align: "right", bold: true });
+    drawOuter(tX1, totalsBoxY, tW1, totalsH, "#fff");
+    drawOuter(tX2, totalsBoxY, tW2, totalsH, "#fff");
 
-    const totalPagoLabel = "Total que pago";
-    cellText(totalPagoLabel, leftX + Math.floor(leftW * 0.52), totalsBoxY + Math.floor(totalsH / 2), Math.floor(leftW * 0.18), Math.floor(totalsH / 2), { fontSize: 8, align: "left", bold: true });
-    cellText(`$ ${fmtARS(totalPago)}`, leftX + Math.floor(leftW * 0.70), totalsBoxY + Math.floor(totalsH / 2), Math.floor(leftW * 0.30), Math.floor(totalsH / 2), { fontSize: 9, align: "right", bold: true });
+    cellText("Total que deberia\nhaber pagado", tX1, totalsBoxY, tW1, Math.floor(totalsH / 2), { bold: true, fontSize: 7.6 });
+    cellText(fmtARS(totalAPagar), tX2, totalsBoxY, tW2, Math.floor(totalsH / 2), { bold: true, fontSize: 8.2, align: "right" });
 
-    // ====== BLOQUE DERECHO (FACTURAS) ======
-    // Banda header "FACTURAS"
-    drawGridRect(rightX, blockTop, rightW, blockHeaderH, GREEN);
+    cellText("Total que pago", tX1, totalsBoxY + Math.floor(totalsH / 2), tW1, Math.floor(totalsH / 2), { bold: true, fontSize: 7.6 });
+    cellText(fmtARS(totalPago), tX2, totalsBoxY + Math.floor(totalsH / 2), tW2, Math.floor(totalsH / 2), { bold: true, fontSize: 8.2, align: "right" });
+
+    // ===== Bloque DERECHO (FACTURAS) =====
+    drawOuter(rightX, blockTop, rightW, blockHeaderH, GREEN);
     doc.font("Helvetica-Bold").fontSize(10).fillColor("#000");
     doc.text("FACTURAS", rightX, blockTop + 6, { width: rightW, align: "center" });
 
     const headerYRight = blockTop + blockHeaderH;
-    drawGridRect(rightX, headerYRight, rightW, headRowH, HEADER_BG);
 
-    const colDefsRight = (() => {
-      const base = [
-        { key: "mes", label: "MES", w: 70, align: "left" },
-        { key: "nro", label: "N FACTURA", w: 70, align: "left" },
-        { key: "monto", label: "MONTO", w: 90, align: "right" },
-        { key: "detalle", label: "DETALLE", w: 90, align: "left" },
-        { key: "fecha", label: "FECHA", w: 70, align: "left" },
-      ];
-      const sumW = base.reduce((a, c) => a + c.w, 0);
-      if (sumW !== rightW) base[3].w += (rightW - sumW); // ajusto DETALLE
-      return base;
-    })();
+    let colDefsRight = [
+      { key: "mes", label: "MES", w: 70, align: "left" },
+      { key: "nro", label: "N FACTURA", w: 80, align: "left" },
+      { key: "monto", label: "MONTO", w: 90, align: "right" },
+      { key: "detalle", label: "DETALLE", w: 90, align: "left" },
+      { key: "fecha", label: "FECHA", w: 70, align: "left" },
+    ];
+    colDefsRight = scaleColsToFit(colDefsRight, rightW);
 
-    cx = rightX;
+    drawOuter(rightX, headerYRight, rightW, headRowH, HEADER_BG);
+
+    x = rightX;
     for (let i = 0; i < colDefsRight.length; i++) {
       const c = colDefsRight[i];
-      if (i > 0) drawInnerV(cx, headerYRight, headerYRight + headRowH);
-      cellText(c.label, cx, headerYRight, c.w, headRowH, { bold: true, fontSize: 7.5, align: "center" });
-      cx += c.w;
+      if (i > 0) vLine(x, headerYRight, headerYRight + headRowH);
+      cellText(c.label, x, headerYRight, c.w, headRowH, { bold: true, fontSize: 7.2, align: "center" });
+      x += c.w;
     }
-    doc.save(); doc.lineWidth(1).strokeColor(GRID).rect(rightX, headerYRight, rightW, headRowH).stroke(); doc.restore();
 
-    // filas facturas
     y = headerYRight + headRowH;
-    const maxRowsFact = Math.floor((blockTop + blockH - 90 - y) / rowH);
-    const factToDraw = facturas.slice(0, Math.max(0, maxRowsFact));
+    const maxYRight = blockTop + blockH - 60;
 
-    for (const f of factToDraw) {
-      drawGridRect(rightX, y, rightW, rowH, "#fff");
+    for (const f of facturas) {
+      if (y + rowH > maxYRight) break;
 
-      let x = rightX;
+      drawOuter(rightX, y, rightW, rowH, "#fff");
+
+      let xx = rightX;
       for (let i = 0; i < colDefsRight.length; i++) {
         const c = colDefsRight[i];
-        if (i > 0) drawInnerV(x, y, y + rowH);
+        if (i > 0) vLine(xx, y, y + rowH);
 
         let val = f[c.key];
-        if (c.key === "monto") val = `$ ${fmtARS(val)}`;
+        if (c.key === "monto") val = fmtARS(val);
 
-        cellText(val ?? "", x, y, c.w, rowH, { align: c.align, fontSize: 8 });
-        x += c.w;
+        cellText(val ?? "", xx, y, c.w, rowH, { align: c.align, fontSize: 7.4 });
+        xx += c.w;
       }
 
-      doc.save(); doc.lineWidth(1).strokeColor(GRID).rect(rightX, y, rightW, rowH).stroke(); doc.restore();
       y += rowH;
     }
 
-    // Total facturado abajo derecha
-    const totFactY = y + 6;
+    // total facturado
+    const totFactY = blockTop + blockH - 42;
     const totFactH = 34;
-    drawGridRect(rightX + Math.floor(rightW * 0.55), totFactY, Math.floor(rightW * 0.45), totFactH, "#fff");
-    cellText("Total que se le facturo", rightX + Math.floor(rightW * 0.55), totFactY, Math.floor(rightW * 0.25), totFactH, { bold: true, fontSize: 8, align: "left" });
-    cellText(`$ ${fmtARS(totalFacturado)}`, rightX + Math.floor(rightW * 0.80), totFactY, Math.floor(rightW * 0.20), totFactH, { bold: true, fontSize: 9, align: "right" });
+    const fx1 = rightX + Math.floor(rightW * 0.55);
+    const fw1 = Math.floor(rightW * 0.25);
+    const fx2 = fx1 + fw1;
+    const fw2 = rightX + rightW - fx2;
 
-    // Pie: rango
+    drawOuter(fx1, totFactY, fw1, totFactH, "#fff");
+    drawOuter(fx2, totFactY, fw2, totFactH, "#fff");
+
+    cellText("Total que se le facturo", fx1, totFactY, fw1, totFactH, { bold: true, fontSize: 7.6 });
+    cellText(fmtARS(totalFacturado), fx2, totFactY, fw2, totFactH, { bold: true, fontSize: 8.2, align: "right" });
+
+    // pie: rango
     doc.font("Helvetica").fontSize(8).fillColor("#444");
     const rangoTxt = (desde && hasta) ? `Rango: ${desde} a ${hasta}` : "Rango: (todos los periodos)";
-    doc.text(rangoTxt, left, pageH - 18, { width: right - left, align: "left" });
+    doc.text(rangoTxt, left, pageH - 16, { width: right - left, align: "left" });
 
     doc.end();
   } catch (err) {
     console.error("estado-de-cuenta PDF:", err);
-    try {
-      if (!res.headersSent) res.status(500).json({ error: "No se pudo generar el PDF" });
-    } catch (_) {}
+    res.status(500).json({ error: "No se pudo generar el PDF" });
   }
 }
 
