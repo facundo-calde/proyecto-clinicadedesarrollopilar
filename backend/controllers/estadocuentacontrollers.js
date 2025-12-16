@@ -658,7 +658,6 @@ const getPorDni = async (req, res) => {
   }
 };
 
-// ----------------- GET /api/estado-de-cuenta/:dni/extracto?areaId=...&period=YYYY-MM -----------------
 async function generarExtractoPDF(req, res) {
   try {
     const fs = require("fs");
@@ -677,355 +676,130 @@ async function generarExtractoPDF(req, res) {
     const area = await Area.findById(areaId).lean();
     if (!area) return res.status(404).json({ error: "Área no encontrada" });
 
-    const tieneOS = /obra social/i.test(paciente.condicionDePago || "");
+    const tieneOS = paciente.condicionDePago?.includes("Obra Social");
 
-    // Filas informativas (módulos asignados) (NO se usan para el saldo)
-    const filasInfo = await buildFilasArea(paciente, areaId);
-
-    // ✅ 1) Movimientos del periodo (si period viene)
-    const movsPeriodo = await Movimiento.find({
-      dni,
-      areaId,
-      ...(period ? { period } : {}),
-    })
-      .sort({ fecha: 1 })
-      .lean();
-
-    // ✅ 2) Movimientos acumulados hasta el periodo (para saldo / resumen)
-    const movsHastaPeriodo = await Movimiento.find({
+    const movimientos = await Movimiento.find({
       dni,
       areaId,
       ...(period ? { period: { $lte: period } } : {}),
-    })
-      .sort({ fecha: 1 })
-      .lean();
+    }).sort({ fecha: 1 }).lean();
 
-    // ---------- Helpers ----------
-    function fmtARS(n) {
-      const num = Number(n || 0);
-      return `$ ${num.toLocaleString("es-AR", {
+    const fmtARS = (n) =>
+      `$ ${Number(n || 0).toLocaleString("es-AR", {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       })}`;
-    }
 
-    const yyyymmFromMov = (m) =>
-      m.period ||
-      (m.fecha ? new Date(m.fecha).toISOString().slice(0, 7) : "") ||
-      "";
+    const fmtCant = (n) =>
+      n === 0.25 ? "1/4" : n === 0.5 ? "1/2" : n === 0.75 ? "3/4" : n === 1 ? "1" : "";
 
-    // ---------- Totales para el RESUMEN (acumulado hasta period) ----------
-    let pagadoOS = 0,
-      pagadoPART = 0,
-      cargos = 0,
-      ajustesMas = 0,
-      ajustesMenos = 0,
-      totalFacturado = 0;
-
-    for (const m of movsHastaPeriodo) {
-      const monto = Number(m.monto || 0);
-
-      if (m.tipo === "CARGO") {
-        cargos += monto;
-        pagadoPART += parseNumberLike(m.pagPadres, 0);
-        pagadoOS += parseNumberLike(m.pagOS, 0);
-      } else if (m.tipo === "OS") pagadoOS += monto;
-      else if (m.tipo === "PART") pagadoPART += monto;
-      else if (m.tipo === "AJUSTE+") ajustesMas += monto;
-      else if (m.tipo === "AJUSTE-") ajustesMenos += monto;
-      else if (m.tipo === "FACT") totalFacturado += monto;
-    }
-
-    if (!tieneOS) pagadoOS = 0;
-
-    const totalCargos = cargos;
-    const totalPagado = pagadoOS + pagadoPART; // padres + OS
-    const saldo = Number(
-      (totalCargos - (totalPagado + ajustesMas - ajustesMenos)).toFixed(2)
-    );
-
-    // ---------- TABLA POR MES ----------
-    // si viene period => tabla solo del period; si no => tabla de todo
-    const baseMovsMeses = period ? movsPeriodo : movsHastaPeriodo;
-
-    const mesesMap = new Map(); // key: YYYY-MM
-    for (const m of baseMovsMeses) {
-      const mes = yyyymmFromMov(m);
-      if (!mes) continue;
-
-      if (!mesesMap.has(mes)) {
-        mesesMap.set(mes, {
-          mes,
-          cargos: 0,
-          pagoPadres: 0,
-          pagoOS: 0,
-          ajustesMas: 0,
-          ajustesMenos: 0,
-        });
-      }
-      const acc = mesesMap.get(mes);
-
-      if (m.tipo === "CARGO") {
-        acc.cargos += Number(m.monto || 0);
-        acc.pagoPadres += parseNumberLike(m.pagPadres, 0);
-        acc.pagoOS += parseNumberLike(m.pagOS, 0);
-      } else if (m.tipo === "OS") acc.pagoOS += Number(m.monto || 0);
-      else if (m.tipo === "PART") acc.pagoPadres += Number(m.monto || 0);
-      else if (m.tipo === "AJUSTE+") acc.ajustesMas += Number(m.monto || 0);
-      else if (m.tipo === "AJUSTE-") acc.ajustesMenos += Number(m.monto || 0);
-    }
-
-    const meses = Array.from(mesesMap.values()).sort((a, b) =>
-      String(a.mes).localeCompare(String(b.mes))
-    );
-
-    // ---------- FACTURAS (solo del periodo si hay period, si no todas) ----------
-    // 👇 CAMBIO: estado fijo FACTURADA (y columnas separadas en el PDF)
-    const facturas = baseMovsMeses
-      .filter((m) => m.tipo === "FACT")
-      .map((m) => ({
-        mes: yyyymmFromMov(m) || "-",
-        nro: m.nroRecibo || m.tipoFactura || "-",
-        monto: Number(m.monto || 0),
-        estado: "FACTURADA",
-      }))
-      .sort((a, b) => String(a.mes).localeCompare(String(b.mes)));
-
-    // ---------- PDF ----------
+    // ===== PDF =====
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader(
-      "Content-Disposition",
-      `inline; filename="Extracto_${dni}_${(area.nombre || "area")
-        .replace(/\s+/g, "_")}${period ? "_" + period : ""}.pdf"`
-    );
+    res.setHeader("Content-Disposition", `inline; filename="Extracto_${dni}.pdf"`);
 
-    const doc = new PDFDocument({ margin: 40, size: "A4" });
+    const doc = new PDFDocument({ size: "A4", margin: 30 });
     doc.pipe(res);
 
-    // ---------- LOGO (robusto) ----------
-    // 👇 CAMBIO: rutas robustas + existsSync + seteo doc.y
-    let logoDrawn = false;
-    try {
-      const logoFile = "fc885963d690a6787ca787cf208cdd25_1778x266_fit.png";
+    // HEADER VERDE
+    doc.rect(30, 30, 535, 22).fill("#9BBB59");
+    doc.fillColor("#000").fontSize(11).font("Helvetica-Bold");
+    doc.text(`AREA: ${area.nombre.toUpperCase()}`, 30, 36, {
+      width: 535,
+      align: "center",
+    });
 
-      const candidates = [
-        // si corrés desde root del repo
-        path.resolve(process.cwd(), "frontend", "img", logoFile),
-        // si estás en backend/controllers
-        path.resolve(__dirname, "..", "..", "frontend", "img", logoFile),
-        // si corrés desde backend/
-        path.resolve(process.cwd(), "..", "frontend", "img", logoFile),
-      ];
+    doc.moveDown(3);
 
-      const found = candidates.find((p) => fs.existsSync(p));
-      if (found) {
-        doc.image(found, 40, 18, { width: 170 });
-        logoDrawn = true;
-      }
-    } catch (e) {
-      console.error("No se pudo cargar el logo en PDF:", e);
-    }
-
-    doc.y = logoDrawn ? 70 : 40;
-
-    // ---------- HEADER ----------
-    doc.fontSize(14).fillColor("#000").text("Informe de estado de cuenta");
-    doc.moveDown(0.4);
-
-    doc.fontSize(11).fillColor("#000").text(`${paciente.nombre || "-"} - DNI ${paciente.dni || "-"}`);
-    doc.fontSize(10).fillColor("#444").text(`Área: ${area.nombre || "-"}`);
-    if (period) doc.text(`Periodo: ${period}`);
-    doc.moveDown(0.6);
-
-    // ---------- RESUMEN ----------
-    doc
-      .fontSize(12)
-      .fillColor(saldo <= 0 ? "#0a7a36" : "#b00020")
-      .text(`SALDO ACTUAL: ${fmtARS(saldo)}`);
-
-    doc.moveDown(0.2);
-    doc.fontSize(10).fillColor("#000");
-    doc.text(`Debería pagar (cargos): ${fmtARS(totalCargos)}`);
-    doc.text(`Pagó Padres: ${fmtARS(pagadoPART)}`);
-    if (tieneOS) doc.text(`Pagó Obra Social: ${fmtARS(pagadoOS)}`);
-    doc.text(`Total pagado (Padres + O.S. + ajustes): ${fmtARS(totalPagado + ajustesMas - ajustesMenos)}`);
-    doc.text(`Total facturado: ${fmtARS(totalFacturado)}`);
-
-    doc.moveDown(0.6);
-    doc.strokeColor("#ddd").moveTo(40, doc.y).lineTo(555, doc.y).stroke();
-    doc.moveDown(0.6);
-
-    // ===== TABLA ESTADO DE CUENTA (por MES) =====
-    doc.fontSize(11).fillColor("#000").text("ESTADO DE CUENTA (por mes)", { underline: true });
-    doc.moveDown(0.35);
-
-    const startX = 40;
-    const rowH = 14;
+    // ===== TABLA =====
+    const startX = 30;
+    let y = doc.y + 10;
+    const rowH = 16;
 
     const cols = [
-      { key: "mes",    label: "MES",           w: 60,  align: "left"  },
-      { key: "cargos", label: "DEBERÍA PAGAR", w: 95,  align: "right" },
-      { key: "padres", label: "PAGÓ PADRES",   w: 95,  align: "right" },
-      { key: "os",     label: "PAGÓ O.S.",     w: 85,  align: "right" },
-      { key: "total",  label: "TOTAL PAGADO",  w: 95,  align: "right" },
-      { key: "saldo",  label: "SALDO",         w: 85,  align: "right" },
+      { k: "mes", label: "MES", w: 55 },
+      { k: "cant", label: "CANT", w: 45 },
+      { k: "codigo", label: "CODIGO", w: 170 },
+      { k: "prof", label: "PROFESIONAL", w: 120 },
+      { k: "apagar", label: "A PAGAR", w: 65 },
+      { k: "pagPadres", label: "PAGADO", w: 70 },
     ];
 
-    const drawLine = (y, color = "#eee") => {
-      doc.save();
-      doc.strokeColor(color);
-      doc.moveTo(40, y).lineTo(555, y).stroke();
-      doc.restore();
-    };
+    if (tieneOS) {
+      cols.push(
+        { k: "pagOS", label: "PAGADO O.S.", w: 70 },
+        { k: "detOS", label: "DETALLE", w: 80 }
+      );
+    }
 
-    const drawHeader = () => {
-      const y = doc.y;
-      doc.fontSize(8).fillColor("#333");
+    // Headers
+    let x = startX;
+    doc.fontSize(8).font("Helvetica-Bold");
+    for (const c of cols) {
+      doc.rect(x, y, c.w, rowH).fill("#D9EAD3").stroke();
+      doc.fillColor("#000").text(c.label, x + 2, y + 4, {
+        width: c.w - 4,
+        align: "center",
+      });
+      x += c.w;
+    }
+    y += rowH;
 
-      let x = startX;
-      for (const c of cols) {
-        doc.text(c.label, x, y, { width: c.w, align: c.align, lineBreak: false });
-        x += c.w;
-      }
+    // Rows
+    doc.font("Helvetica").fontSize(8);
+    for (const m of movimientos) {
+      if (m.tipo === "FACT") continue;
 
-      doc.y = y + rowH;
-      drawLine(doc.y, "#ddd");
-      doc.y += 6;
-    };
-
-    const drawRow = (r) => {
-      if (doc.y + rowH > 780) {
-        doc.addPage();
-        doc.y = 40;
-        drawHeader();
-      }
-
-      const totalPagMes = (r.pagoPadres + r.pagoOS + r.ajustesMas - r.ajustesMenos);
-      const saldoMes = Number((r.cargos - totalPagMes).toFixed(2));
-
-      const y = doc.y;
-      doc.fontSize(9).fillColor("#000");
-
-      const cells = {
-        mes: r.mes || "-",
-        cargos: fmtARS(r.cargos),
-        padres: fmtARS(r.pagoPadres),
-        os: tieneOS ? fmtARS(r.pagoOS) : fmtARS(0),
-        total: fmtARS(totalPagMes),
-        saldo: fmtARS(saldoMes),
+      x = startX;
+      const row = {
+        mes: m.period || "",
+        cant: fmtCant(m.cantidad),
+        codigo: `${m.codigo || ""} ${m.moduloNombre || ""}`.trim(),
+        prof: m.profesionalNombre || "",
+        apagar: fmtARS(m.monto),
+        pagPadres: fmtARS(m.pagPadres || 0),
+        pagOS: fmtARS(m.pagOS || 0),
+        detOS: m.detalleOS || "",
       };
 
-      let x = startX;
       for (const c of cols) {
-        doc.text(cells[c.key], x, y, {
-          width: c.w,
-          align: c.align,
-          lineBreak: false,
-          ellipsis: true,
+        doc.rect(x, y, c.w, rowH).stroke();
+        doc.text(row[c.k] || "", x + 2, y + 3, {
+          width: c.w - 4,
+          lineBreak: true,
+          ellipsis: false,
         });
         x += c.w;
       }
-
-      doc.y = y + rowH;
-    };
-
-    drawHeader();
-
-    if (!meses.length) {
-      doc.fontSize(9).fillColor("#666").text("Sin movimientos en el periodo seleccionado.");
-      doc.moveDown(0.8);
-    } else {
-      for (const r of meses) drawRow(r);
-      drawLine(doc.y, "#ddd");
-      doc.moveDown(0.8);
+      y += rowH;
     }
 
-    // ===== FACTURAS (MONTO y ESTADO separados) =====
-    doc.fontSize(11).fillColor("#000").text("FACTURAS", { underline: true });
-    doc.moveDown(0.35);
+    // ===== FACTURAS (DERECHA) =====
+    const facturas = movimientos.filter(m => m.tipo === "FACT");
+    let fx = startX + 410;
+    let fy = 70;
 
-    // 👇 CAMBIO: columnas separadas (nada de MONTOESTADO)
-    const fcols = [
-      { key: "mes",    label: "MES",    w: 70,  align: "left"  },
-      { key: "nro",    label: "N°",     w: 70,  align: "left"  },
-      { key: "monto",  label: "MONTO",  w: 140, align: "right" },
-      { key: "estado", label: "ESTADO", w: 120, align: "left"  },
-    ];
+    doc.font("Helvetica-Bold").fontSize(9);
+    doc.text("FACTURAS", fx, fy);
+    fy += 14;
 
-    const drawFHeader = () => {
-      const y = doc.y;
-      doc.fontSize(8).fillColor("#333");
-
-      let x = startX;
-      for (const c of fcols) {
-        doc.text(c.label, x, y, { width: c.w, align: c.align, lineBreak: false });
-        x += c.w;
-      }
-
-      doc.y = y + rowH;
-      drawLine(doc.y, "#ddd");
-      doc.y += 6;
-    };
-
-    const drawFRow = (f) => {
-      if (doc.y + rowH > 780) {
-        doc.addPage();
-        doc.y = 40;
-        drawFHeader();
-      }
-
-      const y = doc.y;
-      doc.fontSize(9).fillColor("#000");
-
-      const cells = {
-        mes: f.mes || "-",
-        nro: String(f.nro || "-"),
-        monto: fmtARS(f.monto),
-        estado: f.estado || "FACTURADA",
-      };
-
-      let x = startX;
-      for (const c of fcols) {
-        doc.text(cells[c.key], x, y, {
-          width: c.w,
-          align: c.align,
-          lineBreak: false,
-          ellipsis: true,
-        });
-        x += c.w;
-      }
-
-      doc.y = y + rowH;
-    };
-
-    drawFHeader();
-
-    if (!facturas.length) {
-      doc.fontSize(9).fillColor("#666").text("Sin facturas registradas.");
-      doc.moveDown(0.6);
-    } else {
-      for (const f of facturas) drawFRow(f);
-      drawLine(doc.y, "#ddd");
-      doc.moveDown(0.6);
+    doc.font("Helvetica").fontSize(8);
+    for (const f of facturas) {
+      doc.text(
+        `${f.period}  ${f.nroRecibo || ""}  ${fmtARS(f.monto)}  ${new Date(f.fecha).toLocaleDateString("es-AR")}`,
+        fx,
+        fy,
+        { width: 200 }
+      );
+      fy += 12;
     }
-
-    // ===== OBSERVACIONES =====
-    doc.fontSize(9).fillColor("#666").text("OBSERVACIONES:", { underline: true });
-    doc.moveDown(0.2);
-
-    const leyenda =
-      saldo <= 0
-        ? `Al día de la fecha, la cuenta del área de ${area.nombre} no registra deuda pendiente.`
-        : `Al día de la fecha, la cuenta del área de ${area.nombre} registra un saldo pendiente de ${fmtARS(saldo)}.`;
-
-    doc.text(leyenda, { align: "justify" });
 
     doc.end();
   } catch (err) {
-    console.error("estado-de-cuenta PDF:", err);
+    console.error(err);
     res.status(500).json({ error: "No se pudo generar el PDF" });
   }
 }
+
 
 
 
