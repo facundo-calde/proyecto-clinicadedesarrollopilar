@@ -671,12 +671,10 @@ async function generarExtractoPDF(req, res) {
     let hasta = req.query.hasta ? String(req.query.hasta).trim() : null;
 
     if (!areaId) return res.status(400).json({ error: "areaId es obligatorio" });
-
     if (desde && !hasta) hasta = desde;
     if (hasta && !desde) desde = hasta;
-    if (desde && hasta && desde > hasta) {
+    if (desde && hasta && desde > hasta)
       return res.status(400).json({ error: "desde no puede ser mayor que hasta" });
-    }
 
     const paciente = await Paciente.findOne({ dni }).lean();
     if (!paciente) return res.status(404).json({ error: "Paciente no encontrado" });
@@ -684,16 +682,19 @@ async function generarExtractoPDF(req, res) {
     const area = await Area.findById(areaId).lean();
     if (!area) return res.status(404).json({ error: "Área no encontrada" });
 
-    // ===== OBRA SOCIAL (SEGÚN TU MODEL) =====
+    // ===== OBRA SOCIAL (según tu model) =====
     const tieneOS = [
-      'Obra Social',
-      'Obra Social + Particular',
-      'Obra Social + Particular (les pagan a ellos)'
+      "Obra Social",
+      "Obra Social + Particular",
+      "Obra Social + Particular (les pagan a ellos)",
     ].includes(paciente.condicionDePago);
 
     // ===== Helpers =====
     const fmtARS = (n) =>
-      `$ ${Number(n || 0).toLocaleString("es-AR", { minimumFractionDigits: 2 })}`;
+      `$ ${Number(n || 0).toLocaleString("es-AR", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`;
 
     const fmtCantidad = (q) => {
       const n = Number(q);
@@ -711,20 +712,23 @@ async function generarExtractoPDF(req, res) {
     const movimientos = await Movimiento.find({
       dni,
       areaId,
-      ...(desde && hasta ? { period: { $gte: desde, $lte: hasta } } : {})
-    }).sort({ fecha: 1 }).lean();
+      ...(desde && hasta ? { period: { $gte: desde, $lte: hasta } } : {}),
+    })
+      .sort({ fecha: 1 })
+      .lean();
 
     const facturas = await Movimiento.find({
       dni,
       areaId,
       tipo: "FACT",
-      ...(hasta ? { period: { $lte: hasta } } : {})
-    }).sort({ fecha: 1 }).lean();
+      ...(hasta ? { period: { $lte: hasta } } : {}),
+    })
+      .sort({ fecha: 1 })
+      .lean();
 
-    // ===== FILAS IZQUIERDA =====
     const filas = movimientos
-      .filter(m => m.tipo === "CARGO")
-      .map(m => ({
+      .filter((m) => m.tipo === "CARGO")
+      .map((m) => ({
         mes: yyyymm(m),
         cantidad: fmtCantidad(m.cantidad),
         codigo: `${m.codigo || ""} ${m.moduloNombre || ""}`.trim(),
@@ -732,12 +736,15 @@ async function generarExtractoPDF(req, res) {
         aPagar: m.monto || 0,
         pagPadres: m.pagPadres || 0,
         detPadres: m.detallePagPadres || "",
-        pagOS: tieneOS ? (m.pagOS || 0) : null,
-        detOS: tieneOS ? (m.detallePagOS || "") : null
+        pagOS: tieneOS ? m.pagOS || 0 : null,
+        detOS: tieneOS ? m.detallePagOS || "" : null,
       }));
 
     const totalAPagar = filas.reduce((a, r) => a + r.aPagar, 0);
-    const totalPagado = filas.reduce((a, r) => a + r.pagPadres + (r.pagOS || 0), 0);
+    const totalPagado = filas.reduce(
+      (a, r) => a + r.pagPadres + (r.pagOS || 0),
+      0
+    );
     const totalFacturado = facturas.reduce((a, f) => a + (f.monto || 0), 0);
     const difFactVsPagado = totalFacturado - totalPagado;
 
@@ -750,88 +757,66 @@ async function generarExtractoPDF(req, res) {
       size: "A4",
       layout: "landscape",
       margin: 24,
-      compress: true
+      compress: true,
     });
 
     doc.pipe(res);
 
-    // ===== LOGO =====
-    try {
-      const logo = path.resolve(process.cwd(), "frontend/img/logo.png");
-      if (fs.existsSync(logo)) doc.image(logo, 24, 12, { width: 140 });
-    } catch {}
+    const pageW = doc.page.width;
+    const left = doc.page.margins.left;
+    const right = pageW - doc.page.margins.right;
+    let y = doc.page.margins.top;
 
     // ===== HEADER =====
-    const pageW = doc.page.width;
-    doc.rect(24, 24, pageW - 48, 26).fill("#9BBB59");
-    doc.fillColor("#000").fontSize(11).font("Helvetica-Bold");
-    doc.text(`AREA: ${area.nombre.toUpperCase()}`, 24, 32, {
-      width: pageW - 48,
-      align: "center"
+    doc.rect(left, y, right - left, 26).fill("#9BBB59");
+    doc.fillColor("#000").font("Helvetica-Bold").fontSize(11);
+    doc.text(`AREA: ${area.nombre.toUpperCase()}`, left, y + 7, {
+      width: right - left,
+      align: "center",
     });
 
-    doc.fontSize(9).text(
+    doc.fontSize(9);
+    doc.text(
       `DIF ENTRE FACT Y PAGADO: ${fmtARS(difFactVsPagado)}`,
-      pageW - 260,
-      32
+      right - 280,
+      y + 7
     );
 
-    // ===== CONFIG TABLAS =====
-    const SMALL_COLS = new Set(["codigo", "profesional", "detPadres", "detOS"]);
-    const rowBaseH = 18;
+    y += 40;
 
-    const cellText = (txt, x, y, w, h, key, align = "left") => {
-      const isSmall = SMALL_COLS.has(key);
-      doc.save();
-      doc.rect(x, y, w, h).clip();
-      doc.font("Helvetica").fontSize(isSmall ? 6.6 : 7.6);
-      doc.text(txt ?? "", x + 3, y + 4, {
-        width: w - 6,
-        height: h - 8,
-        align,
-        ellipsis: !isSmall,
-        lineBreak: isSmall
-      });
-      doc.restore();
-    };
-
-    // ===== IZQUIERDA =====
-    let x = 24;
-    let y = 70;
+    // ===== TABLA PRINCIPAL =====
+    doc.font("Helvetica-Bold").fontSize(7.5);
 
     let cols = [
       ["mes", "MES", 70],
       ["cantidad", "CANT", 55],
-      ["codigo", "CODIGO", 280],
-      ["profesional", "PROFESIONAL", 170],
+      ["codigo", "CODIGO", 320],
+      ["profesional", "PROFESIONAL", 180],
       ["aPagar", "A PAGAR", 90],
       ["pagPadres", "PAGADO PADRES", 120],
-      ["detPadres", "DETALLE", 170]
+      ["detPadres", "DETALLE", 220],
     ];
 
     if (tieneOS) {
       cols.push(
-        ["pagOS", "PAGADO O.S", 110],
-        ["detOS", "DETALLE", 170]
+        ["pagOS", "PAGADO O.S", 120],
+        ["detOS", "DETALLE", 220]
       );
-    } else {
-      cols.find(c => c[0] === "codigo")[2] += 40;
-      cols.find(c => c[0] === "profesional")[2] += 40;
-      cols.find(c => c[0] === "detPadres")[2] += 90;
     }
 
-    // Header
-    let cx = x;
-    doc.font("Helvetica-Bold").fontSize(7.2);
+    let x = left;
+    const headerH = 20;
+    const rowBaseH = 18;
+
     for (const [, label, w] of cols) {
-      doc.rect(cx, y, w, 20).fill("#D9EAD3").stroke();
-      doc.text(label, cx, y + 6, { width: w, align: "center" });
-      cx += w;
+      doc.rect(x, y, w, headerH).fill("#D9EAD3").stroke();
+      doc.text(label, x, y + 6, { width: w, align: "center" });
+      x += w;
     }
 
-    y += 20;
+    y += headerH;
+    doc.font("Helvetica").fontSize(7.4).fillColor("#000");
 
-    // Rows
     for (const r of filas) {
       const needsTall =
         r.codigo.length > 30 ||
@@ -840,78 +825,91 @@ async function generarExtractoPDF(req, res) {
         (tieneOS && r.detOS?.length > 30);
 
       const rowH = needsTall ? 24 : rowBaseH;
-      cx = x;
+      x = left;
 
       for (const [key,, w] of cols) {
-        doc.rect(cx, y, w, rowH).stroke();
+        doc.rect(x, y, w, rowH).stroke();
+
         let val = r[key];
         if (["aPagar", "pagPadres", "pagOS"].includes(key)) val = fmtARS(val);
-        cellText(val, cx, y, w, rowH, key, ["aPagar", "pagPadres", "pagOS"].includes(key) ? "right" : "left");
-        cx += w;
+
+        doc.text(val ?? "", x + 3, y + 4, {
+          width: w - 6,
+          height: rowH - 8,
+          align: ["aPagar", "pagPadres", "pagOS"].includes(key)
+            ? "right"
+            : "left",
+          lineBreak: true,
+        });
+
+        x += w;
       }
+
       y += rowH;
+      if (y > doc.page.height - 220) break;
+    }
+
+    // ===== FACTURAS ABAJO =====
+    y += 30;
+    doc.font("Helvetica-Bold").fontSize(9);
+    doc.text("FACTURAS", left, y);
+    y += 14;
+
+    const fCols = [
+      ["mes", "MES", 90],
+      ["nroFactura", "N° FACTURA", 120],
+      ["monto", "MONTO", 130],
+      ["fecha", "FECHA", 120],
+    ];
+
+    x = left;
+    for (const [, label, w] of fCols) {
+      doc.rect(x, y, w, 18).fill("#D9EAD3").stroke();
+      doc.text(label, x, y + 5, { width: w, align: "center" });
+      x += w;
+    }
+
+    y += 18;
+    doc.font("Helvetica").fontSize(7.4);
+
+    for (const f of facturas) {
+      x = left;
+      for (const [key,, w] of fCols) {
+        doc.rect(x, y, w, 18).stroke();
+        let val =
+          key === "monto"
+            ? fmtARS(f.monto)
+            : key === "fecha"
+            ? new Date(f.fecha).toLocaleDateString("es-AR")
+            : f[key] ?? "";
+        doc.text(val, x + 3, y + 4, {
+          width: w - 6,
+          align: key === "monto" ? "right" : "left",
+        });
+        x += w;
+      }
+      y += 18;
       if (y > doc.page.height - 80) break;
     }
 
-    // ===== FACTURAS =====
-    let fx = pageW - 360;
-    let fy = 70;
-
-    doc.rect(fx, fy, 330, 20).fill("#9BBB59").stroke();
-    doc.font("Helvetica-Bold").fontSize(9).fillColor("#000");
-    doc.text("FACTURAS", fx, fy + 6, { width: 330, align: "center" });
-    fy += 20;
-
-    const fcols = [
-      ["mes", "MES", 70],
-      ["nro", "N°", 70],
-      ["monto", "MONTO", 110],
-      ["fecha", "FECHA", 80]
-    ];
-
-    let fcx = fx;
-    doc.fontSize(7.2);
-    for (const [, label, w] of fcols) {
-      doc.rect(fcx, fy, w, 20).fill("#D9EAD3").stroke();
-      doc.text(label, fcx, fy + 6, { width: w, align: "center" });
-      fcx += w;
-    }
-    fy += 20;
-
-    for (const f of facturas) {
-      fcx = fx;
-      for (const [key,, w] of fcols) {
-        doc.rect(fcx, fy, w, 18).stroke();
-        let val = f[key];
-        if (key === "monto") val = fmtARS(val);
-        doc.fontSize(7.6).text(val ?? "", fcx + 3, fy + 4, {
-          width: w - 6,
-          align: key === "monto" ? "right" : "left"
-        });
-        fcx += w;
-      }
-      fy += 18;
-      if (fy > doc.page.height - 80) break;
-    }
-
     // ===== TOTALES =====
-    doc.font("Helvetica-Bold").fontSize(8);
-    doc.text(`Total que debería haber pagado: ${fmtARS(totalAPagar)}`, x + 300, doc.page.height - 60);
-    doc.text(`Total que pagó: ${fmtARS(totalPagado)}`, x + 300, doc.page.height - 44);
-    doc.text(`Total facturado: ${fmtARS(totalFacturado)}`, fx, doc.page.height - 44);
+    y += 20;
+    doc.font("Helvetica-Bold").fontSize(9);
+    doc.text(`Total que debería haber pagado: ${fmtARS(totalAPagar)}`, left, y);
+    doc.text(`Total que pagó: ${fmtARS(totalPagado)}`, left, y + 16);
+    doc.text(`Total facturado: ${fmtARS(totalFacturado)}`, left + 400, y + 16);
 
     // ===== FOOTER =====
-    doc.fontSize(8).fillColor("#444");
+    doc.font("Helvetica").fontSize(8).fillColor("#444");
     doc.text(
       desde && hasta ? `Rango: ${desde} a ${hasta}` : "Rango: todos los períodos",
-      24,
+      left,
       doc.page.height - 18
     );
 
     doc.end();
-
   } catch (err) {
-    console.error("PDF error:", err);
+    console.error("estado-de-cuenta PDF:", err);
     res.status(500).json({ error: "No se pudo generar el PDF" });
   }
 }
