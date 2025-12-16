@@ -739,7 +739,7 @@ async function generarExtractoPDF(req, res) {
       .sort({ fecha: 1 })
       .lean();
 
-    // ========= Filas (tabla izquierda) =========
+    // ========= Filas (izquierda) =========
     const filas = movsRango
       .filter((m) => m.tipo === "CARGO")
       .map((m) => {
@@ -758,6 +758,7 @@ async function generarExtractoPDF(req, res) {
         const pagPadres = parseNumberLike(m.pagPadres, 0);
         const detPadres = pick(m, ["detallePadres", "detallePagPadres", "detallePart", "detalle"], "");
 
+        // ✅ si es particular, estos quedan 0 y NO se muestran columnas
         const pagOS = tieneOS ? parseNumberLike(m.pagOS, 0) : 0;
         const detOS = tieneOS ? pick(m, ["detalleOS", "detallePagOS", "detalleObraSocial"], "") : "";
 
@@ -784,6 +785,7 @@ async function generarExtractoPDF(req, res) {
         mes: yyyymmFromMov(m) || "-",
         nro: pick(m, ["nroFactura", "nroRecibo", "numero", "comprobante", "tipoFactura"], "-"),
         monto: Number(m.monto || 0),
+        // detalle lo dejamos por si lo usás después, pero ya no se muestra en tabla
         detalle: pick(m, ["detalle", "estado", "observaciones"], ""),
         fecha: m.fecha ? new Date(m.fecha).toLocaleDateString("es-AR") : "",
       }))
@@ -825,7 +827,6 @@ async function generarExtractoPDF(req, res) {
     doc.pipe(res);
 
     // ---------- LOGO (opcional, no rompe) ----------
-    let logoDrawn = false;
     try {
       const logoFile = "fc885963d690a6787ca787cf208cdd25_1778x266_fit.png";
       const candidates = [
@@ -834,13 +835,10 @@ async function generarExtractoPDF(req, res) {
         path.resolve(process.cwd(), "..", "frontend", "img", logoFile),
       ];
       const found = candidates.find((p) => fs.existsSync(p));
-      if (found) {
-        doc.image(found, doc.page.margins.left, 14, { width: 150 });
-        logoDrawn = true;
-      }
+      if (found) doc.image(found, doc.page.margins.left, 14, { width: 150 });
     } catch (_) {}
 
-    // ========= Dibujo tipo Excel (PROLIJO + CLIP + AUTO FIT) =========
+    // ========= Dibujo tipo Excel (PROLIJO + CLIP + FACTURAS SIN DETALLE) =========
     const GREEN = "#9BBB59";
     const GRID = "#2a2a2a";
     const LIGHT_GRID = "#bfbfbf";
@@ -871,7 +869,9 @@ async function generarExtractoPDF(req, res) {
     const blockTop = top + bandH + 12;
     const blockH = pageH - blockTop - 26;
 
-    const leftW = Math.floor((right - left - gap) * 0.62);
+    // ✅ más ancho a izquierda (como sacamos DETALLE en facturas)
+    const leftRatio = 0.69;
+    const leftW = Math.floor((right - left - gap) * leftRatio);
     const rightW = (right - left - gap) - leftW;
 
     const leftX = left;
@@ -886,7 +886,6 @@ async function generarExtractoPDF(req, res) {
       if (sum <= 0) return cols;
       const ratio = targetW / sum;
       const out = cols.map((c) => ({ ...c, w: Math.max(30, Math.floor(c.w * ratio)) }));
-      // ajuste por redondeo
       const sum2 = out.reduce((a, c) => a + c.w, 0);
       out[out.length - 1].w += (targetW - sum2);
       return out;
@@ -916,7 +915,6 @@ async function generarExtractoPDF(req, res) {
       const bold = !!opts.bold;
       const color = opts.color ?? "#000";
 
-      // ✅ CLIP por celda: nada se sale del rect
       doc.save();
       doc.rect(x, y, w, h).clip();
 
@@ -932,27 +930,29 @@ async function generarExtractoPDF(req, res) {
       doc.restore();
     };
 
-    // ===== Bloque IZQ header =====
+    // ===== IZQUIERDA =====
     drawOuter(leftX, blockTop, leftW, blockHeaderH, GREEN);
 
-    // ===== Tabla IZQ: columnas (auto-fit al bloque) =====
     let colDefsLeft = [
-      { key: "mes", label: "MES", w: 70, align: "left" },
-      { key: "cantidad", label: "CANT", w: 55, align: "center" },
-      { key: "codigo", label: "CODIGO", w: 200, align: "left" },
-      { key: "profesional", label: "PROFESIONAL", w: 140, align: "left" },
-      { key: "aPagar", label: "A PAGAR", w: 85, align: "right" },
-      { key: "pagPadres", label: "PAGADO POR PADRES", w: 110, align: "right" },
-      { key: "detPadres", label: "DETALLE", w: 150, align: "left" },
+      { key: "mes", label: "MES", w: 78, align: "left" },
+      { key: "cantidad", label: "CANT", w: 60, align: "center" },
+      { key: "codigo", label: "CODIGO", w: 280, align: "left" },
+      { key: "profesional", label: "PROFESIONAL", w: 180, align: "left" },
+      { key: "aPagar", label: "A PAGAR", w: 100, align: "right" },
+      { key: "pagPadres", label: "PAGADO POR PADRES", w: 125, align: "right" },
+      { key: "detPadres", label: "DETALLE", w: 170, align: "left" },
     ];
 
+    // ✅ si NO tiene OS, NO agregamos columnas y agrandamos DETALLE para que aproveche el espacio
     if (tieneOS) {
       colDefsLeft.push(
-        { key: "pagOS", label: "PAGADO POR O.S", w: 105, align: "right" },
-        { key: "detOS", label: "DETALLE", w: 150, align: "left" }
+        { key: "pagOS", label: "PAGADO POR O.S", w: 120, align: "right" },
+        { key: "detOS", label: "DETALLE", w: 170, align: "left" }
       );
     } else {
-      colDefsLeft.find(c => c.key === "detPadres").w += 255; // agrando detalle si no hay OS
+      colDefsLeft.find((c) => c.key === "detPadres").w += 290;
+      colDefsLeft.find((c) => c.key === "codigo").w += 40;
+      colDefsLeft.find((c) => c.key === "profesional").w += 40;
     }
 
     colDefsLeft = scaleColsToFit(colDefsLeft, leftW);
@@ -968,9 +968,8 @@ async function generarExtractoPDF(req, res) {
       x += c.w;
     }
 
-    // filas IZQ
     let y = headerYLeft + headRowH;
-    const maxYLeft = blockTop + blockH - 88; // deja lugar a totales
+    const maxYLeft = blockTop + blockH - 88;
 
     for (const r of filas) {
       if (y + rowH > maxYLeft) break;
@@ -986,14 +985,13 @@ async function generarExtractoPDF(req, res) {
         if (c.key === "aPagar" || c.key === "pagPadres" || c.key === "pagOS") val = fmtARS(val);
         if (c.key === "cantidad") val = String(val ?? "");
 
-        cellText(val ?? "", xx, y, c.w, rowH, { align: c.align, fontSize: 7.4 });
+        cellText(val ?? "", xx, y, c.w, rowH, { align: c.align, fontSize: 7.5 });
         xx += c.w;
       }
-
       y += rowH;
     }
 
-    // ===== Totales abajo IZQ =====
+    // Totales abajo izquierda
     const totalsBoxY = blockTop + blockH - 70;
     const totalsH = 60;
 
@@ -1006,24 +1004,24 @@ async function generarExtractoPDF(req, res) {
     drawOuter(tX2, totalsBoxY, tW2, totalsH, "#fff");
 
     cellText("Total que deberia\nhaber pagado", tX1, totalsBoxY, tW1, Math.floor(totalsH / 2), { bold: true, fontSize: 7.6 });
-    cellText(fmtARS(totalAPagar), tX2, totalsBoxY, tW2, Math.floor(totalsH / 2), { bold: true, fontSize: 8.2, align: "right" });
+    cellText(fmtARS(totalAPagar), tX2, totalsBoxY, tW2, Math.floor(totalsH / 2), { bold: true, fontSize: 8.4, align: "right" });
 
     cellText("Total que pago", tX1, totalsBoxY + Math.floor(totalsH / 2), tW1, Math.floor(totalsH / 2), { bold: true, fontSize: 7.6 });
-    cellText(fmtARS(totalPago), tX2, totalsBoxY + Math.floor(totalsH / 2), tW2, Math.floor(totalsH / 2), { bold: true, fontSize: 8.2, align: "right" });
+    cellText(fmtARS(totalPago), tX2, totalsBoxY + Math.floor(totalsH / 2), tW2, Math.floor(totalsH / 2), { bold: true, fontSize: 8.4, align: "right" });
 
-    // ===== Bloque DERECHO (FACTURAS) =====
+    // ===== DERECHA (FACTURAS sin DETALLE) =====
     drawOuter(rightX, blockTop, rightW, blockHeaderH, GREEN);
     doc.font("Helvetica-Bold").fontSize(10).fillColor("#000");
     doc.text("FACTURAS", rightX, blockTop + 6, { width: rightW, align: "center" });
 
     const headerYRight = blockTop + blockHeaderH;
 
+    // ✅ SIN DETALLE
     let colDefsRight = [
-      { key: "mes", label: "MES", w: 70, align: "left" },
-      { key: "nro", label: "N FACTURA", w: 80, align: "left" },
-      { key: "monto", label: "MONTO", w: 90, align: "right" },
-      { key: "detalle", label: "DETALLE", w: 90, align: "left" },
-      { key: "fecha", label: "FECHA", w: 70, align: "left" },
+      { key: "mes", label: "MES", w: 75, align: "left" },
+      { key: "nro", label: "N FACTURA", w: 85, align: "left" },
+      { key: "monto", label: "MONTO", w: 110, align: "right" },
+      { key: "fecha", label: "FECHA", w: 80, align: "left" },
     ];
     colDefsRight = scaleColsToFit(colDefsRight, rightW);
 
@@ -1053,14 +1051,13 @@ async function generarExtractoPDF(req, res) {
         let val = f[c.key];
         if (c.key === "monto") val = fmtARS(val);
 
-        cellText(val ?? "", xx, y, c.w, rowH, { align: c.align, fontSize: 7.4 });
+        cellText(val ?? "", xx, y, c.w, rowH, { align: c.align, fontSize: 7.5 });
         xx += c.w;
       }
-
       y += rowH;
     }
 
-    // total facturado
+    // Total facturado
     const totFactY = blockTop + blockH - 42;
     const totFactH = 34;
     const fx1 = rightX + Math.floor(rightW * 0.55);
@@ -1072,9 +1069,9 @@ async function generarExtractoPDF(req, res) {
     drawOuter(fx2, totFactY, fw2, totFactH, "#fff");
 
     cellText("Total que se le facturo", fx1, totFactY, fw1, totFactH, { bold: true, fontSize: 7.6 });
-    cellText(fmtARS(totalFacturado), fx2, totFactY, fw2, totFactH, { bold: true, fontSize: 8.2, align: "right" });
+    cellText(fmtARS(totalFacturado), fx2, totFactY, fw2, totFactH, { bold: true, fontSize: 8.4, align: "right" });
 
-    // pie: rango
+    // Pie: rango
     doc.font("Helvetica").fontSize(8).fillColor("#444");
     const rangoTxt = (desde && hasta) ? `Rango: ${desde} a ${hasta}` : "Rango: (todos los periodos)";
     doc.text(rangoTxt, left, pageH - 16, { width: right - left, align: "left" });
