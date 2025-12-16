@@ -658,15 +658,23 @@ const getPorDni = async (req, res) => {
   }
 };
 
+// ----------------- GET /api/estado-de-cuenta/:dni/extracto?areaId=...&period=YYYY-MM&desde=YYYY-MM&hasta=YYYY-MM -----------------
 async function generarExtractoPDF(req, res) {
   try {
     const fs = require("fs");
     const path = require("path");
     const PDFDocument = require("pdfkit");
 
-    const dni = String(req.params.dni).trim();
-    const areaId = String(req.query.areaId || "");
-    const period = req.query.period ? String(req.query.period) : null;
+    const dni = toStr(req.params.dni).trim();
+    const areaId = toStr(req.query.areaId || "").trim();
+
+    // compat: period (viejo) + desde/hasta (nuevo)
+    const period = req.query.period ? toStr(req.query.period).trim() : null;
+    const desdeQ = req.query.desde ? toStr(req.query.desde).trim() : null;
+    const hastaQ = req.query.hasta ? toStr(req.query.hasta).trim() : null;
+
+    const desde = desdeQ || null;
+    const hasta = hastaQ || period || null;
 
     if (!areaId) return res.status(400).json({ error: "areaId es obligatorio" });
 
@@ -676,157 +684,412 @@ async function generarExtractoPDF(req, res) {
     const area = await Area.findById(areaId).lean();
     if (!area) return res.status(404).json({ error: "Área no encontrada" });
 
-    const tieneOS = paciente.condicionDePago?.includes("Obra Social");
+    // ✅ Regla real según tu modelo (enum con "Obra Social ...")
+    const condicion = String(paciente.condicionDePago || "");
+    const tieneOS = condicion.includes("Obra Social");
 
-    const movimientos = await Movimiento.find({
+    // ===== Movimientos por rango =====
+    // - si viene desde/hasta => [$gte,$lte]
+    // - si solo period => hasta = period
+    const periodFilter =
+      desde && hasta ? { period: { $gte: desde, $lte: hasta } } :
+      hasta ? { period: { $lte: hasta } } :
+      {};
+
+    const movsRango = await Movimiento.find({
       dni,
       areaId,
-      ...(period ? { period: { $lte: period } } : {}),
+      ...periodFilter,
     }).sort({ fecha: 1 }).lean();
 
-    const fmtARS = (n) =>
-      `$ ${Number(n || 0).toLocaleString("es-AR", {
+    // ---------- Helpers ----------
+    function fmtARS(n) {
+      const num = Number(n || 0);
+      return `$ ${num.toLocaleString("es-AR", {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       })}`;
+    }
 
-    const fmtCant = (n) =>
-      n === 0.25 ? "1/4" : n === 0.5 ? "1/2" : n === 0.75 ? "3/4" : n === 1 ? "1" : "";
+    const fmtCant = (n) => {
+      const v = Number(n || 0);
+      if (v === 0.25) return "1/4";
+      if (v === 0.5) return "1/2";
+      if (v === 0.75) return "3/4";
+      if (v === 1) return "1";
+      return v ? String(v) : "";
+    };
 
-    // ================= PDF =================
+    const yyyymmFromMov = (m) =>
+      m.period ||
+      (m.fecha ? new Date(m.fecha).toISOString().slice(0, 7) : "") ||
+      "";
+
+    const getProfesional = (m) =>
+      String(
+        m.profesionalNombre ||
+        m.profesionalName ||
+        m.nombreProfesional ||
+        (m.profesional && m.profesional.nombre) ||
+        m.profesional ||
+        ""
+      ).trim();
+
+    const getCodigoModulo = (m) =>
+      String(
+        m.codigoModulo ||
+        m.codigo ||
+        m.moduloCodigo ||
+        ""
+      ).trim();
+
+    const getModuloNombre = (m) =>
+      String(
+        m.moduloNombre ||
+        m.nombreModulo ||
+        m.modulo ||
+        m.detalleModulo ||
+        ""
+      ).trim();
+
+    // ===== Totales (como tu lógica original, pero sobre movsRango) =====
+    let cargos = 0,
+      pagadoPART = 0,
+      pagadoOS = 0,
+      ajustesMas = 0,
+      ajustesMenos = 0,
+      totalFacturado = 0;
+
+    for (const m of movsRango) {
+      const monto = Number(m.monto || 0);
+
+      if (m.tipo === "CARGO") {
+        cargos += monto;
+        pagadoPART += parseNumberLike(m.pagPadres, 0);
+        pagadoOS += parseNumberLike(m.pagOS, 0);
+      } else if (m.tipo === "OS") pagadoOS += monto;
+      else if (m.tipo === "PART") pagadoPART += monto;
+      else if (m.tipo === "AJUSTE+") ajustesMas += monto;
+      else if (m.tipo === "AJUSTE-") ajustesMenos += monto;
+      else if (m.tipo === "FACT") totalFacturado += monto;
+    }
+
+    if (!tieneOS) pagadoOS = 0;
+
+    const totalCargos = cargos;
+    const totalPagado = pagadoPART + pagadoOS;
+    const saldo = Number(
+      (totalCargos - (totalPagado + ajustesMas - ajustesMenos)).toFixed(2)
+    );
+
+    // ===== FACTURAS (del rango) =====
+    const facturas = movsRango
+      .filter((m) => m.tipo === "FACT")
+      .map((m) => ({
+        mes: yyyymmFromMov(m) || "-",
+        nro: m.nroRecibo || m.nroFactura || m.tipoFactura || "-",
+        monto: Number(m.monto || 0),
+        fecha: m.fecha ? new Date(m.fecha) : null,
+      }))
+      .sort((a, b) => String(a.mes).localeCompare(String(b.mes)));
+
+    // ===== FILAS TABLA PRINCIPAL (tipo Excel) =====
+    // Querés: MES / CANT / CODIGO / PROFESIONAL / A PAGAR / PAGADO POR PADRES / DETALLE / (OS + DETALLE si aplica)
+    const filas = movsRango
+      .filter((m) => m.tipo === "CARGO") // en tu excel son las líneas de cargos/módulos
+      .map((m) => ({
+        mes: yyyymmFromMov(m),
+        cant: fmtCant(m.cantidad),
+        codigo: `${getCodigoModulo(m)} ${getModuloNombre(m)}`.trim(),
+        profesional: getProfesional(m),
+        aPagar: Number(m.monto || 0),
+        pagPadres: parseNumberLike(m.pagPadres, 0),
+        detPadres: String(m.detallePadres || m.detalle || m.detallePago || "").trim(),
+        pagOS: parseNumberLike(m.pagOS, 0),
+        detOS: String(m.detalleOS || m.detalleObraSocial || "").trim(),
+      }));
+
+    // ---------- PDF ----------
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `inline; filename="Extracto_${dni}.pdf"`);
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename="Extracto_${dni}_${(area.nombre || "area")
+        .replace(/\s+/g, "_")}${hasta ? "_" + hasta : ""}.pdf"`
+    );
+    res.setHeader("Cache-Control", "no-store");
 
-    const doc = new PDFDocument({ size: "A4", margin: 30 });
+    const doc = new PDFDocument({ size: "A4", margin: 28 }); // portrait como tu base
     doc.pipe(res);
 
-    // ===== HEADER =====
-    doc.rect(30, 30, 535, 22).fill("#9BBB59");
-    doc.fillColor("#000").font("Helvetica-Bold").fontSize(11);
-    doc.text(`AREA: ${area.nombre.toUpperCase()}`, 30, 36, {
-      width: 535,
+    const pageLeft = doc.page.margins.left;
+    const pageRight = doc.page.width - doc.page.margins.right;
+    const pageBottom = doc.page.height - doc.page.margins.bottom;
+
+    // ---------- LOGO (robusto) ----------
+    let logoDrawn = false;
+    try {
+      const logoFile = "fc885963d690a6787ca787cf208cdd25_1778x266_fit.png";
+      const candidates = [
+        path.resolve(process.cwd(), "frontend", "img", logoFile),
+        path.resolve(__dirname, "..", "..", "frontend", "img", logoFile),
+        path.resolve(process.cwd(), "..", "frontend", "img", logoFile),
+      ];
+      const found = candidates.find((p) => fs.existsSync(p));
+      if (found) {
+        doc.image(found, pageLeft, 18, { width: 170 });
+        logoDrawn = true;
+      }
+    } catch (_) {}
+
+    doc.y = logoDrawn ? 70 : 40;
+
+    // ---------- HEADER ----------
+    doc.fillColor("#000").font("Helvetica-Bold").fontSize(13).text("Informe de estado de cuenta");
+    doc.moveDown(0.4);
+    doc.font("Helvetica").fontSize(10).fillColor("#000").text(`${paciente.nombre || "-"} - DNI ${paciente.dni || "-"}`);
+    doc.fontSize(9).fillColor("#444").text(`Área: ${area.nombre || "-"}`);
+    if (desde || hasta) doc.text(`Rango: ${desde || "inicio"} → ${hasta || "actual"}`);
+    doc.moveDown(0.6);
+
+    // ---------- BARRA VERDE TÍTULO ÁREA (como tu captura) ----------
+    const barY = doc.y;
+    doc.save();
+    doc.rect(pageLeft, barY, pageRight - pageLeft, 22).fill("#9BBB59");
+    doc.restore();
+    doc.fillColor("#000").font("Helvetica-Bold").fontSize(10);
+    doc.text(`AREA: ${area.nombre.toUpperCase()}`, pageLeft, barY + 6, {
+      width: pageRight - pageLeft,
       align: "center",
     });
 
-    doc.moveDown(3);
+    // DIF arriba a la derecha (como excel)
+    doc.fontSize(9).font("Helvetica-Bold");
+    doc.text(`DIF ENTRE FACT Y PAGADO -$`, pageRight - 230, barY + 6, { width: 160, align: "left" });
+    doc.text(fmtARS(Math.abs(saldo)), pageRight - 70, barY + 6, { width: 70, align: "right" });
 
-    // ===== TABLA PRINCIPAL =====
-    const startX = 30;
-    let y = doc.y;
+    doc.y = barY + 32;
+
+    // ---------- TABLA PRINCIPAL (IZQUIERDA) ----------
+    const startX = pageLeft;
     const rowH = 16;
 
+    // ancho disponible para la tabla principal (dejamos hueco a la derecha SOLO si querés; acá NO, porque FACTURAS va abajo)
+    const tableW = pageRight - pageLeft;
+
+    // columnas base tipo excel (con DETALLE PADRES)
+    // y OS sólo si corresponde
     const cols = [
-      { k: "mes", label: "MES", w: 55 },
-      { k: "cant", label: "CANT", w: 40 },
-      { k: "codigo", label: "CÓDIGO / MÓDULO", w: 190 },
-      { k: "prof", label: "PROFESIONAL", w: 120 },
-      { k: "apagar", label: "A PAGAR", w: 65 },
-      { k: "pagPadres", label: "PAGADO", w: 65 },
+      { key: "mes", label: "MES", w: 55, align: "left" },
+      { key: "cant", label: "CANT", w: 40, align: "center" },
+      { key: "codigo", label: "CODIGO", w: 150, align: "left" },
+      { key: "profesional", label: "PROFESIONAL", w: 100, align: "left" },
+      { key: "aPagar", label: "A PAGAR", w: 60, align: "right" },
+      { key: "pagPadres", label: "PAGADO", w: 70, align: "right" },
+      { key: "detPadres", label: "DETALLE", w: 85, align: "left" },
     ];
 
     if (tieneOS) {
-      cols.push({ k: "pagOS", label: "PAGADO O.S.", w: 65 });
+      cols.push(
+        { key: "pagOS", label: "PAGADO O.S", w: 70, align: "right" },
+        { key: "detOS", label: "DETALLE", w: 85, align: "left" }
+      );
     }
 
-    // Header tabla
-    let x = startX;
-    doc.font("Helvetica-Bold").fontSize(8);
-    for (const c of cols) {
-      doc.rect(x, y, c.w, rowH).fill("#D9EAD3").stroke();
-      doc.fillColor("#000").text(c.label, x + 2, y + 4, {
-        width: c.w - 4,
-        align: "center",
-      });
-      x += c.w;
+    // Ajuste fino para que entre EXACTO en A4 portrait
+    // Si sobra o falta por 1-2px, lo corregimos al último
+    let wSum = cols.reduce((a, c) => a + c.w, 0);
+    if (wSum !== tableW) {
+      const diff = tableW - wSum;
+      cols[cols.length - 1].w += diff; // corrige en la última
     }
-    y += rowH;
 
-    doc.font("Helvetica").fontSize(8);
+    const drawTableHeader = () => {
+      const y = doc.y;
+      let x = startX;
 
-    for (const m of movimientos.filter(m => m.tipo !== "FACT")) {
-      if (y + rowH > 780) {
+      doc.font("Helvetica-Bold").fontSize(8).fillColor("#000");
+      for (const c of cols) {
+        doc.save();
+        doc.rect(x, y, c.w, rowH).fill("#D9EAD3");
+        doc.restore();
+        doc.rect(x, y, c.w, rowH).stroke();
+        doc.text(c.label, x + 2, y + 4, { width: c.w - 4, align: "center" });
+        x += c.w;
+      }
+      doc.y = y + rowH;
+    };
+
+    const drawRow = (r) => {
+      // salto de página: repetimos barra de área + header de tabla
+      if (doc.y + rowH > pageBottom) {
         doc.addPage();
-        y = 40;
+        doc.y = 40;
+
+        // barra de área en nuevas páginas (para que se mantenga estilo)
+        const by = doc.y;
+        doc.save();
+        doc.rect(pageLeft, by, pageRight - pageLeft, 22).fill("#9BBB59");
+        doc.restore();
+        doc.fillColor("#000").font("Helvetica-Bold").fontSize(10);
+        doc.text(`AREA: ${area.nombre.toUpperCase()}`, pageLeft, by + 6, {
+          width: pageRight - pageLeft,
+          align: "center",
+        });
+        doc.y = by + 32;
+
+        drawTableHeader();
       }
 
-      x = startX;
-      const row = {
-        mes: m.period || "",
-        cant: fmtCant(m.cantidad),
-        codigo: `${m.codigo || ""} ${m.moduloNombre || ""}`.trim(),
-        prof: m.profesionalNombre || "",
-        apagar: fmtARS(m.monto),
-        pagPadres: fmtARS(m.pagPadres || 0),
-        pagOS: fmtARS(m.pagOS || 0),
+      const y = doc.y;
+      let x = startX;
+
+      doc.font("Helvetica").fontSize(7.8).fillColor("#000"); // un toque más chico para legibilidad
+      const cells = {
+        mes: r.mes || "-",
+        cant: r.cant || "",
+        codigo: r.codigo || "",
+        profesional: r.profesional || "",
+        aPagar: fmtARS(r.aPagar),
+        pagPadres: fmtARS(r.pagPadres),
+        detPadres: r.detPadres || "",
+        pagOS: tieneOS ? fmtARS(r.pagOS) : "",
+        detOS: tieneOS ? (r.detOS || "") : "",
       };
 
       for (const c of cols) {
         doc.rect(x, y, c.w, rowH).stroke();
-        doc.text(row[c.k] || "", x + 2, y + 3, {
+
+        doc.text(String(cells[c.key] ?? ""), x + 2, y + 3, {
           width: c.w - 4,
-          lineBreak: true,
+          align: c.align,
+          lineBreak: false,
+          ellipsis: true,
         });
+
         x += c.w;
       }
-      y += rowH;
-    }
 
-    // ===== FACTURAS ABAJO =====
-    y += 20;
-    if (y > 760) {
-      doc.addPage();
-      y = 40;
-    }
+      doc.y = y + rowH;
+    };
 
-    doc.font("Helvetica-Bold").fontSize(10).fillColor("#000");
-    doc.text("FACTURAS", startX, y);
-    y += 12;
+    drawTableHeader();
 
-    const fcols = [
-      { k: "mes", label: "MES", w: 80 },
-      { k: "nro", label: "N° FACTURA", w: 100 },
-      { k: "monto", label: "MONTO", w: 120 },
-      { k: "fecha", label: "FECHA", w: 120 },
-    ];
+    for (const r of filas) drawRow(r);
 
-    x = startX;
-    doc.fontSize(8);
-    for (const c of fcols) {
-      doc.rect(x, y, c.w, rowH).fill("#D9EAD3").stroke();
-      doc.text(c.label, x + 2, y + 4, { width: c.w - 4, align: "center" });
-      x += c.w;
-    }
-    y += rowH;
+    // ====== BLOQUE FACTURAS ABAJO (SIN PARTIR EN DOS HOJAS SIN SENTIDO) ======
+    const drawFacturasHeader = () => {
+      doc.font("Helvetica-Bold").fontSize(10).fillColor("#000").text("FACTURAS");
+      doc.moveDown(0.3);
 
-    doc.font("Helvetica");
+      const y = doc.y;
+      let x = startX;
 
-    const facturas = movimientos.filter(m => m.tipo === "FACT");
+      const fcols = [
+        { key: "mes", label: "MES", w: 70, align: "left" },
+        { key: "nro", label: "N FACTURA", w: 70, align: "left" },
+        { key: "monto", label: "MONTO", w: 120, align: "right" },
+        { key: "fecha", label: "FECHA", w: 80, align: "left" },
+      ];
 
-    for (const f of facturas) {
-      if (y + rowH > 780) {
-        doc.addPage();
-        y = 40;
+      // ajustar último para calzar
+      let sum = fcols.reduce((a, c) => a + c.w, 0);
+      const diff = (pageRight - pageLeft) - sum;
+      fcols[fcols.length - 1].w += diff;
+
+      doc.font("Helvetica-Bold").fontSize(8).fillColor("#000");
+      for (const c of fcols) {
+        doc.save();
+        doc.rect(x, y, c.w, rowH).fill("#D9EAD3");
+        doc.restore();
+        doc.rect(x, y, c.w, rowH).stroke();
+        doc.text(c.label, x + 2, y + 4, { width: c.w - 4, align: "center" });
+        x += c.w;
       }
 
-      x = startX;
-      const row = {
-        mes: f.period || "",
-        nro: f.nroRecibo || "-",
+      doc.y = y + rowH;
+      return fcols;
+    };
+
+    const drawFacturaRow = (f, fcols) => {
+      if (doc.y + rowH > pageBottom) {
+        doc.addPage();
+        doc.y = 40;
+
+        // barra de área en nuevas páginas
+        const by = doc.y;
+        doc.save();
+        doc.rect(pageLeft, by, pageRight - pageLeft, 22).fill("#9BBB59");
+        doc.restore();
+        doc.fillColor("#000").font("Helvetica-Bold").fontSize(10);
+        doc.text(`AREA: ${area.nombre.toUpperCase()}`, pageLeft, by + 6, {
+          width: pageRight - pageLeft,
+          align: "center",
+        });
+        doc.y = by + 32;
+
+        // re-dibujar header de facturas (para que no quede “verde suelto”)
+        fcols = drawFacturasHeader();
+      }
+
+      const y = doc.y;
+      let x = startX;
+
+      doc.font("Helvetica").fontSize(8).fillColor("#000");
+      const cells = {
+        mes: f.mes || "-",
+        nro: String(f.nro || "-"),
         monto: fmtARS(f.monto),
-        fecha: f.fecha ? new Date(f.fecha).toLocaleDateString("es-AR") : "",
+        fecha: f.fecha ? f.fecha.toLocaleDateString("es-AR") : "",
       };
 
       for (const c of fcols) {
         doc.rect(x, y, c.w, rowH).stroke();
-        doc.text(row[c.k], x + 2, y + 3, { width: c.w - 4 });
+        doc.text(String(cells[c.key] ?? ""), x + 2, y + 3, {
+          width: c.w - 4,
+          align: c.align,
+          lineBreak: false,
+          ellipsis: true,
+        });
         x += c.w;
       }
-      y += rowH;
+
+      doc.y = y + rowH;
+      return fcols;
+    };
+
+    // antes de empezar FACTURAS: si no entra header + al menos 3 filas, mandamos TODO a la próxima hoja
+    const minFactRows = Math.min(3, facturas.length);
+    const needH = 10 + rowH + (minFactRows * rowH) + 10; // título + header + filas
+    if (doc.y + 20 + needH > pageBottom) {
+      doc.addPage();
+      doc.y = 40;
+
+      const by = doc.y;
+      doc.save();
+      doc.rect(pageLeft, by, pageRight - pageLeft, 22).fill("#9BBB59");
+      doc.restore();
+      doc.fillColor("#000").font("Helvetica-Bold").fontSize(10);
+      doc.text(`AREA: ${area.nombre.toUpperCase()}`, pageLeft, by + 6, {
+        width: pageRight - pageLeft,
+        align: "center",
+      });
+      doc.y = by + 32;
+    } else {
+      doc.moveDown(1);
+    }
+
+    let fcols = drawFacturasHeader();
+    if (!facturas.length) {
+      doc.font("Helvetica").fontSize(9).fillColor("#666").text("Sin facturas registradas.");
+    } else {
+      for (const f of facturas) {
+        fcols = drawFacturaRow(f, fcols);
+      }
     }
 
     doc.end();
   } catch (err) {
-    console.error(err);
+    console.error("estado-de-cuenta PDF:", err);
     res.status(500).json({ error: "No se pudo generar el PDF" });
   }
 }
