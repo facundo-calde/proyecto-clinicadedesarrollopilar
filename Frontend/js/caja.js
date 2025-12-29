@@ -200,8 +200,8 @@ function initFiltrosEstaticos() {
 if ($selectTipo) {
   $selectTipo.innerHTML = `
     <option value="">Tipo de movimiento</option>
-    <option value="INGRESO">Ingreso</option>
-    <option value="EGRESO">Egreso</option>
+    <option value="INGRESO">INGRESO</option>
+    <option value="EGRESO">EGRESO</option>
   `;
 }
 
