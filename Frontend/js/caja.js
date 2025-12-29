@@ -244,7 +244,6 @@ async function cargarCajas() {
     if (data[0]) {
       $selectCaja.value = data[0]._id;
       actualizarSaldoCaja();
-      // cargo movimientos iniciales
       buscarMovimientos();
     }
   } catch (err) {
@@ -294,19 +293,16 @@ function renderMovimientos(list) {
       const categoria = m.categoria || "";
       const formato = m.formato || "";
 
-      const profesionalNombre =
-        m.profesionalNombre ||
-        m.profesional ||
-        m.usuarioNombre ||
-        "";
-
-      // Beneficiario: si hay un beneficiario explícito lo mostramos,
-      // si no, usamos el profesional (la caja que recibe = quien atiende).
+      // Beneficiario = quien recibe la plata (profesional).
+      // Si no hay profesional cargado, caemos al paciente.
       const beneficiario =
         m.beneficiarioNombre ||
         m.beneficiario ||
+        m.profesionalNombre ||
+        m.profesional ||
+        m.usuarioNombre ||
         m.pacienteNombre ||
-        profesionalNombre;
+        "";
 
       const concepto = m.concepto || m.descripcion || m.origen || "";
       const montoPadres = fmtARS(m.montoPadres || 0);
@@ -319,7 +315,6 @@ function renderMovimientos(list) {
           <td>${tipo}</td>
           <td>${categoria}</td>
           <td>${formato}</td>
-          <td>${profesionalNombre}</td>
           <td>${beneficiario}</td>
           <td class="num">${montoPadres}</td>
           <td class="num">${montoOS}</td>
@@ -338,8 +333,7 @@ function renderMovimientos(list) {
           <th>Tipo</th>
           <th>Categoría</th>
           <th>Formato</th>
-          <th>Profesional</th>
-          <th>Beneficiario / Profesional</th>
+          <th>Beneficiario</th>
           <th>Padres</th>
           <th>Obra social</th>
           <th>Total</th>
