@@ -5,6 +5,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Estado de Cuenta</title>
+
   <link rel="icon" href="/img/fc885963d690a6787ca787cf208cdd25_1778x266_fit.png" type="image/png">
   <link rel="stylesheet" href="/css/estado-de-cuentas.css" />
 </head>
@@ -14,7 +15,7 @@
     <div class="nav-left">
       <a href="dashboard.html" class="btn">INICIO</a>
       <button class="btn active">ESTADO DE CUENTA</button>
-      <!-- 🔽 reemplazado el botón -->
+      <!-- Botón descarga general (solo avisa que uses el del modal) -->
       <button class="btn" id="btnDescargarEDC">Descargar estado de cuenta</button>
     </div>
 
@@ -28,26 +29,30 @@
   <hr />
 
   <main class="content">
-    <!-- ✅ Wrapper para mantener la UL debajo del input -->
+    <!-- Buscador + sugerencias -->
     <div id="buscadorEDC">
       <div class="search-bar">
-        <input id="busquedaInputEDC" type="text" placeholder="Ingresar nombre y apellido o DNI" />
+        <input
+          id="busquedaInputEDC"
+          type="text"
+          placeholder="Ingresar nombre y apellido o DNI"
+        />
         <span class="search-icon">🔍</span>
         <button class="search-btn" id="btnBuscarEDC">BUSCAR</button>
       </div>
 
-      <!-- 🔽 Sugerencias debajo del input -->
       <ul id="sugerenciasEDC"></ul>
     </div>
 
-    <!-- Contenedor de resultados -->
+    <!-- Contenedor donde se pinta el resumen de estado de cuenta -->
     <div id="estadoCuentaContainer"></div>
   </main>
 
   <script src="/js/config.js"></script>
-  <!-- ✅ agregado SweetAlert2 -->
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-  <script src="/js/estado-de-cuenta.js?v=20251104"></script>
+  <!-- 👇 cambiá solo la versión para romper caché del JS -->
+  <script src="/js/estado-de-cuenta.js?v=20251229"></script>
 </body>
 
 </html>
+
