@@ -197,13 +197,14 @@ function initFiltrosEstaticos() {
     }
   }
 
-  if ($selectTipo) {
-    $selectTipo.innerHTML = `
-      <option value="">Tipo de movimiento</option>
-      <option value="INGRESO">Ingreso</option>
-      <option value="EGRESO">Egreso</option>
-    `;
-  }
+if ($selectTipo) {
+  $selectTipo.innerHTML = `
+    <option value="">Tipo de movimiento</option>
+    <option value="INGRESO">Ingreso</option>
+    <option value="EGRESO">Egreso</option>
+  `;
+}
+
 
   if ($selectCategoria) {
     $selectCategoria.innerHTML = `
