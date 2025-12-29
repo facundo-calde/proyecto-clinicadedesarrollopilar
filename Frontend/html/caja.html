@@ -24,35 +24,43 @@
 
   <main class="content">
     <section class="filtros">
-      <select><option>Caja</option></select>
-      <select><option>Mes</option></select>
-      <select><option>Tipo de movimiento</option></select>
-      <select><option>Categoría</option></select>
-      <select><option>Formato</option></select>
-      <select><option>Profesional</option></select>
-      <select><option>Beneficiario</option></select>
-      <button class="buscar-btn">Buscar</button>
+      <!-- 🔹 IDs para que caja.js pueda engancharse -->
+      <select id="selectCaja"><option value="">Caja</option></select>
+      <select id="selectMes"><option value="">Mes</option></select>
+      <select id="selectTipoMovimiento"><option value="">Tipo de movimiento</option></select>
+      <select id="selectCategoria"><option value="">Categoría</option></select>
+      <select id="selectFormato"><option value="">Formato</option></select>
+      <select id="selectProfesional"><option value="">Profesional</option></select>
+      <select id="selectBeneficiario"><option value="">Beneficiario</option></select>
+
+      <button class="buscar-btn" id="btnBuscarCaja">BUSCAR</button>
     </section>
 
     <section class="movimientos">
       <div class="acciones">
-        <label>Nuevo movimiento:</label>
-        <button class="icon-btn">➕</button>
-        <button class="icon-btn">⬇️</button>
+        <label>NUEVO MOVIMIENTO:</label>
+
+        <!-- botón + -->
+        <button class="icon-btn" id="btnNuevoMovimientoCaja">➕</button>
+
+        <!-- botón descarga (para más adelante) -->
+        <button class="icon-btn" id="btnExportarCaja">⬇️</button>
+
         <div class="saldo">
-          <label>Saldo actual:</label>
-          <span>$<input type="text" placeholder="___________" disabled /></span>
+          <label>SALDO ACTUAL: </label>
+          <!-- el JS pisa este texto con el saldo real -->
+          <span id="saldoActualCaja">$ _________</span>
         </div>
       </div>
 
-      <div class="tabla">
+      <!-- contenedor donde se dibuja la tabla desde caja.js -->
+      <div class="tabla" id="cajaMovimientosContainer">
         <p class="sin-info">No hay información / seleccionar filtros.</p>
       </div>
     </section>
   </main>
 
-  <!-- Incluí tu JS de la página -->
-   <script src="/js/config.js"></script>
+  <script src="/js/config.js"></script>
   <script src="/js/caja.js?v=20251009"></script>
 </body>
 </html>
