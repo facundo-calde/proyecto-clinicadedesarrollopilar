@@ -9,9 +9,6 @@ const Movimiento = require("../models/estadoDeCuentaMovimiento");
 const path = require("path");
 const fs = require("fs");
 
-// 🟢 NUEVO: modelos de caja
-const Caja = require("../models/caja");
-const CajaMovimiento = require("../models/cajaMovimiento");
 
 const toStr = (v) => (v ?? "").toString();
 
@@ -393,9 +390,7 @@ const actualizarEstadoDeCuenta = async (req, res) => {
       // si es admin, no exigimos módulo real; si no lo es, sí
       .filter((l) => l.mes && (l.moduloId || l.esAdmin));
 
-    // -----------------------------
-    // CALCULAR DELTAS PARA CAJA
-    // -----------------------------
+    // ---- limpiamos lo que vamos a regenerar (CARGO + FACT) ----
     const baseFilter = { dni };
     if (areaId) baseFilter.areaId = areaId;
 
@@ -414,29 +409,6 @@ const actualizarEstadoDeCuenta = async (req, res) => {
       tipo: "FACT",
     };
 
-    // Movimientos CARGO anteriores en esos periodos (para deltas)
-    const prevCargos = await Movimiento.find(deleteFilterCargos).lean();
-
-    let prevPadres = 0;
-    let prevOS = 0;
-    for (const m of prevCargos) {
-      prevPadres += parseNumberLike(m.pagPadres, 0);
-      prevOS += parseNumberLike(m.pagOS, 0);
-    }
-
-    // Totales nuevos desde las líneas del modal
-    let newPadres = 0;
-    let newOS = 0;
-    for (const l of lineasValidas) {
-      newPadres += parseNumberLike(l.pagPadres, 0);
-      newOS += parseNumberLike(l.pagOS, 0);
-    }
-
-    const deltaPadres = newPadres - prevPadres;
-    const deltaOS = newOS - prevOS;
-    const deltaTotal = deltaPadres + deltaOS;
-
-    // ---- limpiamos lo que vamos a regenerar (CARGO + FACT) ----
     await Promise.all([
       Movimiento.deleteMany(deleteFilterCargos),
       Movimiento.deleteMany(deleteFilterFacts),
@@ -457,62 +429,62 @@ const actualizarEstadoDeCuenta = async (req, res) => {
           .toLowerCase()
           .trim() === "administracion";
 
-      // 🟢 CASO ESPECIAL: ADMINISTRACIÓN (AJUSTE MANUAL)
-      if (esAdmin) {
-        const montoCargo = parseNumberLike(l.aPagar, 0);
-        const pagPadres = parseNumberLike(l.pagPadres, 0);
-        const pagOS = parseNumberLike(l.pagOS, 0);
+   // 🟢 CASO ESPECIAL: ADMINISTRACIÓN (AJUSTE MANUAL)
+if (esAdmin) {
+  const montoCargo = parseNumberLike(l.aPagar, 0);
+  const pagPadres = parseNumberLike(l.pagPadres, 0);
+  const pagOS     = parseNumberLike(l.pagOS, 0);
 
-        // si está totalmente vacía no la guardamos
-        if (
-          !montoCargo &&
-          !pagPadres &&
-          !pagOS &&
-          !(l.detPadres && String(l.detPadres).trim()) &&
-          !(l.detOS && String(l.detOS).trim())
-        ) {
-          return;
-        }
+  // si está totalmente vacía (sin cargo, sin pagos, sin detalles) no la guardamos
+  if (
+    !montoCargo &&
+    !pagPadres &&
+    !pagOS &&
+    !(l.detPadres && String(l.detPadres).trim()) &&
+    !(l.detOS && String(l.detOS).trim())
+  ) {
+    return;
+  }
 
-        const fechaCargo = new Date(`${period}-01T00:00:00.000Z`);
-        const asigKey = `ADMIN-${dni}-${areaId || "sinArea"}-${period}-${idx}`;
+  const fechaCargo = new Date(`${period}-01T00:00:00.000Z`);
+  const asigKey = `ADMIN-${dni}-${areaId || "sinArea"}-${period}-${idx}`;
 
-        docsToInsert.push({
-          pacienteId: paciente._id,
-          dni,
-          areaId: areaId || undefined,
-          areaNombre: area?.nombre || l.areaNombre || undefined,
+  docsToInsert.push({
+    pacienteId: paciente._id,
+    dni,
+    areaId: areaId || undefined,
+    areaNombre: area?.nombre || l.areaNombre || undefined,
 
-          moduloId: undefined,
-          moduloNombre: "Administración",
+    moduloId: undefined,
+    moduloNombre: "Administración",
 
-          period,
-          asigKey,
-          tipo: "CARGO",
-          fecha: fechaCargo,
-          monto: montoCargo, // puede ser 0
-          cantidad: 1,
-          profesional: undefined,
+    period,
+    asigKey,
+    tipo: "CARGO",
+    fecha: fechaCargo,
+    monto: montoCargo,     // puede ser 0
+    cantidad: 1,
+    profesional: undefined,
 
-          pagPadres,
-          detPadres: l.detPadres || "",
-          pagOS,
-          detOS: l.detOS || "",
+    pagPadres,
+    detPadres: l.detPadres || "",
+    pagOS,
+    detOS: l.detOS || "",
 
-          descripcion:
-            l.detPadres ||
-            l.detOS ||
-            `Ajuste administrativo ${period}`,
+    descripcion:
+      l.detPadres ||
+      l.detOS ||
+      `Ajuste administrativo ${period}`,
 
-          estado: "PENDIENTE",
-          meta: {
-            ...(l.meta || {}),
-            esAdministracion: true,
-          },
-        });
+    estado: "PENDIENTE",
+    meta: {
+      ...(l.meta || {}),
+      esAdministracion: true,
+    },
+  });
 
-        return;
-      }
+  return;
+}
 
       // 🔵 CASO NORMAL (MÓDULO)
       const moduloIdStr = l.moduloId ? String(l.moduloId) : null;
@@ -539,7 +511,7 @@ const actualizarEstadoDeCuenta = async (req, res) => {
 
       const fechaCargo = new Date(`${period}-01T00:00:00.000Z`);
 
-      // 🔑 clave única por línea
+      // 🔑 clave única por línea para respetar el índice {dni,areaId,moduloId,period,tipo,asigKey}
       const asigKey = `${dni}-${areaId || "sinArea"}-${period}-${
         moduloIdStr || "sinModulo"
       }-${idx}`;
@@ -605,60 +577,9 @@ const actualizarEstadoDeCuenta = async (req, res) => {
       await Movimiento.insertMany(docsToInsert);
     }
 
-    // 🟢 ACTUALIZAR CAJA POR ÁREA (si hay área y hay delta)
-    if (areaId && (deltaPadres !== 0 || deltaOS !== 0)) {
-      let caja = await Caja.findOne({ area: areaId });
-      if (!caja) {
-        caja = await Caja.create({
-          area: areaId,
-          nombreArea: area?.nombre || "Área sin nombre",
-          saldoPadres: 0,
-          saldoOS: 0,
-          saldoTotal: 0,
-        });
-      }
-
-      await Caja.updateOne(
-        { _id: caja._id },
-        {
-          $inc: {
-            saldoPadres: deltaPadres,
-            saldoOS: deltaOS,
-            saldoTotal: deltaTotal,
-          },
-          $set: { ultimoMovimiento: new Date() },
-        }
-      );
-
-      await CajaMovimiento.create({
-        caja: caja._id,
-        area: areaId,
-        fecha: new Date(),
-        tipoMovimiento: deltaTotal >= 0 ? "INGRESO" : "EGRESO",
-        categoria:
-          deltaPadres && deltaOS
-            ? "AMBOS"
-            : deltaPadres
-            ? "PADRES"
-            : deltaOS
-            ? "OS"
-            : "MANUAL",
-        origen: "ESTADO_CUENTA",
-        pacienteDni: dni,
-        pacienteNombre: paciente.nombre,
-        concepto: "Actualización desde estado de cuenta",
-        montoPadres: deltaPadres,
-        montoOS: deltaOS,
-        montoTotal: deltaTotal,
-        usuario: req.user ? req.user._id : undefined,
-      });
-    }
-
     return res.json({
       ok: true,
       inserted: docsToInsert.length,
-      deltaPadres,
-      deltaOS,
     });
   } catch (err) {
     console.error("estado-de-cuenta PUT:", err);
@@ -842,7 +763,7 @@ async function generarExtractoPDF(req, res) {
       } else if (m.tipo === "OS") pagadoOS += monto;
       else if (m.tipo === "PART") pagadoPART += monto;
       else if (m.tipo === "AJUSTE+") ajustesMas += monto;
-      else if (m.tipo === "AJUSTE-") ajustesMenos -= Math.abs(monto) ? monto : 0;
+      else if (m.tipo === "AJUSTE-") ajustesMenos += monto;
       else if (m.tipo === "FACT") totalFacturado += monto;
     }
 
@@ -855,6 +776,7 @@ async function generarExtractoPDF(req, res) {
     const difFactPag = Number((totalFacturado - totalPagadoConAjustes).toFixed(2));
 
     // ---------------- Filas (detalle estilo Excel) ----------------
+    // Armamos filas desde los CARGO del rango (porque ahí vienen código/cantidad/profesional)
     const filas = movsRango
       .filter((m) => m.tipo === "CARGO")
       .map((m) => {
@@ -877,6 +799,7 @@ async function generarExtractoPDF(req, res) {
 
         const aPagar = Number(m.monto || 0);
 
+        // pagos “por línea” (si existen en el doc, perfecto)
         const pagPadres = parseNumberLike(m.pagPadres, 0);
         const detPadres = safeTxt(m.detallePadres || m.detPadres || m.detalle || m.detallePago || "");
 
@@ -909,11 +832,13 @@ async function generarExtractoPDF(req, res) {
 
     // ---------------- PDF headers ----------------
     res.setHeader("Content-Type", "application/pdf");
+    // inline => abre en pestaña. Si tu front fuerza descarga, eso es del front.
     res.setHeader(
       "Content-Disposition",
       `inline; filename="Extracto_${dni}_${(area.nombre || "area").replace(/\s+/g, "_")}${desde || hasta ? `_${desde || "INI"}-${hasta || "FIN"}` : ""}.pdf"`
     );
 
+    // ✅ CLAVE para que “entre todo”: A4 LANDSCAPE
     const doc = new PDFDocument({ size: "A4", layout: "landscape", margin: 28 });
     doc.pipe(res);
 
@@ -923,7 +848,7 @@ async function generarExtractoPDF(req, res) {
     const pageBottom = doc.page.height - doc.page.margins.bottom;
     const pageW = pageRight - pageLeft;
 
-    // ---------------- Logo ----------------
+    // ---------------- Logo (robusto) ----------------
     let logoDrawn = false;
     try {
       const logoFile = "fc885963d690a6787ca787cf208cdd25_1778x266_fit.png";
@@ -950,12 +875,13 @@ async function generarExtractoPDF(req, res) {
     doc.fontSize(11).fillColor("#000").text(`${paciente.nombre || "-"} - DNI ${paciente.dni || "-"}`);
     doc.fontSize(10).fillColor("#444").text(`Área: ${area.nombre || "-"}`);
     const rangoTxt =
-      desde || hasta
+      (desde || hasta)
         ? `Rango: ${desde || "(inicio)"} a ${hasta || "(fin)"}`
         : "Rango: (todos los periodos)";
     doc.fontSize(9).fillColor("#444").text(rangoTxt);
     doc.moveDown(0.6);
 
+    // ---------------- Barra verde superior (como Excel) ----------------
     const green = "#9BBB59";
     const greenLight = "#EAF2E1";
     const stroke = "#000";
@@ -968,6 +894,7 @@ async function generarExtractoPDF(req, res) {
       doc.fillColor("#000").fontSize(10).font("Helvetica-Bold");
       doc.text(`AREA: ${area.nombre || "-"}`, pageLeft, y + 6, { width: pageW, align: "center" });
 
+      // derecha: DIF
       const rightTxt = `DIF ENTRE FACT Y PAGADO -$`;
       const rightVal = fmtARS(Math.abs(difFactPag));
       doc.font("Helvetica-Bold").fontSize(9).fillColor("#000");
@@ -980,9 +907,11 @@ async function generarExtractoPDF(req, res) {
 
     drawTopBar();
 
+    // ---------------- Tabla principal ----------------
     const rowH = 14;
     const headerH = 18;
 
+    // Columnas como tu captura (con OS solo si tieneOS)
     let cols = [
       { key: "mes", label: "MES", w: 58, align: "left" },
       { key: "cant", label: "CANT", w: 44, align: "center" },
@@ -1000,14 +929,17 @@ async function generarExtractoPDF(req, res) {
       ]);
     }
 
+    // Ajuste automático a ancho de página (para que NO se corte a la derecha)
     const sumW = cols.reduce((a, c) => a + c.w, 0);
     if (sumW > pageW) {
       const ratio = pageW / sumW;
       cols = cols.map((c) => ({ ...c, w: Math.max(38, Math.floor(c.w * ratio)) }));
+      // por redondeos, arreglamos el último
       const newSum = cols.reduce((a, c) => a + c.w, 0);
       const diff = pageW - newSum;
       cols[cols.length - 1].w += diff;
     } else if (sumW < pageW) {
+      // si sobra, se lo damos a CODIGO y DETALLE para que se lea más
       const extra = pageW - sumW;
       const idxCodigo = cols.findIndex((c) => c.key === "codigo");
       if (idxCodigo >= 0) cols[idxCodigo].w += Math.floor(extra * 0.6);
@@ -1018,10 +950,12 @@ async function generarExtractoPDF(req, res) {
     function drawTableHeader() {
       const y = doc.y;
 
+      // fondo verde
       doc.save();
       doc.rect(pageLeft, y, pageW, headerH).fill(green);
       doc.restore();
 
+      // títulos (más chico para que no se corten)
       doc.font("Helvetica-Bold").fontSize(7.5).fillColor("#000");
 
       let x = pageLeft;
@@ -1044,6 +978,7 @@ async function generarExtractoPDF(req, res) {
     }
 
     function drawRow(r) {
+      // salto de página prolijo (sin hojas vacías)
       if (doc.y + rowH > pageBottom - 20) {
         doc.addPage();
         doc.y = pageTop;
@@ -1053,10 +988,12 @@ async function generarExtractoPDF(req, res) {
 
       const y = doc.y;
 
+      // fondo claro
       doc.save();
       doc.rect(pageLeft, y, pageW, rowH).fill(greenLight);
       doc.restore();
 
+      // celdas
       doc.font("Helvetica").fontSize(8.2).fillColor("#000");
 
       const cell = {
@@ -1097,7 +1034,8 @@ async function generarExtractoPDF(req, res) {
       for (const r of filas) drawRow(r);
     }
 
-    // FACTURAS
+    // ---------------- FACTURAS: SIEMPRE EN UNA SOLA HOJA ----------------
+    // (así no “corta” a la mitad y no se superpone)
     doc.addPage();
     doc.y = pageTop;
     drawTopBar();
@@ -1112,6 +1050,7 @@ async function generarExtractoPDF(req, res) {
       { key: "fecha", label: "FECHA", w: 120, align: "left" },
     ];
 
+    // expandimos a ancho
     const fSum = fCols.reduce((a, c) => a + c.w, 0);
     if (fSum !== pageW) {
       const diff = pageW - fSum;
@@ -1142,6 +1081,8 @@ async function generarExtractoPDF(req, res) {
     function drawFRow(f) {
       const y = doc.y;
 
+      // si no entra en ESTA hoja, cortamos (pero vos pediste “todas juntas”:
+      // con tu cantidad normal de facturas entra, y así evitamos 60 páginas)
       if (y + fRowH > pageBottom - 120) return false;
 
       doc.save();
@@ -1180,15 +1121,18 @@ async function generarExtractoPDF(req, res) {
     } else {
       for (const f of facturas) {
         const ok = drawFRow(f);
-        if (!ok) break;
+        if (!ok) break; // evita que “salte” a otra hoja por 1 fila
       }
     }
 
+    // ---------------- Totales (bien armados, en negro, sin superponer) ----------------
     doc.moveDown(1.2);
 
     const boxH = 46;
     const boxW = 240;
     const boxY = Math.min(doc.y, pageBottom - boxH - 20);
+
+    // Box centro: debería / pagó
     const midX = pageLeft + Math.floor((pageW - boxW) / 2);
 
     doc.save().rect(midX, boxY, boxW, boxH).stroke(stroke).restore();
@@ -1200,6 +1144,7 @@ async function generarExtractoPDF(req, res) {
     doc.text(fmtARS(totalCargos), midX + 140, boxY + 12, { width: boxW - 150, align: "right" });
     doc.text(fmtARS(totalPagadoConAjustes), midX + 140, boxY + 30, { width: boxW - 150, align: "right" });
 
+    // Box derecha: total facturado
     const boxW2 = 180;
     const rightX = pageRight - boxW2;
 
@@ -1209,12 +1154,17 @@ async function generarExtractoPDF(req, res) {
     doc.font("Helvetica-Bold").fontSize(9).fillColor("#000");
     doc.text(fmtARS(totalFacturado), rightX + 95, boxY + 24, { width: boxW2 - 100, align: "right" });
 
+    // ---------------- Fin ----------------
     doc.end();
   } catch (err) {
     console.error("estado-de-cuenta PDF:", err);
     res.status(500).json({ error: "No se pudo generar el PDF" });
   }
 }
+
+
+
+
 
 module.exports = {
   obtenerEstadoDeCuenta,
