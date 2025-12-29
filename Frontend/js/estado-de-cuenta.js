@@ -780,11 +780,7 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel, opts = {}) {
                    style="padding:4px 6px; border-radius:6px; border:1px solid #bbb; width:140px;">
           </div>
 
-          <div style="display:flex; align-items:center; gap:8px;">
-            <strong>Hasta:</strong>
-            <input id="edcHasta" type="month" value="${hastaSel}"
-                   style="padding:4px 6px; border-radius:6px; border:1px solid #bbb; width:140px;">
-          </div>
+        
         </div>
 
         <h3 id="edcTituloArea" style="margin:0 0 6px 0; color:${areaColor};">
