@@ -68,6 +68,47 @@ if (btnLogout) {
 }
 
 // ==========================
+// 🎨 Estilos de la tabla de caja
+// ==========================
+(() => {
+  const style = document.createElement("style");
+  style.textContent = `
+    .tabla-caja {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0 3px;
+      font-size: 13px;
+    }
+    .tabla-caja thead th {
+      background: #f5f5f5;
+      font-weight: 600;
+      padding: 6px 10px;
+      text-align: left;
+      letter-spacing: 0.03em;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .tabla-caja tbody td {
+      padding: 6px 10px;
+      font-size: 13px;
+    }
+    .tabla-caja tbody tr:nth-child(even) {
+      background-color: #fafafa;
+    }
+    .tabla-caja td.num {
+      text-align: right;
+      white-space: nowrap;
+    }
+    .sin-info {
+      padding: 18px;
+      font-style: italic;
+      color: #777;
+    }
+  `;
+  document.head.appendChild(style);
+})();
+
+// ==========================
 // 📦 CAJA – LÓGICA
 // ==========================
 
@@ -252,13 +293,21 @@ function renderMovimientos(list) {
       const tipo = m.tipoMovimiento || m.tipo || "";
       const categoria = m.categoria || "";
       const formato = m.formato || "";
-      const profesional =
-        m.profesionalNombre || m.profesional || m.usuarioNombre || "";
+
+      const profesionalNombre =
+        m.profesionalNombre ||
+        m.profesional ||
+        m.usuarioNombre ||
+        "";
+
+      // Beneficiario: si hay un beneficiario explícito lo mostramos,
+      // si no, usamos el profesional (la caja que recibe = quien atiende).
       const beneficiario =
-        m.pacienteNombre ||
         m.beneficiarioNombre ||
         m.beneficiario ||
-        "";
+        m.pacienteNombre ||
+        profesionalNombre;
+
       const concepto = m.concepto || m.descripcion || m.origen || "";
       const montoPadres = fmtARS(m.montoPadres || 0);
       const montoOS = fmtARS(m.montoOS || 0);
@@ -270,7 +319,7 @@ function renderMovimientos(list) {
           <td>${tipo}</td>
           <td>${categoria}</td>
           <td>${formato}</td>
-          <td>${profesional}</td>
+          <td>${profesionalNombre}</td>
           <td>${beneficiario}</td>
           <td class="num">${montoPadres}</td>
           <td class="num">${montoOS}</td>
@@ -290,7 +339,7 @@ function renderMovimientos(list) {
           <th>Categoría</th>
           <th>Formato</th>
           <th>Profesional</th>
-          <th>Beneficiario</th>
+          <th>Beneficiario / Profesional</th>
           <th>Padres</th>
           <th>Obra social</th>
           <th>Total</th>
@@ -320,8 +369,10 @@ async function buscarMovimientos() {
   if ($selectTipo?.value) params.set("tipoMovimiento", $selectTipo.value);
   if ($selectCategoria?.value) params.set("categoria", $selectCategoria.value);
   if ($selectFormato?.value) params.set("formato", $selectFormato.value);
-  if ($selectProfesional?.value) params.set("profesionalId", $selectProfesional.value);
-  if ($selectBeneficiario?.value) params.set("beneficiarioId", $selectBeneficiario.value);
+  if ($selectProfesional?.value)
+    params.set("profesionalId", $selectProfesional.value);
+  if ($selectBeneficiario?.value)
+    params.set("beneficiarioId", $selectBeneficiario.value);
 
   const qs = params.toString();
   const url = qs
@@ -372,7 +423,6 @@ document.addEventListener("DOMContentLoaded", () => {
   if ($selectCaja) {
     $selectCaja.addEventListener("change", () => {
       actualizarSaldoCaja();
-      // si querés que al cambiar de caja se refresquen los movimientos:
       buscarMovimientos();
     });
   }
