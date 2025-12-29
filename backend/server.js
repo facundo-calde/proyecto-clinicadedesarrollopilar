@@ -36,6 +36,7 @@ app.use('/api/modulos',    require('./routes/modulosroutes'));
 app.use('/api/areas',      require('./routes/areasroutes'));
 app.use('/api',            require('./routes/usuariosRoutes'));
 app.use("/api/estado-de-cuenta", require("./routes/estadocuentaroutes"));
+app.use("/api/cajas", require("./routes/cajasroutes"));
 
 /* ====== STATIC ====== */
 const FRONT_DIR_CANDIDATES = [
