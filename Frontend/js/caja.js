@@ -67,11 +67,83 @@ if (btnLogout) {
   });
 }
 
-// ==========================
-// 📦 CAJA – LÓGICA
-// ==========================
+// =================================================
+// 🎨 Inyectar estilos específicos de CAJA
+// =================================================
+function injectCajaStyles() {
+  if (document.getElementById("caja-styles")) return; // evitar duplicar
 
-// endpoint base
+  const css = `
+  /* ===== Tabla movimientos caja ===== */
+  .tabla-caja {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    background: #ffffff;
+    font-size: 13px;
+  }
+
+  .tabla-caja thead th {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 10px;
+    border-bottom: 1px solid #dcdcdc;
+    white-space: nowrap;
+    background: #f5f5f5;
+  }
+
+  .tabla-caja tbody td {
+    font-size: 12px;
+    padding: 6px 10px;
+    border-bottom: 1px solid #eeeeee;
+    vertical-align: middle;
+  }
+
+  .tabla-caja tbody tr:nth-child(even) {
+    background: #fbfbfb;
+  }
+
+  .tabla-caja td.num {
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  /* Anchos de columnas */
+  .tabla-caja th:nth-child(1),
+  .tabla-caja td:nth-child(1) { width: 80px; }   /* Fecha */
+
+  .tabla-caja th:nth-child(2),
+  .tabla-caja td:nth-child(2) { width: 80px; }   /* Tipo */
+
+  .tabla-caja th:nth-child(3),
+  .tabla-caja td:nth-child(3) { width: 120px; }  /* Categoría */
+
+  .tabla-caja th:nth-child(4),
+  .tabla-caja td:nth-child(4) { width: 110px; }  /* Formato */
+
+  .tabla-caja th:nth-child(5),
+  .tabla-caja td:nth-child(5) { width: 220px; }  /* Beneficiario */
+
+  .tabla-caja th:nth-child(6),
+  .tabla-caja td:nth-child(6) { width: 120px; }  /* Movimiento */
+
+  .sin-info {
+    padding: 16px;
+    font-size: 13px;
+    color: #666666;
+  }
+  `;
+
+  const style = document.createElement("style");
+  style.id = "caja-styles";
+  style.type = "text/css";
+  style.appendChild(document.createTextNode(css));
+  document.head.appendChild(style);
+}
+
+// =================================================
+// 📦 CAJA – LÓGICA
+// =================================================
 const MOVS_ENDPOINT_BASE = "/api/cajas";
 
 // DOM
@@ -80,7 +152,6 @@ const $selectMes = document.getElementById("selectMes");
 const $selectTipo = document.getElementById("selectTipoMovimiento");
 const $selectCategoria = document.getElementById("selectCategoria");
 const $selectFormato = document.getElementById("selectFormato");
-const $selectProfesional = document.getElementById("selectProfesional");
 const $selectBeneficiario = document.getElementById("selectBeneficiario");
 
 const $btnBuscar = document.getElementById("btnBuscarCaja");
@@ -91,7 +162,9 @@ const $tablaContainer = document.getElementById("cajaMovimientosContainer");
 
 let CAJAS = [];
 
-// --------- helpers formato ---------
+// --------------------------
+// Helpers visuales
+// --------------------------
 function fmtARS(n) {
   const num = Number(n || 0);
   return `$ ${num.toLocaleString("es-AR", {
@@ -104,10 +177,7 @@ function fmtFecha(d) {
   if (!d) return "";
   const dt = new Date(d);
   if (Number.isNaN(dt.getTime())) return "";
-  const dd = String(dt.getDate()).padStart(2, "0");
-  const mm = String(dt.getMonth() + 1).padStart(2, "0");
-  const yy = dt.getFullYear();
-  return `${dd}/${mm}/${yy}`;
+  return dt.toLocaleDateString("es-AR");
 }
 
 // --------------------------
@@ -155,12 +225,6 @@ function initFiltrosEstaticos() {
     `;
   }
 
-  if ($selectProfesional) {
-    $selectProfesional.innerHTML = `
-      <option value="">Profesional</option>
-    `;
-  }
-
   if ($selectBeneficiario) {
     $selectBeneficiario.innerHTML = `
       <option value="">Beneficiario</option>
@@ -191,16 +255,12 @@ async function cargarCajas() {
       const opt = document.createElement("option");
       opt.value = c._id;
       const nombre = c.nombreArea || c.nombre || "Caja";
-      const total =
-        typeof c.saldoTotal === "number"
-          ? c.saldoTotal
-          : Number(c.saldoPadres || 0) + Number(c.saldoOS || 0);
+      const total = Number(c.saldoTotal || 0);
       opt.textContent = `${nombre} — ${fmtARS(total)}`;
       opt.dataset.saldoTotal = total;
       $selectCaja.appendChild(opt);
     });
 
-    // primera caja por defecto
     if (data[0]) {
       $selectCaja.value = data[0]._id;
       actualizarSaldoCaja();
@@ -214,28 +274,16 @@ async function cargarCajas() {
 
 function actualizarSaldoCaja() {
   if (!$saldoActual || !$selectCaja) return;
-  const id = $selectCaja.value;
-  if (!id) {
+  const caja = CAJAS.find((c) => String(c._id) === String($selectCaja.value));
+  if (!caja) {
     $saldoActual.textContent = "__________";
     return;
   }
-
-  const caja = CAJAS.find((c) => String(c._id) === String(id));
-  if (!caja) {
-    $saldoActual.textContent = "—";
-    return;
-  }
-
-  const total =
-    typeof caja.saldoTotal === "number"
-      ? caja.saldoTotal
-      : Number(caja.saldoPadres || 0) + Number(caja.saldoOS || 0);
-
-  $saldoActual.textContent = fmtARS(total);
+  $saldoActual.textContent = fmtARS(Number(caja.saldoTotal || 0));
 }
 
 // --------------------------
-// Listar movimientos
+// Render tabla
 // --------------------------
 function renderMovimientos(list) {
   if (!$tablaContainer) return;
@@ -250,7 +298,25 @@ function renderMovimientos(list) {
     .map((m) => {
       const fecha = fmtFecha(m.fecha || m.createdAt);
       const tipo = m.tipoMovimiento || m.tipo || "";
-      const categoria = m.categoria || "";
+
+      let categoria = "";
+      switch ((m.categoria || "").toUpperCase()) {
+        case "PADRES":
+          categoria = "Pagos padres";
+          break;
+        case "OS":
+          categoria = "Obra social";
+          break;
+        case "AMBOS":
+          categoria = "Ambos";
+          break;
+        case "MANUAL":
+          categoria = "Ajuste / Manual";
+          break;
+        default:
+          categoria = "";
+      }
+
       const formato = m.formato || "";
 
       // Beneficiario = quien recibe la plata (profesional)
@@ -262,19 +328,7 @@ function renderMovimientos(list) {
         m.beneficiario ||
         "";
 
-      // Importe del movimiento (independiente si viene de padres u OS)
-      let total = 0;
-      if (typeof m.montoTotal === "number") {
-        total = m.montoTotal;
-      } else if (
-        typeof m.montoPadres === "number" ||
-        typeof m.montoOS === "number"
-      ) {
-        total = Number(m.montoPadres || 0) + Number(m.montoOS || 0);
-      } else {
-        total = Number(m.monto || 0);
-      }
-      const montoMovimiento = fmtARS(total);
+      const total = Number(m.montoTotal || m.monto || 0);
 
       const concepto = m.concepto || m.descripcion || m.origen || "";
 
@@ -285,7 +339,7 @@ function renderMovimientos(list) {
           <td>${categoria}</td>
           <td>${formato}</td>
           <td>${beneficiario}</td>
-          <td class="num">${montoMovimiento}</td>
+          <td class="num">${fmtARS(total)}</td>
           <td>${concepto}</td>
         </tr>
       `;
@@ -331,8 +385,6 @@ async function buscarMovimientos() {
   if ($selectTipo?.value) params.set("tipoMovimiento", $selectTipo.value);
   if ($selectCategoria?.value) params.set("categoria", $selectCategoria.value);
   if ($selectFormato?.value) params.set("formato", $selectFormato.value);
-  if ($selectProfesional?.value)
-    params.set("profesionalId", $selectProfesional.value);
   if ($selectBeneficiario?.value)
     params.set("beneficiarioId", $selectBeneficiario.value);
 
@@ -348,9 +400,7 @@ async function buscarMovimientos() {
 
   try {
     const res = await fetchAuth(url);
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`);
-    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     const list = Array.isArray(data) ? data : data.movimientos || [];
     renderMovimientos(list);
@@ -377,6 +427,7 @@ function initNuevoMovimiento() {
 // INIT
 // --------------------------
 document.addEventListener("DOMContentLoaded", () => {
+  injectCajaStyles();      // ⬅ estilos incrustados
   initFiltrosEstaticos();
   cargarCajas();
   initNuevoMovimiento();
