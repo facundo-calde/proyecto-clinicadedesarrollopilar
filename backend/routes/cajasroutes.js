@@ -1,14 +1,20 @@
-// routes/cajasroutes.js
 const express = require("express");
 const router = express.Router();
-const {
-  listarCajas,
-  listarMovimientosCaja,
-} = require("../controllers/cajascontrollers");
-const authMiddleware = require("../middleware/authMiddleware"); // el mismo que usás en el resto
+const Caja = require("../models/cajas");
 
-// Todas las rutas de caja protegidas
-router.get("/cajas", authMiddleware, listarCajas);
-router.get("/cajas/:cajaId/movimientos", authMiddleware, listarMovimientosCaja);
+// GET /api/cajas -> todas las cajas con área y saldo
+router.get("/", async (req, res) => {
+  try {
+    const cajas = await Caja.find({})
+      .populate("area", "nombre")  // opcional
+      .sort({ nombreArea: 1 })
+      .lean();
+
+    res.json(cajas);
+  } catch (err) {
+    console.error("GET /api/cajas:", err);
+    res.status(500).json({ error: "No se pudieron obtener las cajas" });
+  }
+});
 
 module.exports = router;
