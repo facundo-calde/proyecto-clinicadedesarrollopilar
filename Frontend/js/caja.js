@@ -1,353 +1,390 @@
 // ==========================
 // 🔐 Sesión, anti-back y helpers
 // ==========================
-const LOGIN = 'index.html';
+const LOGIN = "index.html";
 
 const goLogin = () => location.replace(LOGIN);
 
 // Usuario y token
 let usuarioSesion = null;
 try {
-  usuarioSesion = JSON.parse(localStorage.getItem('usuario') || 'null');
+  usuarioSesion = JSON.parse(localStorage.getItem("usuario") || "null");
 } catch {
   usuarioSesion = null;
 }
-const token = localStorage.getItem('token');
+const token = localStorage.getItem("token");
 
 // Guard inmediato
 if (!token) goLogin();
 
-// Anti-BFCache: si vuelven con atrás y la página se restaura desde caché
-window.addEventListener('pageshow', (e) => {
-  const nav = performance.getEntriesByType('navigation')[0];
-  const fromBF = e.persisted || nav?.type === 'back_forward';
-  if (fromBF && !localStorage.getItem('token')) goLogin();
+// Anti-BFCache
+window.addEventListener("pageshow", (e) => {
+  const nav = performance.getEntriesByType("navigation")[0];
+  const fromBF = e.persisted || nav?.type === "back_forward";
+  if (fromBF && !localStorage.getItem("token")) goLogin();
 });
 
-// Anti-atrás: si no hay token, mandá a login; si hay, re-inyectá el estado
-history.pushState(null, '', location.href);
-window.addEventListener('popstate', () => {
-  if (!localStorage.getItem('token')) goLogin();
-  else history.pushState(null, '', location.href);
+// Anti-atrás
+history.pushState(null, "", location.href);
+window.addEventListener("popstate", () => {
+  if (!localStorage.getItem("token")) goLogin();
+  else history.pushState(null, "", location.href);
 });
 
-// Pintar nombre en top bar (si existe id="userName")
+// Pintar nombre en top bar
 if (usuarioSesion?.nombreApellido) {
-  const userNameEl = document.getElementById('userName');
+  const userNameEl = document.getElementById("userName");
   if (userNameEl) userNameEl.textContent = usuarioSesion.nombreApellido;
 }
 
-// Helper fetch con Authorization y manejo de 401
+// Helper fetch con Authorization
 async function fetchAuth(url, options = {}) {
   const opts = {
     ...options,
     headers: {
       ...(options.headers || {}),
-      Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+      Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
+      "Content-Type": "application/json",
     },
-    cache: 'no-store',
+    cache: "no-store",
   };
   const res = await fetch(url, opts);
   if (res.status === 401) {
-    localStorage.removeItem('token');
-    localStorage.removeItem('usuario');
+    localStorage.removeItem("token");
+    localStorage.removeItem("usuario");
     goLogin();
-    throw new Error('No autorizado');
+    throw new Error("No autorizado");
   }
   return res;
 }
 
-// Helper JSON
-async function apiFetchJson(url, options = {}) {
-  const res = await fetchAuth(url, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(options.headers || {}),
-    },
-  });
-  if (!res.ok) {
-    const txt = await res.text().catch(() => '');
-    throw new Error(`HTTP ${res.status}: ${txt || res.statusText}`);
-  }
-  return res.json();
-}
-
-// 🔹 Logout
-const btnLogout = document.getElementById('btnLogout');
+// Logout
+const btnLogout = document.getElementById("btnLogout");
 if (btnLogout) {
-  btnLogout.addEventListener('click', () => {
+  btnLogout.addEventListener("click", () => {
     localStorage.clear();
     goLogin();
   });
 }
 
 // ==========================
-// 🧩 CAJA: lógica de pantalla
+// 📦 CAJA – LÓGICA
 // ==========================
 
-const API_CAJA_BASE = '/api/cajas';
+// ⚠️ Si tu ruta de movimientos es distinta, cambiá ESTO:
+const MOVS_ENDPOINT_BASE = "/api/cajas"; // => GET /api/cajas/:id/movimientos
 
-// Función comodín para encontrar elementos por varios IDs posibles
-function elById(...ids) {
-  for (const id of ids) {
-    const el = document.getElementById(id);
-    if (el) return el;
-  }
-  return null;
-}
+// DOM
+const $selectCaja = document.getElementById("selectCaja");
+const $selectMes = document.getElementById("selectMes");
+const $selectTipo = document.getElementById("selectTipoMovimiento");
+const $selectCategoria = document.getElementById("selectCategoria");
+const $selectFormato = document.getElementById("selectFormato");
+const $selectProfesional = document.getElementById("selectProfesional");
+const $selectBeneficiario = document.getElementById("selectBeneficiario");
 
-// Referencias DOM (ajustá si tus IDs son otros)
-const $selectCaja = elById('selectCaja', 'filtroCaja', 'caja');
-const $selectMes = elById('selectMes', 'filtroMes', 'mes');
-const $selectTipo = elById('selectTipoMovimiento', 'filtroTipoMov', 'tipoMovimiento');
-const $selectCategoria = elById('selectCategoria', 'filtroCategoria', 'categoria');
-const $selectFormato = elById('selectFormato', 'filtroFormato', 'formato');
-const $selectProfesional = elById('selectProfesional', 'filtroProfesional', 'profesional');
-const $selectBeneficiario = elById('selectBeneficiario', 'filtroBeneficiario', 'beneficiario');
+const $btnBuscar = document.getElementById("btnBuscarCaja");
+const $btnNuevo = document.getElementById("btnNuevoMovimientoCaja");
 
-const $btnBuscar = elById('btnBuscarCaja', 'btnBuscar');
-const $btnNuevo = elById('btnNuevoMovimientoCaja', 'btnNuevoMovimiento');
-const $saldoActual = elById('saldoActualCaja', 'saldoActual');
-const $contenedorMovs = elById('cajaMovimientosContainer', 'cajaMovimientos', 'contenedorMovimientos');
+const $saldoActual = document.getElementById("saldoActualCaja");
+const $tablaContainer = document.getElementById("cajaMovimientosContainer");
 
-// -------------- Helpers UI -----------------
+let CAJAS = [];
 
 function fmtARS(n) {
   const num = Number(n || 0);
-  return `$ ${num.toLocaleString('es-AR', {
+  return `$ ${num.toLocaleString("es-AR", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   })}`;
 }
 
-function setMensajeLista(msg) {
-  if (!$contenedorMovs) return;
-  $contenedorMovs.innerHTML = `
-    <div class="caja-no-data">
-      <p style="color:#777;font-style:italic;margin:12px 0;">${msg}</p>
-    </div>
-  `;
+function fmtFecha(d) {
+  if (!d) return "";
+  const dt = new Date(d);
+  if (Number.isNaN(dt.getTime())) return "";
+  const dd = String(dt.getDate()).padStart(2, "0");
+  const mm = String(dt.getMonth() + 1).padStart(2, "0");
+  const yy = dt.getFullYear();
+  return `${dd}/${mm}/${yy}`;
 }
 
-function getVal(selectEl) {
-  return selectEl && selectEl.value ? selectEl.value : '';
+// --------------------------
+// Filtros estáticos
+// --------------------------
+function initFiltrosEstaticos() {
+  if ($selectMes) {
+    const now = new Date();
+    const year = now.getFullYear();
+    $selectMes.innerHTML = `<option value="">Mes</option>`;
+    for (let m = 1; m <= 12; m++) {
+      const mm = String(m).padStart(2, "0");
+      const opt = document.createElement("option");
+      opt.value = `${year}-${mm}`; // YYYY-MM
+      opt.textContent = `${mm}/${year}`;
+      $selectMes.appendChild(opt);
+    }
+  }
+
+  if ($selectTipo) {
+    $selectTipo.innerHTML = `
+      <option value="">Tipo de movimiento</option>
+      <option value="INGRESO">Ingreso</option>
+      <option value="EGRESO">Egreso</option>
+    `;
+  }
+
+  if ($selectCategoria) {
+    $selectCategoria.innerHTML = `
+      <option value="">Categoría</option>
+      <option value="PADRES">Pagos padres</option>
+      <option value="OS">Obra social</option>
+      <option value="AMBOS">Ambos</option>
+      <option value="MANUAL">Ajuste / Manual</option>
+    `;
+  }
+
+  if ($selectFormato) {
+    $selectFormato.innerHTML = `
+      <option value="">Formato</option>
+      <option value="EFECTIVO">Efectivo</option>
+      <option value="TRANSFERENCIA">Transferencia</option>
+      <option value="MP">Mercado Pago</option>
+      <option value="OTRO">Otro</option>
+    `;
+  }
+
+  if ($selectProfesional) {
+    $selectProfesional.innerHTML = `
+      <option value="">Profesional</option>
+    `;
+  }
+
+  if ($selectBeneficiario) {
+    $selectBeneficiario.innerHTML = `
+      <option value="">Beneficiario</option>
+    `;
+  }
 }
 
-// -------------- Cargar cajas y saldo -----------------
-
+// --------------------------
+// Cargar cajas y saldo
+// --------------------------
 async function cargarCajas() {
   if (!$selectCaja) return;
+  $selectCaja.innerHTML = `<option value="">Caja</option>`;
+  $saldoActual.textContent = "__________";
 
   try {
-    const cajas = await apiFetchJson(API_CAJA_BASE);
+    const res = await fetchAuth("/api/cajas");
+    const data = await res.json();
 
-    if (!Array.isArray(cajas) || !cajas.length) {
-      $selectCaja.innerHTML = '<option value="">Sin cajas</option>';
-      if ($saldoActual) $saldoActual.textContent = '$ _________';
-      setMensajeLista('No hay cajas definidas. Todavía no se registraron pagos.');
+    if (!Array.isArray(data) || !data.length) {
+      $saldoActual.textContent = "—";
       return;
     }
 
-    $selectCaja.innerHTML =
-      '<option value="">Caja</option>' +
-      cajas
-        .map((c) => {
-          const nombre =
-            c.nombreArea ||
-            (c.area && c.area.nombre) ||
-            c.nombre ||
-            'Caja sin nombre';
-          const saldo = fmtARS(c.saldoTotal ?? 0);
-          return `<option value="${c._id}">${nombre} — ${saldo}</option>`;
-        })
-        .join('');
+    CAJAS = data;
 
-    // Si querés seleccionar automáticamente la primera caja
-    // y mostrar su saldo:
-    $selectCaja.value = cajas[0]._id;
-    await actualizarSaldoActual();
-    await buscarMovimientos(); // si ya tenés el endpoint de movimientos
-  } catch (err) {
-    console.error('Error cargando cajas:', err);
-    setMensajeLista('Error al cargar las cajas.');
-    if ($saldoActual) $saldoActual.textContent = 'Error';
-  }
-}
+    data.forEach((c) => {
+      const opt = document.createElement("option");
+      opt.value = c._id;
+      const nombre = c.nombreArea || c.nombre || "Caja";
+      const total =
+        typeof c.saldoTotal === "number"
+          ? c.saldoTotal
+          : Number(c.saldoPadres || 0) + Number(c.saldoOS || 0);
+      opt.textContent = `${nombre} — ${fmtARS(total)}`;
+      opt.dataset.saldoTotal = total;
+      $selectCaja.appendChild(opt);
+    });
 
-async function actualizarSaldoActual() {
-  if (!$selectCaja || !$saldoActual) return;
-
-  const cajaId = $selectCaja.value;
-  if (!cajaId) {
-    $saldoActual.textContent = '$ _________';
-    return;
-  }
-
-  try {
-    const caja = await apiFetchJson(`${API_CAJA_BASE}/${cajaId}`);
-    const saldo = fmtARS(caja.saldoTotal ?? 0);
-    $saldoActual.textContent = saldo;
-  } catch (err) {
-    console.error('Error obteniendo caja:', err);
-    $saldoActual.textContent = 'Error';
-  }
-}
-
-// -------------- Movimientos: búsqueda y render -----------------
-
-async function buscarMovimientos() {
-  if (!$selectCaja || !$contenedorMovs) return;
-
-  const cajaId = $selectCaja.value;
-  if (!cajaId) {
-    setMensajeLista('No hay información / seleccionar filtros.');
-    return;
-  }
-
-  // Si todavía no tenés la ruta de movimientos hecha,
-  // dejá esto en standby; cuando la crees, usás la query:
-  const params = new URLSearchParams();
-  params.set('mes', getVal($selectMes));
-  params.set('tipoMovimiento', getVal($selectTipo));
-  params.set('categoria', getVal($selectCategoria));
-  params.set('formato', getVal($selectFormato));
-  params.set('profesionalId', getVal($selectProfesional));
-  params.set('beneficiario', getVal($selectBeneficiario));
-
-  // Limpiamos params vacíos
-  for (const [k, v] of [...params.entries()]) {
-    if (!v) params.delete(k);
-  }
-
-  try {
-    setMensajeLista('Buscando movimientos...');
-
-    // Ajustá la ruta cuando tengas el backend:
-    // Ejemplo: GET /api/cajas/:id/movimientos?...
-    const url = `${API_CAJA_BASE}/${cajaId}/movimientos${
-      params.toString() ? `?${params.toString()}` : ''
-    }`;
-
-    const data = await apiFetchJson(url);
-    const movs = Array.isArray(data) ? data : data.movimientos || [];
-
-    if (!movs.length) {
-      setMensajeLista('No hay información / seleccionar filtros.');
-      return;
+    // selecciono la primera caja por defecto
+    if (data[0]) {
+      $selectCaja.value = data[0]._id;
+      actualizarSaldoCaja();
+      // cargo movimientos iniciales
+      buscarMovimientos();
     }
-
-    renderMovimientos(movs);
   } catch (err) {
-    console.error('Error buscando movimientos de caja:', err);
-    setMensajeLista('Error al buscar movimientos.');
+    console.error("Error al cargar cajas:", err);
+    $saldoActual.textContent = "—";
   }
 }
 
-function renderMovimientos(movs) {
-  if (!$contenedorMovs) return;
+function actualizarSaldoCaja() {
+  if (!$saldoActual || !$selectCaja) return;
+  const id = $selectCaja.value;
+  if (!id) {
+    $saldoActual.textContent = "__________";
+    return;
+  }
 
-  const filas = movs
+  const caja = CAJAS.find((c) => String(c._id) === String(id));
+  if (!caja) {
+    $saldoActual.textContent = "—";
+    return;
+  }
+
+  const total =
+    typeof caja.saldoTotal === "number"
+      ? caja.saldoTotal
+      : Number(caja.saldoPadres || 0) + Number(caja.saldoOS || 0);
+
+  $saldoActual.textContent = fmtARS(total);
+}
+
+// --------------------------
+// Listar movimientos
+// --------------------------
+function renderMovimientos(list) {
+  if (!$tablaContainer) return;
+
+  if (!Array.isArray(list) || !list.length) {
+    $tablaContainer.innerHTML =
+      `<p class="sin-info">No hay movimientos para los filtros seleccionados.</p>`;
+    return;
+  }
+
+  const rows = list
     .map((m) => {
-      const fecha = m.fecha
-        ? new Date(m.fecha).toLocaleDateString('es-AR')
-        : '';
-      const tipo = m.tipoMovimiento || m.tipo || '';
-      const cat = m.categoria || '';
-      const formato = m.formato || m.medioPago || '';
+      const fecha = fmtFecha(m.fecha || m.createdAt);
+      const tipo = m.tipoMovimiento || m.tipo || "";
+      const categoria = m.categoria || "";
+      const formato = m.formato || "";
       const profesional =
-        m.profesionalNombre ||
-        (m.profesional && m.profesional.nombreApellido) ||
-        '';
-      const beneficiario = m.beneficiario || '';
-      const concepto = m.concepto || m.descripcion || '';
-      const montoPadres = fmtARS(m.montoPadres ?? 0);
-      const montoOS = fmtARS(m.montoOS ?? 0);
-      const montoTotal = fmtARS(m.montoTotal ?? 0);
+        m.profesionalNombre || m.profesional || m.usuarioNombre || "";
+      const beneficiario =
+        m.pacienteNombre ||
+        m.beneficiarioNombre ||
+        m.beneficiario ||
+        "";
+      const concepto = m.concepto || m.descripcion || m.origen || "";
+      const montoPadres = fmtARS(m.montoPadres || 0);
+      const montoOS = fmtARS(m.montoOS || 0);
+      const montoTotal = fmtARS(m.montoTotal || m.monto || 0);
 
       return `
         <tr>
           <td>${fecha}</td>
           <td>${tipo}</td>
-          <td>${cat}</td>
+          <td>${categoria}</td>
           <td>${formato}</td>
           <td>${profesional}</td>
           <td>${beneficiario}</td>
-          <td style="text-align:right;">${montoPadres}</td>
-          <td style="text-align:right;">${montoOS}</td>
-          <td style="text-align:right;font-weight:600;">${montoTotal}</td>
+          <td class="num">${montoPadres}</td>
+          <td class="num">${montoOS}</td>
+          <td class="num">${montoTotal}</td>
           <td>${concepto}</td>
         </tr>
       `;
     })
-    .join('');
+    .join("");
 
-  $contenedorMovs.innerHTML = `
-    <div class="tabla-caja-wrapper">
-      <table class="tabla-caja">
-        <thead>
-          <tr>
-            <th>Fecha</th>
-            <th>Tipo</th>
-            <th>Categoría</th>
-            <th>Formato</th>
-            <th>Profesional</th>
-            <th>Beneficiario</th>
-            <th>Padres</th>
-            <th>O.S.</th>
-            <th>Total</th>
-            <th>Concepto</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${filas}
-        </tbody>
-      </table>
-    </div>
+  $tablaContainer.innerHTML = `
+    <table class="tabla-caja">
+      <thead>
+        <tr>
+          <th>Fecha</th>
+          <th>Tipo</th>
+          <th>Categoría</th>
+          <th>Formato</th>
+          <th>Profesional</th>
+          <th>Beneficiario</th>
+          <th>Padres</th>
+          <th>Obra social</th>
+          <th>Total</th>
+          <th>Detalle</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows}
+      </tbody>
+    </table>
   `;
 }
 
-// -------------- Nuevo movimiento (placeholder) -----------------
-
-async function abrirNuevoMovimiento() {
-  // Por ahora solo placeholder; después lo conectamos con SweetAlert2
-  // para cargar un movimiento manual.
-  console.log('Nuevo movimiento de caja (pendiente de implementar)');
-}
-
-// -------------- Listeners iniciales -----------------
-
-document.addEventListener('DOMContentLoaded', () => {
-  // Cargar cajas al entrar
-  cargarCajas();
-
-  if ($selectCaja) {
-    $selectCaja.addEventListener('change', async () => {
-      await actualizarSaldoActual();
-      // Podés decidir si refrescar la grilla automáticamente o no
-      await buscarMovimientos();
-    });
+async function buscarMovimientos() {
+  if (!$selectCaja || !$selectCaja.value) {
+    if ($tablaContainer) {
+      $tablaContainer.innerHTML =
+        `<p class="sin-info">Seleccioná una caja.</p>`;
+    }
+    return;
   }
 
-  if ($btnBuscar) {
-    $btnBuscar.addEventListener('click', (e) => {
-      e.preventDefault();
+  const cajaId = $selectCaja.value;
+  const params = new URLSearchParams();
+
+  if ($selectMes?.value) params.set("mes", $selectMes.value);
+  if ($selectTipo?.value) params.set("tipoMovimiento", $selectTipo.value);
+  if ($selectCategoria?.value) params.set("categoria", $selectCategoria.value);
+  if ($selectFormato?.value) params.set("formato", $selectFormato.value);
+  if ($selectProfesional?.value) params.set("profesionalId", $selectProfesional.value);
+  if ($selectBeneficiario?.value) params.set("beneficiarioId", $selectBeneficiario.value);
+
+  const qs = params.toString();
+  const url = qs
+    ? `${MOVS_ENDPOINT_BASE}/${cajaId}/movimientos?${qs}`
+    : `${MOVS_ENDPOINT_BASE}/${cajaId}/movimientos`;
+
+  if ($tablaContainer) {
+    $tablaContainer.innerHTML =
+      `<p class="sin-info">Buscando movimientos...</p>`;
+  }
+
+  try {
+    const res = await fetchAuth(url);
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    const list = Array.isArray(data) ? data : data.movimientos || [];
+    renderMovimientos(list);
+  } catch (err) {
+    console.error("Error al buscar movimientos de caja:", err);
+    if ($tablaContainer) {
+      $tablaContainer.innerHTML =
+        `<p class="sin-info">Error al buscar movimientos.</p>`;
+    }
+  }
+}
+
+// --------------------------
+// Nuevo movimiento (todavía sin implementar)
+// --------------------------
+function initNuevoMovimiento() {
+  if (!$btnNuevo) return;
+  $btnNuevo.addEventListener("click", () => {
+    // Más adelante armamos el modal para cargar un movimiento manual
+    alert("Alta de movimiento manual de caja: pendiente de implementar.");
+  });
+}
+
+// --------------------------
+// INIT
+// --------------------------
+document.addEventListener("DOMContentLoaded", () => {
+  initFiltrosEstaticos();
+  cargarCajas();
+  initNuevoMovimiento();
+
+  if ($selectCaja) {
+    $selectCaja.addEventListener("change", () => {
+      actualizarSaldoCaja();
+      // si querés que al cambiar de caja se refresquen los movimientos:
       buscarMovimientos();
     });
   }
 
-  if ($btnNuevo) {
-    $btnNuevo.addEventListener('click', (e) => {
+  if ($btnBuscar) {
+    $btnBuscar.addEventListener("click", (e) => {
       e.preventDefault();
-      abrirNuevoMovimiento();
+      buscarMovimientos();
     });
   }
-
-  // Mensaje inicial
-  if ($contenedorMovs) {
-    setMensajeLista('No hay información / seleccionar filtros.');
-  }
 });
+
 
 
 
