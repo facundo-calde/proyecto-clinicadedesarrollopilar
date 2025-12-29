@@ -450,12 +450,11 @@
 // ==============================
 // Modal de detalle por área (Excel + editable + selects) + rango DESDE/HASTA
 // ==============================
-// ahora: usamos un solo período
 async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel, opts = {}) {
   try {
-    // opts: { period: "YYYY-MM" }
-    const periodoSel = opts?.period ? String(opts.period) : "";
-
+    // opts: { desde: "YYYY-MM", hasta: "YYYY-MM" }
+    const desdeSel = opts?.desde ? String(opts.desde) : "";
+    const hastaSel = opts?.hasta ? String(opts.hasta) : "";
 
     // Catálogos
     const [AREAS, MODULOS_ALL, USUARIOS_ALL] = await Promise.all([
@@ -554,8 +553,8 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel, opts = {}) {
     if (areaSel && areaSel.nombre) qs.push(`areaNombre=${encodeURIComponent(areaSel.nombre)}`);
 
     // ✅ NUEVO: rango desde/hasta (YYYY-MM)
-    if (periodoSel) qs.push(`period=${encodeURIComponent(periodoSel)}`);
-
+    if (desdeSel) qs.push(`desde=${encodeURIComponent(desdeSel)}`);
+    if (hastaSel) qs.push(`hasta=${encodeURIComponent(hastaSel)}`);
 
     if (qs.length) path += `?${qs.join("&")}`;
 
@@ -1382,22 +1381,24 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel, opts = {}) {
         }
 
         // PDF (con desde/hasta)
-  const btnPDF = popup.querySelector("#edcBtnDescargarPDF");
-if (btnPDF) {
-  btnPDF.addEventListener("click", () => {
-    let url = `/api/estado-de-cuenta/${encodeURIComponent(paciente.dni)}/extracto`;
+        const btnPDF = popup.querySelector("#edcBtnDescargarPDF");
+        if (btnPDF) {
+          btnPDF.addEventListener("click", () => {
+            let url = `/api/estado-de-cuenta/${encodeURIComponent(paciente.dni)}/extracto`;
 
-    const qs = [];
-    if (areaSel?.id) qs.push(`areaId=${encodeURIComponent(areaSel.id)}`);
+            const qs = [];
+            if (areaSel?.id) qs.push(`areaId=${encodeURIComponent(areaSel.id)}`);
 
-    const period = ($periodo?.value || "").trim();
-    if (period) qs.push(`period=${encodeURIComponent(period)}`);
+            const desde = ($desde?.value || "").trim();
+            const hasta = ($hasta?.value || "").trim();
 
-    if (qs.length) url += `?${qs.join("&")}`;
-    window.open(url, "_blank");
-  });
-}
+            if (desde) qs.push(`desde=${encodeURIComponent(desde)}`);
+            if (hasta) qs.push(`hasta=${encodeURIComponent(hasta)}`);
 
+            if (qs.length) url += `?${qs.join("&")}`;
+            window.open(url, "_blank");
+          });
+        }
       },
     });
   } catch (e) {
