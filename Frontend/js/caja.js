@@ -68,52 +68,11 @@ if (btnLogout) {
 }
 
 // ==========================
-// 🎨 Estilos de la tabla de caja
-// ==========================
-(() => {
-  const style = document.createElement("style");
-  style.textContent = `
-    .tabla-caja {
-      width: 100%;
-      border-collapse: separate;
-      border-spacing: 0 3px;
-      font-size: 13px;
-    }
-    .tabla-caja thead th {
-      background: #f5f5f5;
-      font-weight: 600;
-      padding: 6px 10px;
-      text-align: left;
-      letter-spacing: 0.03em;
-      font-size: 12px;
-      white-space: nowrap;
-    }
-    .tabla-caja tbody td {
-      padding: 6px 10px;
-      font-size: 13px;
-    }
-    .tabla-caja tbody tr:nth-child(even) {
-      background-color: #fafafa;
-    }
-    .tabla-caja td.num {
-      text-align: right;
-      white-space: nowrap;
-    }
-    .sin-info {
-      padding: 18px;
-      font-style: italic;
-      color: #777;
-    }
-  `;
-  document.head.appendChild(style);
-})();
-
-// ==========================
 // 📦 CAJA – LÓGICA
 // ==========================
 
-// ⚠️ Si tu ruta de movimientos es distinta, cambiá ESTO:
-const MOVS_ENDPOINT_BASE = "/api/cajas"; // => GET /api/cajas/:id/movimientos
+// endpoint base
+const MOVS_ENDPOINT_BASE = "/api/cajas";
 
 // DOM
 const $selectCaja = document.getElementById("selectCaja");
@@ -132,6 +91,7 @@ const $tablaContainer = document.getElementById("cajaMovimientosContainer");
 
 let CAJAS = [];
 
+// --------- helpers formato ---------
 function fmtARS(n) {
   const num = Number(n || 0);
   return `$ ${num.toLocaleString("es-AR", {
@@ -214,14 +174,14 @@ function initFiltrosEstaticos() {
 async function cargarCajas() {
   if (!$selectCaja) return;
   $selectCaja.innerHTML = `<option value="">Caja</option>`;
-  $saldoActual.textContent = "__________";
+  if ($saldoActual) $saldoActual.textContent = "__________";
 
   try {
     const res = await fetchAuth("/api/cajas");
     const data = await res.json();
 
     if (!Array.isArray(data) || !data.length) {
-      $saldoActual.textContent = "—";
+      if ($saldoActual) $saldoActual.textContent = "—";
       return;
     }
 
@@ -240,7 +200,7 @@ async function cargarCajas() {
       $selectCaja.appendChild(opt);
     });
 
-    // selecciono la primera caja por defecto
+    // primera caja por defecto
     if (data[0]) {
       $selectCaja.value = data[0]._id;
       actualizarSaldoCaja();
@@ -248,7 +208,7 @@ async function cargarCajas() {
     }
   } catch (err) {
     console.error("Error al cargar cajas:", err);
-    $saldoActual.textContent = "—";
+    if ($saldoActual) $saldoActual.textContent = "—";
   }
 }
 
@@ -293,21 +253,30 @@ function renderMovimientos(list) {
       const categoria = m.categoria || "";
       const formato = m.formato || "";
 
-      // Beneficiario = quien recibe la plata (profesional).
-      // Si no hay profesional cargado, caemos al paciente.
+      // Beneficiario = quien recibe la plata (profesional)
       const beneficiario =
-        m.beneficiarioNombre ||
-        m.beneficiario ||
         m.profesionalNombre ||
         m.profesional ||
         m.usuarioNombre ||
-        m.pacienteNombre ||
+        m.beneficiarioNombre ||
+        m.beneficiario ||
         "";
 
+      // Importe del movimiento (independiente si viene de padres u OS)
+      let total = 0;
+      if (typeof m.montoTotal === "number") {
+        total = m.montoTotal;
+      } else if (
+        typeof m.montoPadres === "number" ||
+        typeof m.montoOS === "number"
+      ) {
+        total = Number(m.montoPadres || 0) + Number(m.montoOS || 0);
+      } else {
+        total = Number(m.monto || 0);
+      }
+      const montoMovimiento = fmtARS(total);
+
       const concepto = m.concepto || m.descripcion || m.origen || "";
-      const montoPadres = fmtARS(m.montoPadres || 0);
-      const montoOS = fmtARS(m.montoOS || 0);
-      const montoTotal = fmtARS(m.montoTotal || m.monto || 0);
 
       return `
         <tr>
@@ -316,9 +285,7 @@ function renderMovimientos(list) {
           <td>${categoria}</td>
           <td>${formato}</td>
           <td>${beneficiario}</td>
-          <td class="num">${montoPadres}</td>
-          <td class="num">${montoOS}</td>
-          <td class="num">${montoTotal}</td>
+          <td class="num">${montoMovimiento}</td>
           <td>${concepto}</td>
         </tr>
       `;
@@ -334,9 +301,7 @@ function renderMovimientos(list) {
           <th>Categoría</th>
           <th>Formato</th>
           <th>Beneficiario</th>
-          <th>Padres</th>
-          <th>Obra social</th>
-          <th>Total</th>
+          <th>Movimiento</th>
           <th>Detalle</th>
         </tr>
       </thead>
@@ -347,6 +312,9 @@ function renderMovimientos(list) {
   `;
 }
 
+// --------------------------
+// Buscar movimientos
+// --------------------------
 async function buscarMovimientos() {
   if (!$selectCaja || !$selectCaja.value) {
     if ($tablaContainer) {
@@ -396,12 +364,11 @@ async function buscarMovimientos() {
 }
 
 // --------------------------
-// Nuevo movimiento (todavía sin implementar)
+// Nuevo movimiento (placeholder)
 // --------------------------
 function initNuevoMovimiento() {
   if (!$btnNuevo) return;
   $btnNuevo.addEventListener("click", () => {
-    // Más adelante armamos el modal para cargar un movimiento manual
     alert("Alta de movimiento manual de caja: pendiente de implementar.");
   });
 }
@@ -428,6 +395,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 });
+
 
 
 
