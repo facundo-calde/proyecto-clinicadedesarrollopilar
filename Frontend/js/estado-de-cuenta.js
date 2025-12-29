@@ -1176,29 +1176,37 @@ async function edcMostrarEstadoCuentaAreaModal(paciente, areaSel, opts = {}) {
         // Render inicial
         render();
 
-    // ✅ NUEVO: recargar al cambiar el mes
-const recargarPorMes = async () => {
-  const mes = ($desde?.value || "").trim();
+        // ✅ NUEVO: recargar al cambiar rango (con confirmación)
+        const recargarPorRango = async () => {
+          const desde = ($desde?.value || "").trim();
+          const hasta = ($hasta?.value || "").trim();
 
-  if (!mes) return;
+          if (desde && hasta && desde > hasta) {
+            await Swal.fire({
+              icon: "warning",
+              title: "Rango inválido",
+              text: "Desde no puede ser mayor que Hasta.",
+            });
+            return;
+          }
 
-  const ok = await Swal.fire({
-    icon: "question",
-    title: "Actualizar vista",
-    text: "Se recargará el estado de cuenta y vas a perder cambios no guardados. ¿Continuar?",
-    showCancelButton: true,
-    confirmButtonText: "Sí, recargar",
-    cancelButtonText: "Cancelar",
-  });
+          const ok = await Swal.fire({
+            icon: "question",
+            title: "Actualizar vista",
+            text: "Esto recargará los datos y vas a perder cambios no guardados. ¿Continuar?",
+            showCancelButton: true,
+            confirmButtonText: "Sí, recargar",
+            cancelButtonText: "Cancelar",
+          });
 
-  if (!ok.isConfirmed) return;
+          if (!ok.isConfirmed) return;
 
-  Swal.close();
-  edcMostrarEstadoCuentaAreaModal(paciente, areaSel || null, { desde: mes, hasta: mes });
-};
+          Swal.close();
+          edcMostrarEstadoCuentaAreaModal(paciente, areaSel || null, { desde, hasta });
+        };
 
-$desde?.addEventListener("change", recargarPorMes);
-
+        $desde?.addEventListener("change", recargarPorRango);
+        $hasta?.addEventListener("change", recargarPorRango);
 
         const handleChange = (e) => {
           const t = e.target;
