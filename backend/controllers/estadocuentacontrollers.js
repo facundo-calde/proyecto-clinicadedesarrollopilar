@@ -195,16 +195,22 @@ const obtenerEstadoDeCuenta = async (req, res) => {
     const movs = await Movimiento.find(whereMov).sort({ fecha: 1 }).lean();
 
     // Facturas (tipo FACT)
-    const facturas = movs
-      .filter((m) => m.tipo === "FACT")
-      .map((m) => ({
-        _id: m._id,
-        mes: m.period || (m.fecha ? m.fecha.toISOString().slice(0, 7) : ""),
-        nro: m.nroRecibo || m.tipoFactura || "",
-        monto: Number(m.monto || 0),
-        detalle: m.descripcion || m.observaciones || "",
-        fecha: m.fecha ? m.fecha.toISOString().slice(0, 10) : "",
-      }));
+const facturas = movs
+  .filter((m) => m.tipo === "FACT")
+  .map((m) => ({
+    _id: m._id,
+    mes: m.period || (m.fecha ? m.fecha.toISOString().slice(0, 7) : ""),
+    nro: m.nroRecibo || m.tipoFactura || "",
+    monto: Number(m.monto || 0),
+    detalle: m.descripcion || m.observaciones || "",
+    fecha: m.fecha ? m.fecha.toISOString().slice(0, 10) : "",
+
+    // ✅ NUEVO: para que el front lo vea tildado
+    facturaPagada:
+      (m.meta && m.meta.facturaPagada === true) ||
+      String(m.estado || "").toUpperCase() === "PAGADO",
+  }));
+
 
     // Totales y mapa de pagos por (periodo + módulo)
     let pagadoOS = 0,
@@ -578,34 +584,46 @@ const actualizarEstadoDeCuenta = async (req, res) => {
       });
     });
 
-    // ---- reconstruir FACTURAS desde facturas ----
-    for (const f of facturasArr) {
-      const period = (f.mes || "").trim(); // YYYY-MM
-      const monto = parseNumberLike(f.monto, 0);
-      if (!monto) continue;
+   // ---- reconstruir FACTURAS desde facturas ----
+for (const f of facturasArr) {
+  const period = (f.mes || "").trim(); // YYYY-MM
+  const monto = parseNumberLike(f.monto, 0);
+  if (!monto) continue;
 
-      const fecha =
-        f.fecha && String(f.fecha).trim()
-          ? new Date(f.fecha)
-          : new Date(`${period || "1970-01"}-01T00:00:00.000Z`);
+  const fecha =
+    f.fecha && String(f.fecha).trim()
+      ? new Date(f.fecha)
+      : new Date(`${period || "1970-01"}-01T00:00:00.000Z`);
 
-      docsToInsert.push({
-        pacienteId: paciente._id,
-        dni,
-        areaId: areaId || undefined,
-        areaNombre: area?.nombre || undefined,
+  // ✅ NUEVO: estado de factura desde checkbox del front
+  const facturaPagada = !!f.facturaPagada;
 
-        period: period || undefined,
-        tipo: "FACT",
-        fecha,
-        monto,
+  docsToInsert.push({
+    pacienteId: paciente._id,
+    dni,
+    areaId: areaId || undefined,
+    areaNombre: area?.nombre || undefined,
 
-        nroRecibo: f.nro || undefined,
-        descripcion: f.detalle || undefined,
-        observaciones: f.detalle || undefined,
-        estado: "PENDIENTE",
-      });
-    }
+    period: period || undefined,
+    tipo: "FACT",
+    fecha,
+    monto,
+
+    nroRecibo: f.nro || undefined,
+    descripcion: f.detalle || undefined,
+    observaciones: f.detalle || undefined,
+
+    // ✅ guardamos el flag en meta (sin cambiar schema)
+    meta: {
+      ...(f.meta || {}),
+      facturaPagada,
+    },
+
+    // ✅ opcional (pero útil): sincronizar estado
+    estado: facturaPagada ? "PAGADO" : "PENDIENTE",
+  });
+}
+
 
     if (docsToInsert.length) {
       await Movimiento.insertMany(docsToInsert);
@@ -917,16 +935,23 @@ async function generarExtractoPDF(req, res) {
         };
       });
 
-    // Facturas en rango
-    const facturas = movsRango
-      .filter((m) => m.tipo === "FACT")
-      .map((m) => ({
-        mes: yyyymmFromMov(m) || "-",
-        nro: safeTxt(m.nroRecibo || m.nroFactura || m.tipoFactura || "-"),
-        monto: Number(m.monto || 0),
-        fecha: fmtFecha(m.fecha || m.createdAt || m.fechaFactura),
-      }))
-      .sort((a, b) => String(a.mes).localeCompare(String(b.mes)));
+   // Facturas en rango
+const facturas = movsRango
+  .filter((m) => m.tipo === "FACT")
+  .map((m) => {
+    const pagada =
+      (m.meta && m.meta.facturaPagada === true) ||
+      String(m.estado || "").toUpperCase() === "PAGADO";
+
+    return {
+      mes: yyyymmFromMov(m) || "-",
+      nro: safeTxt(m.nroRecibo || m.nroFactura || m.tipoFactura || "-"),
+      monto: Number(m.monto || 0),
+      estadoFactura: pagada ? "PAGA" : "IMPAGA",
+    };
+  })
+  .sort((a, b) => String(a.mes).localeCompare(String(b.mes)));
+
 
     // =========================
     // Respuesta PDF
@@ -1185,12 +1210,13 @@ async function generarExtractoPDF(req, res) {
 
       doc.font("Helvetica").fontSize(8.2).fillColor("#000");
 
-      const cell = {
-        mes: f.mes || "-",
-        nro: String(f.nro || "-"),
-        monto: fmtARS(f.monto),
-        fecha: f.fecha || "",
-      };
+     const cell = {
+  mes: f.mes || "-",
+  nro: String(f.nro || "-"),
+  monto: fmtARS(f.monto),
+  estadoFactura: f.estadoFactura || "IMPAGA",
+};
+
 
       let x = pageLeft;
       for (const c of fCols) {
