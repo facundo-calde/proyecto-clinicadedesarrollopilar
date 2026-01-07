@@ -57,6 +57,9 @@ const MovimientoSchema = new Schema(
     descripcion:   { type: String },
     observaciones: { type: String },
 
+    // ✅ NUEVO: estado manual de factura (solo tipo FACT)
+    facturaPagada: { type: Boolean, default: false, index: true },
+
     estado: {
       type: String,
       enum: ["PENDIENTE", "PAGADO"],
