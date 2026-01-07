@@ -868,8 +868,10 @@ async function generarExtractoPDF(req, res) {
     const totalCargos = cargos;
     const totalPagado = pagadoOS + pagadoPART;
     const totalPagadoConAjustes = totalPagado + ajustesMas - ajustesMenos;
-    const saldo = Number((totalCargos - totalPagadoConAjustes).toFixed(2));
-    const difFactPag = Number((totalFacturado - totalPagadoConAjustes).toFixed(2));
+
+    // ✅ SALDO (deuda): si queda a favor, mostrás 0
+    const saldoCalc = Number((totalCargos - totalPagadoConAjustes).toFixed(2));
+    const saldoDeuda = Math.max(0, saldoCalc);
 
     const filas = movsRango
       .filter((m) => m.tipo === "CARGO")
@@ -954,17 +956,12 @@ async function generarExtractoPDF(req, res) {
 
     doc.y = logoDrawn ? 64 : pageTop;
 
-    doc
-      .fontSize(14)
-      .fillColor("#000")
-      .text("Informe de estado de cuenta", pageLeft, doc.y);
+    doc.fontSize(14).fillColor("#000").text("Informe de estado de cuenta", pageLeft, doc.y);
     doc.moveDown(0.35);
 
-    doc
-      .fontSize(11)
-      .fillColor("#000")
-      .text(`${paciente.nombre || "-"} - DNI ${paciente.dni || "-"}`);
+    doc.fontSize(11).fillColor("#000").text(`${paciente.nombre || "-"} - DNI ${paciente.dni || "-"}`);
     doc.fontSize(10).fillColor("#444").text(`Área: ${area.nombre || "-"}`);
+
     const rangoTxt =
       desde || hasta
         ? `Rango: ${desde || "(inicio)"} a ${hasta || "(fin)"}`
@@ -979,6 +976,7 @@ async function generarExtractoPDF(req, res) {
     function drawTopBar() {
       const barH = 22;
       const y = doc.y;
+
       doc.save();
       doc.rect(pageLeft, y, pageW, barH).fill(green);
       doc.fillColor("#000").fontSize(10).font("Helvetica-Bold");
@@ -987,8 +985,9 @@ async function generarExtractoPDF(req, res) {
         align: "center",
       });
 
-      const rightTxt = `DIF ENTRE FACT Y PAGADO -$`;
-      const rightVal = fmtARS(Math.abs(difFactPag));
+      // ✅ CAMBIO: SALDO (deuda o 0)
+      const rightTxt = `SALDO`;
+      const rightVal = fmtARS(saldoDeuda);
       doc.font("Helvetica-Bold").fontSize(9).fillColor("#000");
       doc.text(rightTxt, pageLeft, y + 6, {
         width: pageW - 90,
@@ -998,8 +997,8 @@ async function generarExtractoPDF(req, res) {
         width: 85,
         align: "right",
       });
-      doc.restore();
 
+      doc.restore();
       doc.y = y + barH + 10;
     }
 
@@ -1008,33 +1007,24 @@ async function generarExtractoPDF(req, res) {
     const rowH = 14;
     const headerH = 18;
 
-    // ✅ PROFESIONAL ELIMINADO
+    // ✅ CAMBIO: se quita PROFESIONAL
     let cols = [
       { key: "mes", label: "MES", w: 58, align: "left" },
       { key: "cant", label: "CANT", w: 44, align: "center" },
-      { key: "codigo", label: "CODIGO", w: 330, align: "left" }, // ⬅️ más ancho
+      { key: "codigo", label: "CODIGO", w: 280, align: "left" },
       { key: "aPagar", label: "A PAGAR", w: 90, align: "right" },
-      {
-        key: "pagPadres",
-        label: "PAGADO POR\nPADRES",
-        w: 110,
-        align: "right",
-      },
+      { key: "pagPadres", label: "PAGADO POR\nPADRES", w: 100, align: "right" },
       { key: "detPadres", label: "DETALLE", w: 140, align: "left" },
     ];
 
     if (tieneOS) {
       cols = cols.concat([
-        {
-          key: "pagOS",
-          label: "PAGADO POR\nO.S",
-          w: 95,
-          align: "right",
-        },
-        { key: "detOS", label: "DETALLE", w: 150, align: "left" },
+        { key: "pagOS", label: "PAGADO POR\nO.S", w: 90, align: "right" },
+        { key: "detOS", label: "DETALLE", w: 140, align: "left" },
       ]);
     }
 
+    // Ajuste automático a la página
     const sumW = cols.reduce((a, c) => a + c.w, 0);
     if (sumW > pageW) {
       const ratio = pageW / sumW;
@@ -1048,9 +1038,9 @@ async function generarExtractoPDF(req, res) {
     } else if (sumW < pageW) {
       const extra = pageW - sumW;
       const idxCodigo = cols.findIndex((c) => c.key === "codigo");
-      if (idxCodigo >= 0) cols[idxCodigo].w += Math.floor(extra * 0.6);
+      if (idxCodigo >= 0) cols[idxCodigo].w += Math.floor(extra * 0.55);
       const idxDet = cols.findIndex((c) => c.key === "detPadres");
-      if (idxDet >= 0) cols[idxDet].w += extra - Math.floor(extra * 0.6);
+      if (idxDet >= 0) cols[idxDet].w += extra - Math.floor(extra * 0.55);
     }
 
     function drawTableHeader() {
@@ -1174,7 +1164,6 @@ async function generarExtractoPDF(req, res) {
 
     function drawFRow(f) {
       const y = doc.y;
-
       if (y + fRowH > pageBottom - 120) return false;
 
       doc.save();
@@ -1230,14 +1219,8 @@ async function generarExtractoPDF(req, res) {
     doc.text("Total que pago", midX + 8, boxY + 28, { width: 130 });
 
     doc.font("Helvetica-Bold").fontSize(9).fillColor("#000");
-    doc.text(fmtARS(totalCargos), midX + 140, boxY + 12, {
-      width: boxW - 150,
-      align: "right",
-    });
-    doc.text(fmtARS(totalPagadoConAjustes), midX + 140, boxY + 30, {
-      width: boxW - 150,
-      align: "right",
-    });
+    doc.text(fmtARS(totalCargos), midX + 140, boxY + 12, { width: boxW - 150, align: "right" });
+    doc.text(fmtARS(totalPagadoConAjustes), midX + 140, boxY + 30, { width: boxW - 150, align: "right" });
 
     const boxW2 = 180;
     const rightX = pageRight - boxW2;
@@ -1246,10 +1229,7 @@ async function generarExtractoPDF(req, res) {
     doc.font("Helvetica-Bold").fontSize(8.5).fillColor("#000");
     doc.text("Total que se\nle facturo", rightX + 8, boxY + 16, { width: 90 });
     doc.font("Helvetica-Bold").fontSize(9).fillColor("#000");
-    doc.text(fmtARS(totalFacturado), rightX + 95, boxY + 24, {
-      width: boxW2 - 100,
-      align: "right",
-    });
+    doc.text(fmtARS(totalFacturado), rightX + 95, boxY + 24, { width: boxW2 - 100, align: "right" });
 
     doc.end();
   } catch (err) {
