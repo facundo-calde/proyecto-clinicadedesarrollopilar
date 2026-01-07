@@ -773,20 +773,17 @@ async function generarExtractoPDF(req, res) {
     const desde = period || desdeQ || null;
     const hasta = period || hastaQ || null;
 
-    if (!areaId)
-      return res.status(400).json({ error: "areaId es obligatorio" });
+    if (!areaId) return res.status(400).json({ error: "areaId es obligatorio" });
 
     const paciente = await Paciente.findOne({ dni }).lean();
-    if (!paciente)
-      return res.status(404).json({ error: "Paciente no encontrado" });
+    if (!paciente) return res.status(404).json({ error: "Paciente no encontrado" });
 
     const area = await Area.findById(areaId).lean();
     if (!area) return res.status(404).json({ error: "Área no encontrada" });
 
     // ✅ según tu schema (enum)
     const condicion = String(paciente.condicionDePago || "Particular");
-    const tieneOS =
-      /obra\s*social/i.test(condicion) && !/^particular$/i.test(condicion);
+    const tieneOS = /obra\s*social/i.test(condicion) && !/^particular$/i.test(condicion);
 
     try {
       await buildFilasArea(paciente, areaId);
@@ -811,9 +808,7 @@ async function generarExtractoPDF(req, res) {
     }
 
     const yyyymmFromMov = (m) =>
-      m.period ||
-      (m.fecha ? new Date(m.fecha).toISOString().slice(0, 7) : "") ||
-      "";
+      m.period || (m.fecha ? new Date(m.fecha).toISOString().slice(0, 7) : "") || "";
 
     function formatCantidad(q) {
       const n = Number(q);
@@ -874,52 +869,33 @@ async function generarExtractoPDF(req, res) {
     const totalPagado = pagadoOS + pagadoPART;
     const totalPagadoConAjustes = totalPagado + ajustesMas - ajustesMenos;
     const saldo = Number((totalCargos - totalPagadoConAjustes).toFixed(2));
-    const difFactPag = Number(
-      (totalFacturado - totalPagadoConAjustes).toFixed(2)
-    );
+    const difFactPag = Number((totalFacturado - totalPagadoConAjustes).toFixed(2));
 
     const filas = movsRango
       .filter((m) => m.tipo === "CARGO")
       .map((m) => {
         const mes = yyyymmFromMov(m) || "-";
-        const cantNum =
-          m.cantidad ?? m.qty ?? m.cant ?? m.cantidadModulo ?? 1;
+        const cantNum = m.cantidad ?? m.qty ?? m.cant ?? m.cantidadModulo ?? 1;
 
         const codigo =
           safeTxt(m.codigo || m.cod || m.moduloCodigo || "") ||
           safeTxt(m.moduloNombre || m.modulo || m.detalleCargo || "") ||
           safeTxt(m.descripcion || "");
 
-        const profesional =
-          safeTxt(
-            m.profesionalNombre ||
-              m.profesional ||
-              m.usuarioNombre ||
-              m.usuario ||
-              ""
-          ) || safeTxt(m.nombreProfesional || "");
-
         const aPagar = Number(m.monto || 0);
 
         const pagPadres = parseNumberLike(m.pagPadres, 0);
         const detPadres = safeTxt(
-          m.detallePadres ||
-            m.detPadres ||
-            m.detalle ||
-            m.detallePago ||
-            ""
+          m.detallePadres || m.detPadres || m.detalle || m.detallePago || ""
         );
 
         const pagOS = parseNumberLike(m.pagOS, 0);
-        const detOS = safeTxt(
-          m.detalleOS || m.detOs || m.detalleObraSocial || ""
-        );
+        const detOS = safeTxt(m.detalleOS || m.detOs || m.detalleObraSocial || "");
 
         return {
           mes,
           cant: formatCantidad(cantNum),
           codigo,
-          profesional,
           aPagar,
           pagPadres,
           detPadres,
@@ -941,10 +917,7 @@ async function generarExtractoPDF(req, res) {
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
-      `inline; filename="Extracto_${dni}_${(area.nombre || "area").replace(
-        /\s+/g,
-        "_"
-      )}${
+      `inline; filename="Extracto_${dni}_${(area.nombre || "area").replace(/\s+/g, "_")}${
         desde || hasta ? `_${desde || "INI"}-${hasta || "FIN"}` : ""
       }.pdf"`
     );
@@ -981,7 +954,10 @@ async function generarExtractoPDF(req, res) {
 
     doc.y = logoDrawn ? 64 : pageTop;
 
-    doc.fontSize(14).fillColor("#000").text("Informe de estado de cuenta", pageLeft, doc.y);
+    doc
+      .fontSize(14)
+      .fillColor("#000")
+      .text("Informe de estado de cuenta", pageLeft, doc.y);
     doc.moveDown(0.35);
 
     doc
@@ -1032,19 +1008,19 @@ async function generarExtractoPDF(req, res) {
     const rowH = 14;
     const headerH = 18;
 
+    // ✅ PROFESIONAL ELIMINADO
     let cols = [
       { key: "mes", label: "MES", w: 58, align: "left" },
       { key: "cant", label: "CANT", w: 44, align: "center" },
-      { key: "codigo", label: "CODIGO", w: 200, align: "left" },
-      { key: "profesional", label: "PROFESIONAL", w: 130, align: "left" },
-      { key: "aPagar", label: "A PAGAR", w: 78, align: "right" },
+      { key: "codigo", label: "CODIGO", w: 330, align: "left" }, // ⬅️ más ancho
+      { key: "aPagar", label: "A PAGAR", w: 90, align: "right" },
       {
         key: "pagPadres",
         label: "PAGADO POR\nPADRES",
-        w: 90,
+        w: 110,
         align: "right",
       },
-      { key: "detPadres", label: "DETALLE", w: 110, align: "left" },
+      { key: "detPadres", label: "DETALLE", w: 140, align: "left" },
     ];
 
     if (tieneOS) {
@@ -1052,10 +1028,10 @@ async function generarExtractoPDF(req, res) {
         {
           key: "pagOS",
           label: "PAGADO POR\nO.S",
-          w: 80,
+          w: 95,
           align: "right",
         },
-        { key: "detOS", label: "DETALLE", w: 110, align: "left" },
+        { key: "detOS", label: "DETALLE", w: 150, align: "left" },
       ]);
     }
 
@@ -1121,7 +1097,6 @@ async function generarExtractoPDF(req, res) {
         mes: r.mes || "-",
         cant: r.cant || "1",
         codigo: r.codigo || "",
-        profesional: r.profesional || "",
         aPagar: fmtARS(r.aPagar),
         pagPadres: fmtARS(r.pagPadres),
         detPadres: r.detPadres || "",
@@ -1150,10 +1125,7 @@ async function generarExtractoPDF(req, res) {
     drawTableHeader();
 
     if (!filas.length) {
-      doc
-        .fontSize(9)
-        .fillColor("#666")
-        .text("Sin movimientos en el rango seleccionado.");
+      doc.fontSize(9).fillColor("#666").text("Sin movimientos en el rango seleccionado.");
     } else {
       for (const r of filas) drawRow(r);
     }
@@ -1237,10 +1209,7 @@ async function generarExtractoPDF(req, res) {
     drawFHeader();
 
     if (!facturas.length) {
-      doc
-        .fontSize(9)
-        .fillColor("#666")
-        .text("Sin facturas registradas.");
+      doc.fontSize(9).fillColor("#666").text("Sin facturas registradas.");
     } else {
       for (const f of facturas) {
         const ok = drawFRow(f);
@@ -1257,9 +1226,7 @@ async function generarExtractoPDF(req, res) {
 
     doc.save().rect(midX, boxY, boxW, boxH).stroke(stroke).restore();
     doc.font("Helvetica-Bold").fontSize(8.5).fillColor("#000");
-    doc.text("Total que deberia\nhaber pagado", midX + 8, boxY + 6, {
-      width: 130,
-    });
+    doc.text("Total que deberia\nhaber pagado", midX + 8, boxY + 6, { width: 130 });
     doc.text("Total que pago", midX + 8, boxY + 28, { width: 130 });
 
     doc.font("Helvetica-Bold").fontSize(9).fillColor("#000");
@@ -1277,9 +1244,7 @@ async function generarExtractoPDF(req, res) {
 
     doc.save().rect(rightX, boxY + 10, boxW2, 32).stroke(stroke).restore();
     doc.font("Helvetica-Bold").fontSize(8.5).fillColor("#000");
-    doc.text("Total que se\nle facturo", rightX + 8, boxY + 16, {
-      width: 90,
-    });
+    doc.text("Total que se\nle facturo", rightX + 8, boxY + 16, { width: 90 });
     doc.font("Helvetica-Bold").fontSize(9).fillColor("#000");
     doc.text(fmtARS(totalFacturado), rightX + 95, boxY + 24, {
       width: boxW2 - 100,
@@ -1292,6 +1257,7 @@ async function generarExtractoPDF(req, res) {
     res.status(500).json({ error: "No se pudo generar el PDF" });
   }
 }
+
 
 module.exports = {
   obtenerEstadoDeCuenta,
