@@ -808,7 +808,9 @@ async function generarExtractoPDF(req, res) {
     }
 
     const yyyymmFromMov = (m) =>
-      m.period || (m.fecha ? new Date(m.fecha).toISOString().slice(0, 7) : "") || "";
+      m.period ||
+      (m.fecha ? new Date(m.fecha).toISOString().slice(0, 7) : "") ||
+      "";
 
     function formatCantidad(q) {
       const n = Number(q);
@@ -829,19 +831,22 @@ async function generarExtractoPDF(req, res) {
       return String(v ?? "").replace(/\s+/g, " ").trim();
     }
 
-    // Movimientos
+    // =========================
+    // Traer movimientos
+    // =========================
     const qAcum = { dni, areaId };
     if (hasta) qAcum.period = { $lte: hasta };
-
     const movsAcum = await Movimiento.find(qAcum).sort({ fecha: 1 }).lean();
 
     const qRango = { dni, areaId };
     if (desde && hasta) qRango.period = { $gte: desde, $lte: hasta };
     else if (desde && !hasta) qRango.period = { $gte: desde };
     else if (!desde && hasta) qRango.period = { $lte: hasta };
-
     const movsRango = await Movimiento.find(qRango).sort({ fecha: 1 }).lean();
 
+    // =========================
+    // Totales (acumulados)
+    // =========================
     let pagadoOS = 0,
       pagadoPART = 0,
       cargos = 0,
@@ -868,11 +873,84 @@ async function generarExtractoPDF(req, res) {
     const totalCargos = cargos;
     const totalPagado = pagadoOS + pagadoPART;
     const totalPagadoConAjustes = totalPagado + ajustesMas - ajustesMenos;
+    const saldo = Number((totalCargos - totalPagadoConAjustes).toFixed(2)); // ✅ SALDO real acumulado
 
-    // ✅ SALDO (deuda): si queda a favor, mostrás 0
-    const saldoCalc = Number((totalCargos - totalPagadoConAjustes).toFixed(2));
-    const saldoDeuda = Math.max(0, saldoCalc);
+    // =========================
+    // ✅ NUEVO: Mapear pagos OS/PART por (mes + módulo) (o fallback mes + código)
+    // =========================
+    const pagosMap = new Map();
 
+    const normKey = (s) =>
+      safeTxt(s || "")
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+
+    const getModuloKey = (m) => {
+      const modId =
+        m.moduloId ||
+        m.moduloIdMongo ||
+        m.moduloMongoId ||
+        (typeof m.modulo === "string" && /^[0-9a-fA-F]{24}$/.test(m.modulo) ? m.modulo : null) ||
+        null;
+
+      if (modId) return `ID:${String(modId)}`;
+
+      const codigo =
+        safeTxt(m.codigo || m.cod || m.moduloCodigo || "") ||
+        safeTxt(m.moduloNombre || m.modulo || m.detalleCargo || "") ||
+        safeTxt(m.descripcion || "");
+
+      return `COD:${normKey(codigo)}`;
+    };
+
+    const addPago = (mes, modKey, tipo, monto, detalle) => {
+      const key = `${mes}|${modKey}`;
+      const prev = pagosMap.get(key) || { part: 0, os: 0, detPart: "", detOS: "" };
+
+      if (tipo === "PART") {
+        prev.part += monto;
+        if (detalle) prev.detPart = prev.detPart ? `${prev.detPart} | ${detalle}` : detalle;
+      } else if (tipo === "OS") {
+        prev.os += monto;
+        if (detalle) prev.detOS = prev.detOS ? `${prev.detOS} | ${detalle}` : detalle;
+      }
+
+      pagosMap.set(key, prev);
+    };
+
+    for (const m of movsRango) {
+      if (m.tipo !== "PART" && m.tipo !== "OS") continue;
+
+      const mes = yyyymmFromMov(m) || "-";
+      const modKey = getModuloKey(m);
+      const monto = Number(m.monto || 0) || 0;
+
+      const detalle = safeTxt(
+        m.detallePadres ||
+          m.detPadres ||
+          m.detalleOS ||
+          m.detOs ||
+          m.detalleObraSocial ||
+          m.detalle ||
+          m.descripcion ||
+          m.observaciones ||
+          ""
+      );
+
+      addPago(mes, modKey, m.tipo, monto, detalle);
+
+      // 🔁 Backup extra: si el pago trae "codigo/moduloNombre", también lo metemos por COD para matchear cargos sin moduloId
+      const codigoAlt =
+        safeTxt(m.codigo || m.cod || m.moduloCodigo || "") ||
+        safeTxt(m.moduloNombre || m.modulo || "") ||
+        "";
+      if (codigoAlt) addPago(mes, `COD:${normKey(codigoAlt)}`, m.tipo, monto, detalle);
+    }
+
+    // =========================
+    // Filas (solo CARGOS) pero pegando pagos OS/PART del map
+    // =========================
     const filas = movsRango
       .filter((m) => m.tipo === "CARGO")
       .map((m) => {
@@ -886,13 +964,34 @@ async function generarExtractoPDF(req, res) {
 
         const aPagar = Number(m.monto || 0);
 
-        const pagPadres = parseNumberLike(m.pagPadres, 0);
-        const detPadres = safeTxt(
+        // pagos guardados dentro del cargo (si existen)
+        let pagPadres = parseNumberLike(m.pagPadres, 0);
+        let detPadres = safeTxt(
           m.detallePadres || m.detPadres || m.detalle || m.detallePago || ""
         );
 
-        const pagOS = parseNumberLike(m.pagOS, 0);
-        const detOS = safeTxt(m.detalleOS || m.detOs || m.detalleObraSocial || "");
+        let pagOS = parseNumberLike(m.pagOS, 0);
+        let detOS = safeTxt(m.detalleOS || m.detOs || m.detalleObraSocial || "");
+
+        // ✅ pegar pagos OS/PART guardados como movimientos separados
+        const modKey = getModuloKey(m);
+        const pay = pagosMap.get(`${mes}|${modKey}`) || pagosMap.get(`${mes}|COD:${normKey(codigo)}`) || null;
+
+        if (pay) {
+          if (!pagPadres) pagPadres = 0;
+          if (!pagOS) pagOS = 0;
+
+          if (pay.part) pagPadres += pay.part;
+          if (pay.os) pagOS += pay.os;
+
+          if (pay.detPart) detPadres = detPadres ? `${detPadres} | ${pay.detPart}` : pay.detPart;
+          if (pay.detOS) detOS = detOS ? `${detOS} | ${pay.detOS}` : pay.detOS;
+        }
+
+        if (!tieneOS) {
+          pagOS = 0;
+          detOS = "";
+        }
 
         return {
           mes,
@@ -906,6 +1005,7 @@ async function generarExtractoPDF(req, res) {
         };
       });
 
+    // FACTURAS (igual que antes)
     const facturas = movsRango
       .filter((m) => m.tipo === "FACT")
       .map((m) => ({
@@ -961,7 +1061,6 @@ async function generarExtractoPDF(req, res) {
 
     doc.fontSize(11).fillColor("#000").text(`${paciente.nombre || "-"} - DNI ${paciente.dni || "-"}`);
     doc.fontSize(10).fillColor("#444").text(`Área: ${area.nombre || "-"}`);
-
     const rangoTxt =
       desde || hasta
         ? `Rango: ${desde || "(inicio)"} a ${hasta || "(fin)"}`
@@ -973,6 +1072,7 @@ async function generarExtractoPDF(req, res) {
     const greenLight = "#EAF2E1";
     const stroke = "#000";
 
+    // ✅ Barra superior: ahora muestra SALDO
     function drawTopBar() {
       const barH = 22;
       const y = doc.y;
@@ -985,18 +1085,12 @@ async function generarExtractoPDF(req, res) {
         align: "center",
       });
 
-      // ✅ CAMBIO: SALDO (deuda o 0)
       const rightTxt = `SALDO`;
-      const rightVal = fmtARS(saldoDeuda);
+      const rightVal = fmtARS(saldo);
+
       doc.font("Helvetica-Bold").fontSize(9).fillColor("#000");
-      doc.text(rightTxt, pageLeft, y + 6, {
-        width: pageW - 90,
-        align: "right",
-      });
-      doc.text(rightVal, pageRight - 85, y + 6, {
-        width: 85,
-        align: "right",
-      });
+      doc.text(rightTxt, pageLeft, y + 6, { width: pageW - 90, align: "right" });
+      doc.text(rightVal, pageRight - 85, y + 6, { width: 85, align: "right" });
 
       doc.restore();
       doc.y = y + barH + 10;
@@ -1007,45 +1101,39 @@ async function generarExtractoPDF(req, res) {
     const rowH = 14;
     const headerH = 18;
 
-    // ✅ CAMBIO: se quita PROFESIONAL
+    // ✅ SIN columna PROFESIONAL
     let cols = [
       { key: "mes", label: "MES", w: 58, align: "left" },
       { key: "cant", label: "CANT", w: 44, align: "center" },
-      { key: "codigo", label: "CODIGO", w: 280, align: "left" },
+      { key: "codigo", label: "CODIGO", w: 260, align: "left" },
       { key: "aPagar", label: "A PAGAR", w: 90, align: "right" },
-      { key: "pagPadres", label: "PAGADO POR\nPADRES", w: 100, align: "right" },
+      { key: "pagPadres", label: "PAGADO POR\nPADRES", w: 95, align: "right" },
       { key: "detPadres", label: "DETALLE", w: 140, align: "left" },
     ];
 
     if (tieneOS) {
       cols = cols.concat([
-        { key: "pagOS", label: "PAGADO POR\nO.S", w: 90, align: "right" },
+        { key: "pagOS", label: "PAGADO POR\nO.S", w: 95, align: "right" },
         { key: "detOS", label: "DETALLE", w: 140, align: "left" },
       ]);
     }
 
-    // Ajuste automático a la página
     const sumW = cols.reduce((a, c) => a + c.w, 0);
     if (sumW > pageW) {
       const ratio = pageW / sumW;
-      cols = cols.map((c) => ({
-        ...c,
-        w: Math.max(38, Math.floor(c.w * ratio)),
-      }));
+      cols = cols.map((c) => ({ ...c, w: Math.max(38, Math.floor(c.w * ratio)) }));
       const newSum = cols.reduce((a, c) => a + c.w, 0);
-      const diff = pageW - newSum;
-      cols[cols.length - 1].w += diff;
+      cols[cols.length - 1].w += (pageW - newSum);
     } else if (sumW < pageW) {
       const extra = pageW - sumW;
       const idxCodigo = cols.findIndex((c) => c.key === "codigo");
-      if (idxCodigo >= 0) cols[idxCodigo].w += Math.floor(extra * 0.55);
+      if (idxCodigo >= 0) cols[idxCodigo].w += Math.floor(extra * 0.65);
       const idxDet = cols.findIndex((c) => c.key === "detPadres");
-      if (idxDet >= 0) cols[idxDet].w += extra - Math.floor(extra * 0.55);
+      if (idxDet >= 0) cols[idxDet].w += extra - Math.floor(extra * 0.65);
     }
 
     function drawTableHeader() {
       const y = doc.y;
-
       doc.save();
       doc.rect(pageLeft, y, pageW, headerH).fill(green);
       doc.restore();
@@ -1055,7 +1143,6 @@ async function generarExtractoPDF(req, res) {
       let x = pageLeft;
       for (const c of cols) {
         doc.save().rect(x, y, c.w, headerH).stroke(stroke).restore();
-
         doc.text(c.label, x + 4, y + 4, {
           width: c.w - 8,
           align: c.align,
@@ -1091,13 +1178,12 @@ async function generarExtractoPDF(req, res) {
         pagPadres: fmtARS(r.pagPadres),
         detPadres: r.detPadres || "",
         pagOS: tieneOS ? fmtARS(r.pagOS) : undefined,
-        detOS: tieneOS ? r.detOS || "" : undefined,
+        detOS: tieneOS ? (r.detOS || "") : undefined,
       };
 
       let x = pageLeft;
       for (const c of cols) {
         doc.save().rect(x, y, c.w, rowH).stroke(stroke).restore();
-
         const txt = cell[c.key] ?? "";
         doc.text(txt, x + 4, y + 3, {
           width: c.w - 8,
@@ -1105,7 +1191,6 @@ async function generarExtractoPDF(req, res) {
           lineBreak: false,
           ellipsis: true,
         });
-
         x += c.w;
       }
 
@@ -1206,30 +1291,7 @@ async function generarExtractoPDF(req, res) {
       }
     }
 
-    doc.moveDown(1.2);
-
-    const boxH = 46;
-    const boxW = 240;
-    const boxY = Math.min(doc.y, pageBottom - boxH - 20);
-    const midX = pageLeft + Math.floor((pageW - boxW) / 2);
-
-    doc.save().rect(midX, boxY, boxW, boxH).stroke(stroke).restore();
-    doc.font("Helvetica-Bold").fontSize(8.5).fillColor("#000");
-    doc.text("Total que deberia\nhaber pagado", midX + 8, boxY + 6, { width: 130 });
-    doc.text("Total que pago", midX + 8, boxY + 28, { width: 130 });
-
-    doc.font("Helvetica-Bold").fontSize(9).fillColor("#000");
-    doc.text(fmtARS(totalCargos), midX + 140, boxY + 12, { width: boxW - 150, align: "right" });
-    doc.text(fmtARS(totalPagadoConAjustes), midX + 140, boxY + 30, { width: boxW - 150, align: "right" });
-
-    const boxW2 = 180;
-    const rightX = pageRight - boxW2;
-
-    doc.save().rect(rightX, boxY + 10, boxW2, 32).stroke(stroke).restore();
-    doc.font("Helvetica-Bold").fontSize(8.5).fillColor("#000");
-    doc.text("Total que se\nle facturo", rightX + 8, boxY + 16, { width: 90 });
-    doc.font("Helvetica-Bold").fontSize(9).fillColor("#000");
-    doc.text(fmtARS(totalFacturado), rightX + 95, boxY + 24, { width: boxW2 - 100, align: "right" });
+    // (Si querés, también puedo hacer que esta página de FACTURAS muestre un resumen de saldo/pagado abajo como en tu planilla)
 
     doc.end();
   } catch (err) {
