@@ -935,23 +935,24 @@ async function generarExtractoPDF(req, res) {
         };
       });
 
-   // Facturas en rango
-const facturas = movsRango
-  .filter((m) => m.tipo === "FACT")
-  .map((m) => {
-    const pagada =
-      (m.meta && m.meta.facturaPagada === true) ||
-      String(m.estado || "").toUpperCase() === "PAGADO";
+    // =========================
+    // Facturas en rango (con ESTADO)
+    // =========================
+    const facturas = movsRango
+      .filter((m) => m.tipo === "FACT")
+      .map((m) => {
+        const pagada =
+          (m.meta && m.meta.facturaPagada === true) ||
+          String(m.estado || "").toUpperCase() === "PAGADO";
 
-    return {
-      mes: yyyymmFromMov(m) || "-",
-      nro: safeTxt(m.nroRecibo || m.nroFactura || m.tipoFactura || "-"),
-      monto: Number(m.monto || 0),
-      estadoFactura: pagada ? "PAGA" : "IMPAGA",
-    };
-  })
-  .sort((a, b) => String(a.mes).localeCompare(String(b.mes)));
-
+        return {
+          mes: yyyymmFromMov(m) || "-",
+          nro: safeTxt(m.nroRecibo || m.nroFactura || m.tipoFactura || "-"),
+          monto: Number(m.monto || 0),
+          estadoFactura: pagada ? "PAGA" : "IMPAGA",
+        };
+      })
+      .sort((a, b) => String(a.mes).localeCompare(String(b.mes)));
 
     // =========================
     // Respuesta PDF
@@ -997,10 +998,7 @@ const facturas = movsRango
 
     doc.y = logoDrawn ? 64 : pageTop;
 
-    doc
-      .fontSize(14)
-      .fillColor("#000")
-      .text("Informe de estado de cuenta", pageLeft, doc.y);
+    doc.fontSize(14).fillColor("#000").text("Informe de estado de cuenta", pageLeft, doc.y);
     doc.moveDown(0.35);
 
     doc
@@ -1033,7 +1031,7 @@ const facturas = movsRango
         align: "center",
       });
 
-      // ✅ derecha: SALDO (no dif fact)
+      // ✅ derecha: SALDO
       doc.font("Helvetica-Bold").fontSize(9).fillColor("#000");
       doc.text("SALDO", pageLeft, y + 6, { width: pageW - 90, align: "right" });
       doc.text(fmtARS(saldo), pageRight - 85, y + 6, { width: 85, align: "right" });
@@ -1166,11 +1164,12 @@ const facturas = movsRango
     doc.font("Helvetica-Bold").fontSize(10).fillColor("#000").text("FACTURAS", pageLeft, doc.y);
     doc.moveDown(0.5);
 
+    // ✅ ACÁ estaba el problema: seguías usando key "fecha"
     const fCols = [
       { key: "mes", label: "MES", w: 90, align: "left" },
       { key: "nro", label: "N° FACT.", w: 120, align: "left" },
       { key: "monto", label: "MONTO", w: 180, align: "right" },
-      { key: "fecha", label: "FECHA", w: 120, align: "left" },
+      { key: "estadoFactura", label: "ESTADO", w: 120, align: "left" },
     ];
 
     const fSum = fCols.reduce((a, c) => a + c.w, 0);
@@ -1210,13 +1209,12 @@ const facturas = movsRango
 
       doc.font("Helvetica").fontSize(8.2).fillColor("#000");
 
-     const cell = {
-  mes: f.mes || "-",
-  nro: String(f.nro || "-"),
-  monto: fmtARS(f.monto),
-  estadoFactura: f.estadoFactura || "IMPAGA",
-};
-
+      const cell = {
+        mes: f.mes || "-",
+        nro: String(f.nro || "-"),
+        monto: fmtARS(f.monto),
+        estadoFactura: f.estadoFactura || "IMPAGA",
+      };
 
       let x = pageLeft;
       for (const c of fCols) {
@@ -1286,6 +1284,7 @@ const facturas = movsRango
     res.status(500).json({ error: "No se pudo generar el PDF" });
   }
 }
+
 
 
 module.exports = {
